@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.api.chat import router as chat_router
+from app.db.database import init_db
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -17,6 +19,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize database on startup
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+
+# Include routers
+app.include_router(chat_router)
+
 # Health check endpoint
 @app.get("/")
 async def root():
@@ -26,7 +36,6 @@ async def root():
         "version": "0.1.0"
     }
 
-# Test endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
