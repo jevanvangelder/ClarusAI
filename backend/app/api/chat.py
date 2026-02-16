@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 # Request/Response models
 class ChatMessage(BaseModel):
     content: str
+    messages: Optional[List[dict]] = []
 
 class ChatResponse(BaseModel):
     message: str
@@ -95,12 +96,16 @@ async def send_message(
         for msg in messages
     ]
     
-    # Generate AI response
+        # Generate AI response with full conversation history
+    conversation_messages = message.messages if message.messages else message_history
+    if not conversation_messages:
+        conversation_messages = [{"role": "user", "content": message.content}]
+
+    
     ai_response = await ai_service.generate_response(
-        messages=message_history,
+        messages=conversation_messages,
         role=user.role.value
     )
-    
     # Save AI response
     assistant_message = Message(
         conversation_id=conversation.id,
