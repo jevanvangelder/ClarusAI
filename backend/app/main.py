@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.chat import router as chat_router
-from app.db.database import init_db
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -19,10 +18,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
-    init_db()
+# Database is already initialized in Supabase - no local init needed
 
 # Include routers
 app.include_router(chat_router)
@@ -39,4 +35,3 @@ async def root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
-    

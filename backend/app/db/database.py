@@ -1,25 +1,13 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.core.config import settings
-from app.models.database import Base
+"""
+Legacy database module - redirects to new location.
+All new code should import from app.core.database instead.
+"""
 
-# Create database engine
-engine = create_engine(
-    settings.DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.DATABASE_URL else {}
+from app.core.database import (
+    engine,
+    SessionLocal,
+    Base,
+    get_db
 )
 
-# Create session factory
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create all tables
-def init_db():
-    Base.metadata.create_all(bind=engine)
-
-# Dependency to get database session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+__all__ = ["engine", "SessionLocal", "Base", "get_db"]

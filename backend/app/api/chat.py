@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
 
-from app.db.database import get_db, init_db
+from app.db.database import get_db
 from app.models.database import User, Conversation, Message, UserRole
 from app.services.ai_service import ai_service
+from app.utils.file_parser import parse_file
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -24,14 +25,9 @@ class ConversationHistory(BaseModel):
     id: int
     role: str
     content: str
-    created_at: datetime
+    created_at: datetime  
 
-# Initialize database on startup
-@router.on_event("startup")
-async def startup():
-    init_db()
-
-# Send a chat message
+# Send a chat message (WITHOUT files)
 @router.post("/send", response_model=ChatResponse)
 async def send_message(
     message: ChatMessage,
@@ -85,27 +81,16 @@ async def send_message(
     db.add(user_message)
     db.commit()
     
-    # Get conversation history for context
-    messages = db.query(Message).filter(
-        Message.conversation_id == conversation.id
-    ).order_by(Message.created_at).all()
-    
-    # Format messages for OpenAI
-    message_history = [
-        {"role": msg.role, "content": msg.content}
-        for msg in messages
-    ]
-    
-        # Generate AI response with full conversation history
-    conversation_messages = message.messages if message.messages else message_history
+    # Use message history from frontend (localStorage)
+    conversation_messages = message.messages if message.messages else []
     if not conversation_messages:
         conversation_messages = [{"role": "user", "content": message.content}]
 
-    
     ai_response = await ai_service.generate_response(
         messages=conversation_messages,
         role=user.role.value
     )
+    
     # Save AI response
     assistant_message = Message(
         conversation_id=conversation.id,
@@ -120,6 +105,135 @@ async def send_message(
         conversation_id=conversation.id,
         timestamp=assistant_message.created_at
     )
+
+
+# Send a chat message WITH files (supports images!)
+@router.post("/send-with-files", response_model=ChatResponse)
+async def send_message_with_files(
+    content: str = Form(...),
+    files: List[UploadFile] = File(None),
+    messages: Optional[str] = Form("[]"),
+    conversation_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Send a message with file attachments and get AI response
+    Supports images (PNG, JPG) with GPT-4 Vision!
+    """
+    import json
+    
+    # Parse messages from JSON string
+    try:
+        message_history = json.loads(messages) if messages else []
+    except json.JSONDecodeError:
+        message_history = []
+    
+    # Get or create test user
+    user = db.query(User).filter(User.id == 1).first()
+    if not user:
+        user = User(
+            email="test@clarusai.nl",
+            username="testuser",
+            hashed_password="temp",
+            full_name="Test User",
+            role=UserRole.STUDENT
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    
+    # Get or create conversation
+    if conversation_id:
+        conversation = db.query(Conversation).filter(
+            Conversation.id == conversation_id,
+            Conversation.user_id == user.id
+        ).first()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+    else:
+        conversation = Conversation(
+            user_id=user.id,
+            title=content[:50]
+        )
+        db.add(conversation)
+        db.commit()
+        db.refresh(conversation)
+    
+    # ✅ NEW: Process uploaded files (including images!)
+    file_context = ""
+    images = []  # Store base64 images for Vision API
+    
+    if files:
+        file_parts = []
+        for file in files:
+            file_bytes = await file.read()
+            parsed = parse_file(file.filename, file_bytes)  # Returns dict now!
+            
+            if parsed["type"] == "image":
+                # Store image for Vision API
+                if parsed["image"]:
+                    images.append(parsed["image"])
+                file_parts.append(f"=== AFBEELDING: {file.filename} ===\n\n[Zie afbeelding in bericht]")
+            else:
+                # Regular text file
+                file_parts.append(f"=== BESTAND: {file.filename} ===\n\n{parsed['text']}")
+        
+        file_context = "\n\n".join(file_parts)
+    
+    # Add file content as a system message at the start
+    conversation_messages = []
+    
+    if file_context:
+        conversation_messages.append({
+            "role": "system",
+            "content": f"De gebruiker heeft de volgende documenten geüpload. Gebruik deze informatie voor ALLE vragen in dit gesprek, ook toekomstige vragen:\n\n{file_context}"
+        })
+    
+    # Add message history from frontend
+    conversation_messages.extend(message_history)
+    
+    # Add current user message
+    conversation_messages.append({
+        "role": "user",
+        "content": content if content else "Bestanden geüpload"
+    })
+    
+    # Save user message with file info indicator
+    user_message_content = content if content else "Bestanden geüpload"
+    if files:
+        file_names = ", ".join([f.filename for f in files])
+        user_message_content += f"\n\n📎 Bijlagen: {file_names}"
+    
+    user_message = Message(
+        conversation_id=conversation.id,
+        role="user",
+        content=user_message_content
+    )
+    db.add(user_message)
+    db.commit()
+    
+    # ✅ NEW: Generate AI response with images!
+    ai_response = await ai_service.generate_response(
+        messages=conversation_messages,
+        role=user.role.value,
+        images=images if images else None
+    )
+    
+    # Save AI response
+    assistant_message = Message(
+        conversation_id=conversation.id,
+        role="assistant",
+        content=ai_response
+    )
+    db.add(assistant_message)
+    db.commit()
+    
+    return ChatResponse(
+        message=ai_response,
+        conversation_id=conversation.id,
+        timestamp=assistant_message.created_at
+    )
+
 
 # Get conversation history
 @router.get("/history/{conversation_id}", response_model=List[ConversationHistory])
@@ -142,4 +256,3 @@ async def get_conversation_history(
         )
         for msg in messages
     ]
-    
