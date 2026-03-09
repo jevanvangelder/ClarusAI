@@ -9,6 +9,9 @@ venv/
 ENV/
 .venv
 *.env
+!.env
+!.env.production
+!.env.development
 
 # Node
 node_modules/
