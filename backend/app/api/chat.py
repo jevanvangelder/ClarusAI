@@ -15,6 +15,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class ChatMessage(BaseModel):
     content: str
     messages: Optional[List[dict]] = []
+    active_module_ids: Optional[List[str]] = []  # ← NIEUW!
 
 class ChatResponse(BaseModel):
     message: str
@@ -86,9 +87,22 @@ async def send_message(
     if not conversation_messages:
         conversation_messages = [{"role": "user", "content": message.content}]
 
+    # ✅ NEW: Get active modules and their prompts
+    module_prompts = []
+    # TODO: Implement Module model in database.py first
+    # For now, modules are disabled until we add the Module table
+    # if message.active_module_ids:
+    #     from app.models.database import Module
+    #     modules = db.query(Module).filter(
+    #         Module.id.in_(message.active_module_ids),
+    #         Module.is_active == True
+    #     ).all()
+    #     module_prompts = [m.system_prompt for m in modules]
+
     ai_response = await ai_service.generate_response(
         messages=conversation_messages,
-        role=user.role.value
+        role=user.role.value,
+        module_prompts=module_prompts  # ← Empty for now
     )
     
     # Save AI response
@@ -113,6 +127,7 @@ async def send_message_with_files(
     content: str = Form(...),
     files: List[UploadFile] = File(None),
     messages: Optional[str] = Form("[]"),
+    active_module_ids: Optional[str] = Form("[]"),  # ← NIEUW!
     conversation_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
@@ -127,6 +142,12 @@ async def send_message_with_files(
         message_history = json.loads(messages) if messages else []
     except json.JSONDecodeError:
         message_history = []
+    
+    # ✅ NEW: Parse active_module_ids from JSON string
+    try:
+        parsed_module_ids = json.loads(active_module_ids) if active_module_ids else []
+    except json.JSONDecodeError:
+        parsed_module_ids = []
     
     # Get or create test user
     user = db.query(User).filter(User.id == 1).first()
@@ -159,7 +180,7 @@ async def send_message_with_files(
         db.commit()
         db.refresh(conversation)
     
-    # ✅ NEW: Process uploaded files (including images!)
+    # ✅ Process uploaded files (including images!)
     file_context = ""
     images = []  # Store base64 images for Vision API
     
@@ -212,11 +233,24 @@ async def send_message_with_files(
     db.add(user_message)
     db.commit()
     
-    # ✅ NEW: Generate AI response with images!
+    # ✅ NEW: Get active modules and their prompts
+    module_prompts = []
+    # TODO: Implement Module model in database.py first
+    # For now, modules are disabled until we add the Module table
+    # if parsed_module_ids:
+    #     from app.models.database import Module
+    #     modules = db.query(Module).filter(
+    #         Module.id.in_(parsed_module_ids),
+    #         Module.is_active == True
+    #     ).all()
+    #     module_prompts = [m.system_prompt for m in modules]
+    
+    # ✅ Generate AI response with images and module prompts!
     ai_response = await ai_service.generate_response(
         messages=conversation_messages,
         role=user.role.value,
-        images=images if images else None
+        images=images if images else None,
+        module_prompts=module_prompts  # ← Empty for now
     )
     
     # Save AI response

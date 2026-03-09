@@ -15,25 +15,33 @@ class AIService:
         self.client = AsyncOpenAI(api_key=api_key)
     
     async def generate_response(
-        self, 
-        messages: List[dict], 
+        self,
+        messages: List[dict],
         role: str = "student",
-        images: List[str] = None
+        images: List[str] = None,
+        module_prompts: List[str] = None
     ) -> str:
         """
-        Generate AI response with optional image support
+        Generate AI response with optional image support and module-based prompts
         """
         try:
-            # System prompt based on role
-            system_prompts = {
-                "student": "Je bent een behulpzame AI assistent voor studenten. Geef duidelijke, educatieve antwoorden.",
-                "teacher": "Je bent een AI assistent voor docenten. Help met lesmateriaal en didactische vragen.",
-                "admin": "Je bent een AI assistent voor beheerders. Help met administratieve taken."
-            }
+            # Build system prompt from modules
+            if module_prompts and len(module_prompts) > 0:
+                # Use active module prompts
+                combined_prompt = "\n\n".join(module_prompts)
+                system_content = f"Je bent ClarusAI. Volg deze instructies:\n\n{combined_prompt}"
+            else:
+                # Fallback to role-based prompts
+                system_prompts = {
+                    "student": "Je bent een behulpzame AI assistent voor studenten. Geef duidelijke, educatieve antwoorden.",
+                    "teacher": "Je bent een AI assistent voor docenten. Help met lesmateriaal en didactische vragen.",
+                    "admin": "Je bent een AI assistent voor beheerders. Help met administratieve taken."
+                }
+                system_content = system_prompts.get(role, system_prompts["student"])
             
             system_message = {
                 "role": "system",
-                "content": system_prompts.get(role, system_prompts["student"])
+                "content": system_content
             }
             
             # Format messages for OpenAI
