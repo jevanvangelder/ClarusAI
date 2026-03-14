@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str
     OPENAI_MODEL: str = "gpt-4o-mini"
     
-    # Database
-    DATABASE_URL: str = "sqlite:///./clarusai.db"
+    # Database (optional - alleen nodig voor oude chat endpoint)
+    DATABASE_URL: Optional[str] = "sqlite:///./clarusai.db"
     
     # Supabase
     SUPABASE_URL: str
