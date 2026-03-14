@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.chat import router as chat_router
+from app.api.chat_history import router as chat_history_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -26,6 +27,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(chat_router)
+app.include_router(chat_history_router)
 
 # Health check endpoint
 @app.get("/")

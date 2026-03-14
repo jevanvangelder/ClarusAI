@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./clarusai.db"
     
+    # Supabase
+    SUPABASE_URL: str
+    SUPABASE_KEY: str
+    
     # CORS (voor frontend later)
     CORS_ORIGINS: list = ["http://localhost:3000", "http://localhost:8000"]
     

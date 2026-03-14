@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { PaperPlaneRight, CaretLeft, CaretRight, X } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
+import { API_URL } from './config'
 
 interface Message {
   id: string
@@ -335,7 +336,7 @@ function App() {
         formData.append('messages', JSON.stringify(messagesToSend))
         formData.append('active_module_ids', JSON.stringify(getActiveModuleIds())) // ✅ NEW!
 
-        backendResponse = await fetch('http://localhost:8000/api/chat/send-with-files', {
+        backendResponse = await fetch(`${API_URL}/api/chat/send-with-files`, {
           method: 'POST',
           body: formData,
         })
@@ -354,7 +355,7 @@ function App() {
           }
         }
 
-        backendResponse = await fetch('http://localhost:8000/api/chat/send', {
+        backendResponse = await fetch(`${API_URL}/api/chat/send`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -393,7 +394,7 @@ function App() {
         try {
           const titlePrompt = `Geef een korte titel (max 5 woorden) voor deze chat op basis van de vraag: "${userMessage.content}". Geef ALLEEN de titel, geen andere tekst.`
           
-          const titleResponse = await fetch('http://localhost:8000/api/chat/send', {
+          const titleResponse = await fetch(`${API_URL}/api/chat/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
