@@ -4,11 +4,28 @@ from pydantic import BaseModel
 from datetime import datetime
 from app.core.config import settings
 from supabase import create_client, Client
+import os
+
+# 🔍 DEBUG: Print Supabase connection info
+print("=" * 80)
+print("🔍 SUPABASE DEBUG INFO AT MODULE LOAD:")
+print(f"SUPABASE_URL from settings: {settings.SUPABASE_URL}")
+print(f"SUPABASE_KEY from settings exists: {bool(settings.SUPABASE_KEY)}")
+print(f"SUPABASE_KEY length: {len(settings.SUPABASE_KEY) if settings.SUPABASE_KEY else 0}")
+print(f"SUPABASE_URL from os.getenv: {os.getenv('SUPABASE_URL')}")
+print(f"SUPABASE_KEY from os.getenv exists: {bool(os.getenv('SUPABASE_KEY'))}")
+print("=" * 80)
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 # Supabase client
-supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+try:
+    print(f"🔧 Creating Supabase client with URL: {settings.SUPABASE_URL}")
+    supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+    print("✅ Supabase client created successfully!")
+except Exception as e:
+    print(f"❌ ERROR creating Supabase client: {e}")
+    raise
 
 # Pydantic models
 class ChatCreate(BaseModel):
@@ -44,9 +61,12 @@ class Message(BaseModel):
 async def get_chats(user_id: str):
     """Get all chats for a specific user"""
     try:
+        print(f"🔍 DEBUG: Getting chats for user_id={user_id}")
         response = supabase.table("chats").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
+        print(f"✅ DEBUG: Got {len(response.data)} chats")
         return response.data
     except Exception as e:
+        print(f"❌ DEBUG ERROR in get_chats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # POST /api/chats - Create new chat
