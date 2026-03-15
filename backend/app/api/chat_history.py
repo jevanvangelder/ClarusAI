@@ -36,7 +36,6 @@ class ChatUpdate(BaseModel):
     title: str
 
 class MessageCreate(BaseModel):
-    chat_id: str
     role: str  # "user" or "assistant"
     content: str
     tokens_used: Optional[int] = 0
