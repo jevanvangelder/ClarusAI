@@ -1,9 +1,12 @@
 import { createRoot } from 'react-dom/client'
 import { ErrorBoundary } from "react-error-boundary"
-import { BrowserRouter } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import "@github/spark/spark"
 
-import App from './ChatApp.tsx'
+import ChatApp from './ChatApp.tsx'
+import Login from './pages/Login.tsx'
+import Register from './pages/Register.tsx'
+import ProtectedRoute from './components/ProtectedRoute.tsx'
 import { ErrorFallback } from './ErrorFallback.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
 
@@ -15,7 +18,19 @@ createRoot(document.getElementById('root')!).render(
   <ErrorBoundary FallbackComponent={ErrorFallback}>
     <BrowserRouter>
       <AuthProvider>
-        <App />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <ChatApp />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   </ErrorBoundary>
