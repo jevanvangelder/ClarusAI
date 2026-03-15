@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import logoImg from '@/assets/logo.png'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -52,93 +53,95 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <div className="w-full max-w-md space-y-8 p-8">
-        {/* Logo */}
-        <div className="flex justify-center">
-          <img 
-            src="/logo.png" 
-            alt="ClarusAI Logo" 
-            className="w-24 h-24 object-contain"
-          />
-        </div>
-
-        {/* Header */}
-        <div className="text-center">
-          <h1 className="font-['Space_Grotesk'] text-3xl font-bold tracking-tight text-foreground">
-            Account aanmaken
-          </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            Of{' '}
-            <Link 
-              to="/login" 
-              className="font-medium text-primary hover:text-primary/80 transition-colors"
-            >
-              log in met je bestaande account
-            </Link>
-          </p>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="mt-8 space-y-6">
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="email" className="text-foreground">
-                E-mailadres
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={loading}
-                className="mt-1"
-                placeholder="jouw@email.nl"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="password" className="text-foreground">
-                Wachtwoord
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={loading}
-                className="mt-1"
-                placeholder="Minimaal 6 karakters"
-              />
-            </div>
-
-            <div>
-              <Label htmlFor="confirmPassword" className="text-foreground">
-                Bevestig wachtwoord
-              </Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                required
-                disabled={loading}
-                className="mt-1"
-                placeholder="Herhaal je wachtwoord"
-              />
-            </div>
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
+        <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-8 space-y-6">
+          {/* Logo */}
+          <div className="flex justify-center">
+            <img 
+              src={logoImg} 
+              alt="ClarusAI Logo" 
+              className="w-20 h-20 object-contain"
+            />
           </div>
 
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full"
-          >
-            {loading ? 'Bezig met aanmaken...' : 'Account aanmaken'}
-          </Button>
-        </form>
+          {/* Header */}
+          <div className="text-center space-y-2">
+            <h1 className="font-['Space_Grotesk'] text-3xl font-bold tracking-tight text-foreground">
+              Account aanmaken
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Of{' '}
+              <Link 
+                to="/login" 
+                className="font-medium text-primary hover:text-primary/80 transition-colors underline"
+              >
+                log in met je bestaande account
+              </Link>
+            </p>
+          </div>
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="email" className="text-foreground">
+                  E-mailadres
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="mt-1.5"
+                  placeholder="jouw@email.nl"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="password" className="text-foreground">
+                  Wachtwoord
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="mt-1.5"
+                  placeholder="Minimaal 6 karakters"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="confirmPassword" className="text-foreground">
+                  Bevestig wachtwoord
+                </Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  className="mt-1.5"
+                  placeholder="Herhaal je wachtwoord"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full"
+            >
+              {loading ? 'Bezig met aanmaken...' : 'Account aanmaken'}
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   )
