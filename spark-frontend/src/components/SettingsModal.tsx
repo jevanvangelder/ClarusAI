@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
@@ -19,6 +20,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+  const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const [isChangingEmail, setIsChangingEmail] = useState(false)
   const [isChangingPassword, setIsChangingPassword] = useState(false)
@@ -88,9 +90,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       await signOut()
       onOpenChange(false)
       toast.success('Succesvol uitgelogd!')
+      navigate('/login')
     } catch (error: any) {
       toast.error('Kon niet uitloggen')
-    } finally {
       setLoading(false)
     }
   }
@@ -113,9 +115,11 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             {!isChangingEmail ? (
               <div className="flex items-center gap-3">
                 <Input 
+                  id="settings-current-email"
                   value={user?.email || ''} 
                   disabled 
                   className="flex-1 bg-gray-100 dark:bg-gray-800"
+                  readOnly
                 />
                 <Button 
                   variant="outline" 
@@ -128,6 +132,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             ) : (
               <div className="space-y-2">
                 <Input
+                  id="settings-new-email"
                   type="email"
                   placeholder="Nieuw email adres"
                   value={newEmail}
@@ -174,12 +179,14 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
             ) : (
               <div className="space-y-2">
                 <Input
+                  id="settings-new-password"
                   type="password"
                   placeholder="Nieuw wachtwoord"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
                 <Input
+                  id="settings-confirm-password"
                   type="password"
                   placeholder="Bevestig nieuw wachtwoord"
                   value={confirmPassword}
