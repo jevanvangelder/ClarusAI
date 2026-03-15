@@ -25,6 +25,7 @@ interface ChatSidebarProps {
   onPermanentDelete?: (id: string) => void
   activeFilter?: 'default' | 'favorite' | 'note' | 'trash'
   onFilterChange?: (filter: 'default' | 'favorite' | 'note' | 'trash') => void
+  onSettingsClick?: () => void
 }
 
 function ChatSidebarComponent({ 
@@ -39,29 +40,30 @@ function ChatSidebarComponent({
   onRestoreFromTrash,
   onPermanentDelete,
   activeFilter = 'default',
-  onFilterChange
+  onFilterChange,
+  onSettingsClick
 }: ChatSidebarProps) {
-const [searchQuery, setSearchQuery] = useState('')
-const [openMenuId, setOpenMenuId] = useState<string | null>(null)
-const [menuRefreshKey, setMenuRefreshKey] = useState(0)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [menuRefreshKey, setMenuRefreshKey] = useState(0)
 
-// Close menu when clicking outside
-useEffect(() => {
-  const handleClickOutside = (e: MouseEvent) => {
-    const target = e.target as HTMLElement
-    // Close menu if clicking outside the dropdown AND outside the three-dots button
-    if (!target.closest('.dropdown-menu') && !target.closest('.three-dots-button')) {
-      setOpenMenuId(null)
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      // Close menu if clicking outside the dropdown AND outside the three-dots button
+      if (!target.closest('.dropdown-menu') && !target.closest('.three-dots-button')) {
+        setOpenMenuId(null)
+      }
     }
-  }
 
-  if (openMenuId) {
-    document.addEventListener('click', handleClickOutside)
-    return () => document.removeEventListener('click', handleClickOutside)
-  }
-}, [openMenuId])
+    if (openMenuId) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [openMenuId])
 
-const filteredChats = chats.filter(chat =>
+  const filteredChats = chats.filter(chat =>
     chat.title.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -73,7 +75,10 @@ const filteredChats = chats.filter(chat =>
           <h1 className="font-['Space_Grotesk'] font-bold text-2xl uppercase tracking-wide">
             CHAT<br />GESCHIEDENIS
           </h1>
-          <button className="text-muted-foreground hover:text-foreground transition-colors">
+          <button 
+            onClick={onSettingsClick}
+            className="text-muted-foreground hover:text-foreground transition-colors"
+          >
             <Gear size={20} />
           </button>
         </div>
@@ -107,32 +112,32 @@ const filteredChats = chats.filter(chat =>
               style={{ maxWidth: '100%', width: '100%' }}
             >
               <div className="w-full max-w-full overflow-hidden pointer-events-none pr-10">
-  <span className="block truncate pl-3 pr-2 max-w-[200px] pointer-events-none">
-    {chat.title}
-  </span>
-  {/* Show countdown if in trash */}
-  {chat.status === 'trash' && chat.deletedAt && (
-    <span className="block pl-3 pr-2 text-xs text-red-500 pointer-events-none">
-      Verwijderd over {Math.max(0, 10 - Math.floor((Date.now() - chat.deletedAt) / (1000 * 60 * 60 * 24)))} dagen
-    </span>
-  )}
-</div>
+                <span className="block truncate pl-3 pr-2 max-w-[200px] pointer-events-none">
+                  {chat.title}
+                </span>
+                {/* Show countdown if in trash */}
+                {chat.status === 'trash' && chat.deletedAt && (
+                  <span className="block pl-3 pr-2 text-xs text-red-500 pointer-events-none">
+                    Verwijderd over {Math.max(0, 10 - Math.floor((Date.now() - chat.deletedAt) / (1000 * 60 * 60 * 24)))} dagen
+                  </span>
+                )}
+              </div>
 
               <button
-  onClick={(e) => {
-    e.stopPropagation()
-    setOpenMenuId(openMenuId === chat.id ? null : chat.id)
-  }}
-  className="three-dots-button absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-muted rounded transition-colors z-50 pointer-events-auto"
->
-  <DotsThree size={18} weight="bold" color="white" />
-</button>
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setOpenMenuId(openMenuId === chat.id ? null : chat.id)
+                }}
+                className="three-dots-button absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-muted rounded transition-colors z-50 pointer-events-auto"
+              >
+                <DotsThree size={18} weight="bold" color="white" />
+              </button>
 
               {openMenuId === chat.id && (
-  <div 
-    key={`${chat.id}-${chat.status}-${menuRefreshKey}`}
-    className="dropdown-menu absolute right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-lg py-1 z-[100] min-w-[180px]"
-  >
+                <div 
+                  key={`${chat.id}-${chat.status}-${menuRefreshKey}`}
+                  className="dropdown-menu absolute right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-lg py-1 z-[100] min-w-[180px]"
+                >
                   {/* IF IN TRASH: Show restore + permanent delete */}
                   {chat.status === 'trash' ? (
                     <>

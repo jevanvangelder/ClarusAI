@@ -3,7 +3,7 @@ import { ErrorBoundary } from "react-error-boundary"
 import { BrowserRouter } from 'react-router-dom'
 import "@github/spark/spark"
 
-import App from './App.tsx'
+import App from './ChatApp.tsx'
 import { ErrorFallback } from './ErrorFallback.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
 

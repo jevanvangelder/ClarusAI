@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import { ChatSidebar } from '@/components/ChatSidebar'
 import { ModulesSidebar } from '@/components/ModulesSidebar'
 import { EbookModal } from '@/components/EbookModal'
+import { SettingsModal } from '@/components/SettingsModal'
 import { ChatMessage } from '@/components/ChatMessage'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { PaperPlaneRight, CaretLeft, CaretRight, X } from '@phosphor-icons/react'
+import { PaperPlaneRight, CaretLeft, CaretRight, X, Gear } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { API_URL } from './config'
@@ -107,10 +108,13 @@ function App() {
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   
-  // ✅ NEW: Ebook state
+  // ✅ Ebook state
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null)
   const [isEbookModalOpen, setIsEbookModalOpen] = useState(false)
   const [activeEbook, setActiveEbook] = useState<Ebook | null>(null)
+
+  // ✅ NEW: Settings modal state
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentChat = chats?.find(c => c.id === activeChat)
 
@@ -202,7 +206,7 @@ function App() {
     }
   }, [activeChat])
 
-  // ✅ NEW: Load active ebook from localStorage
+  // ✅ Load active ebook from localStorage
   useEffect(() => {
     const savedActiveEbook = localStorage.getItem('clarus-active-ebook')
     if (savedActiveEbook) {
@@ -210,7 +214,7 @@ function App() {
     }
   }, [])
 
-  // ✅ NEW: Save active ebook to localStorage
+  // ✅ Save active ebook to localStorage
   useEffect(() => {
     if (activeEbookId) {
       localStorage.setItem('clarus-active-ebook', activeEbookId)
@@ -219,7 +223,7 @@ function App() {
     }
   }, [activeEbookId])
 
-  // ✅ NEW: Load active ebook details
+  // ✅ Load active ebook details
   useEffect(() => {
     if (activeEbookId) {
       try {
@@ -525,6 +529,7 @@ function App() {
                 onPermanentDelete={handlePermanentDelete}
                 activeFilter={activeFilter}
                 onFilterChange={setActiveFilter}
+                onSettingsClick={() => setSettingsOpen(true)}
               />
             </div>
           </motion.div>
@@ -558,7 +563,7 @@ function App() {
             )}
           </div>
 
-          {/* ✅ NEW: Ebook Button/Badge */}
+          {/* ✅ Ebook Button/Badge */}
           <div className="ml-auto flex items-center gap-2">
             {activeEbook ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
@@ -730,13 +735,16 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* ✅ NEW: Ebook Modal */}
+      {/* ✅ Ebook Modal */}
       <EbookModal
         isOpen={isEbookModalOpen}
         onClose={() => setIsEbookModalOpen(false)}
         onSelectEbook={(ebookId) => setActiveEbookId(ebookId)}
         activeEbookId={activeEbookId}
       />
+
+      {/* ✅ NEW: Settings Modal */}
+      <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
 }
