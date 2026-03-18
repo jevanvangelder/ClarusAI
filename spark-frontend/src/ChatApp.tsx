@@ -107,6 +107,7 @@ function App() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null) // ✅ NIEUW: ref voor textarea hoogte-reset
   
   // ✅ Ebook state
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null)
@@ -304,6 +305,10 @@ function App() {
     
     setInputValue('')
     setUploadedFiles([])
+    // ✅ NIEUW: Reset textarea hoogte naar 1 regel na verzenden
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
     setIsLoading(true)
 
     try {
@@ -679,6 +684,7 @@ function App() {
               </Button>
               <div className="flex-1 flex gap-2">
                 <textarea
+                  ref={textareaRef}
                   id="chat-input"
                   placeholder="Stel een vraag..."
                   value={inputValue}
