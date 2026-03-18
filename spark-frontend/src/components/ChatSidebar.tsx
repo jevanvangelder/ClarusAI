@@ -300,6 +300,8 @@ function ChatSidebarComponent({
 }
 
 function arePropsEqual(prevProps: ChatSidebarProps, nextProps: ChatSidebarProps) {
+  // ✅ FIX: Check activeFilter EERST — dit is het belangrijkste
+  if (prevProps.activeFilter !== nextProps.activeFilter) return false
   if (prevProps.activeChat !== nextProps.activeChat) return false
   if (prevProps.chats.length !== nextProps.chats.length) return false
   
