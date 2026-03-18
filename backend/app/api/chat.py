@@ -15,7 +15,8 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class ChatMessage(BaseModel):
     content: str
     messages: Optional[List[dict]] = []
-    active_module_ids: Optional[List[str]] = []  # ← NIEUW!
+    active_module_ids: Optional[List[str]] = []
+    active_module_prompts: Optional[List[str]] = []  # ✅ NIEUW: prompt-teksten van frontend
 
 class ChatResponse(BaseModel):
     message: str
@@ -37,12 +38,9 @@ async def send_message(
 ):
     """
     Send a message and get AI response
-    
-    For now, we'll use a default test user (user_id=1)
-    Later we'll add authentication
     """
     
-    # Get or create test user (temporary, until we add auth)
+    # Get or create test user
     user = db.query(User).filter(User.id == 1).first()
     if not user:
         user = User(
@@ -67,7 +65,7 @@ async def send_message(
     else:
         conversation = Conversation(
             user_id=user.id,
-            title=message.content[:50]  # Use first 50 chars as title
+            title=message.content[:50]
         )
         db.add(conversation)
         db.commit()
@@ -87,22 +85,13 @@ async def send_message(
     if not conversation_messages:
         conversation_messages = [{"role": "user", "content": message.content}]
 
-    # ✅ NEW: Get active modules and their prompts
-    module_prompts = []
-    # TODO: Implement Module model in database.py first
-    # For now, modules are disabled until we add the Module table
-    # if message.active_module_ids:
-    #     from app.models.database import Module
-    #     modules = db.query(Module).filter(
-    #         Module.id.in_(message.active_module_ids),
-    #         Module.is_active == True
-    #     ).all()
-    #     module_prompts = [m.system_prompt for m in modules]
+    # ✅ FIX: Gebruik de module prompts die de frontend meestuurt
+    module_prompts = message.active_module_prompts if message.active_module_prompts else []
 
     ai_response = await ai_service.generate_response(
         messages=conversation_messages,
         role=user.role.value,
-        module_prompts=module_prompts  # ← Empty for now
+        module_prompts=module_prompts  # ✅ Nu gevuld met echte prompts!
     )
     
     # Save AI response
@@ -127,7 +116,8 @@ async def send_message_with_files(
     content: str = Form(...),
     files: List[UploadFile] = File(None),
     messages: Optional[str] = Form("[]"),
-    active_module_ids: Optional[str] = Form("[]"),  # ← NIEUW!
+    active_module_ids: Optional[str] = Form("[]"),
+    active_module_prompts: Optional[str] = Form("[]"),  # ✅ NIEUW
     conversation_id: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
@@ -143,11 +133,17 @@ async def send_message_with_files(
     except json.JSONDecodeError:
         message_history = []
     
-    # ✅ NEW: Parse active_module_ids from JSON string
+    # Parse active_module_ids from JSON string
     try:
         parsed_module_ids = json.loads(active_module_ids) if active_module_ids else []
     except json.JSONDecodeError:
         parsed_module_ids = []
+    
+    # ✅ NIEUW: Parse active_module_prompts from JSON string
+    try:
+        parsed_module_prompts = json.loads(active_module_prompts) if active_module_prompts else []
+    except json.JSONDecodeError:
+        parsed_module_prompts = []
     
     # Get or create test user
     user = db.query(User).filter(User.id == 1).first()
@@ -180,23 +176,21 @@ async def send_message_with_files(
         db.commit()
         db.refresh(conversation)
     
-    # ✅ Process uploaded files (including images!)
+    # Process uploaded files (including images!)
     file_context = ""
-    images = []  # Store base64 images for Vision API
+    images = []
     
     if files:
         file_parts = []
         for file in files:
             file_bytes = await file.read()
-            parsed = parse_file(file.filename, file_bytes)  # Returns dict now!
+            parsed = parse_file(file.filename, file_bytes)
             
             if parsed["type"] == "image":
-                # Store image for Vision API
                 if parsed["image"]:
                     images.append(parsed["image"])
                 file_parts.append(f"=== AFBEELDING: {file.filename} ===\n\n[Zie afbeelding in bericht]")
             else:
-                # Regular text file
                 file_parts.append(f"=== BESTAND: {file.filename} ===\n\n{parsed['text']}")
         
         file_context = "\n\n".join(file_parts)
@@ -233,24 +227,15 @@ async def send_message_with_files(
     db.add(user_message)
     db.commit()
     
-    # ✅ NEW: Get active modules and their prompts
-    module_prompts = []
-    # TODO: Implement Module model in database.py first
-    # For now, modules are disabled until we add the Module table
-    # if parsed_module_ids:
-    #     from app.models.database import Module
-    #     modules = db.query(Module).filter(
-    #         Module.id.in_(parsed_module_ids),
-    #         Module.is_active == True
-    #     ).all()
-    #     module_prompts = [m.system_prompt for m in modules]
+    # ✅ FIX: Gebruik de module prompts die de frontend meestuurt
+    module_prompts = parsed_module_prompts if parsed_module_prompts else []
     
-    # ✅ Generate AI response with images and module prompts!
+    # Generate AI response with images and module prompts!
     ai_response = await ai_service.generate_response(
         messages=conversation_messages,
         role=user.role.value,
         images=images if images else None,
-        module_prompts=module_prompts  # ← Empty for now
+        module_prompts=module_prompts  # ✅ Nu gevuld met echte prompts!
     )
     
     # Save AI response

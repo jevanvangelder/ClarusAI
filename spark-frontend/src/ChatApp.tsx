@@ -53,26 +53,22 @@ const getActiveModuleIds = (): string[] => {
   }
 }
 
-// ✅ Helper: Get active module prompts (DEPRECATED - backend handles this now)
-const getActiveModulePrompts = (): string => {
+// ✅ Helper: Get active module prompts — stuurt de TEKST van de prompts mee
+const getActiveModulePrompts = (): string[] => {
   try {
     const savedModules = localStorage.getItem('clarus-modules')
-    if (!savedModules) return ''
+    if (!savedModules) return []
     
     const modules = JSON.parse(savedModules)
     const activeModules = modules.filter((m: any) => m.enabled)
     
-    if (activeModules.length === 0) return ''
+    if (activeModules.length === 0) return []
     
-    // Combine all active module prompts
-    const combinedPrompts = activeModules
-      .map((m: any) => `📌 ${m.title}:\n${m.prompt}`)
-      .join('\n\n---\n\n')
-    
-    return combinedPrompts
+    // Return array van prompt-teksten
+    return activeModules.map((m: any) => `📌 ${m.title}:\n${m.prompt}`)
   } catch (error) {
     console.error('Error loading modules:', error)
-    return ''
+    return []
   }
 }
 
@@ -107,7 +103,7 @@ function App() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null) // ✅ NIEUW: ref voor textarea hoogte-reset
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   
   // ✅ Ebook state
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null)
@@ -305,7 +301,7 @@ function App() {
     
     setInputValue('')
     setUploadedFiles([])
-    // ✅ NIEUW: Reset textarea hoogte naar 1 regel na verzenden
+    // ✅ Reset textarea hoogte naar 1 regel na verzenden
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -317,6 +313,9 @@ function App() {
 
       // ✅ Get active ebook content (still used for frontend context)
       const ebookContent = getActiveEbookContent(activeEbookId)
+      
+      // ✅ Get active module prompts (de daadwerkelijke teksten!)
+      const modulePrompts = getActiveModulePrompts()
 
       let backendResponse
 
@@ -343,7 +342,8 @@ function App() {
         })
         
         formData.append('messages', JSON.stringify(messagesToSend))
-        formData.append('active_module_ids', JSON.stringify(getActiveModuleIds())) // ✅ NEW!
+        formData.append('active_module_ids', JSON.stringify(getActiveModuleIds()))
+        formData.append('active_module_prompts', JSON.stringify(modulePrompts)) // ✅ NIEUW: stuur prompt-teksten mee
 
         backendResponse = await fetch(`${API_URL}/api/chat/send-with-files`, {
           method: 'POST',
@@ -372,7 +372,8 @@ function App() {
           body: JSON.stringify({ 
             content: userQuestion,
             messages: messagesToSend,
-            active_module_ids: getActiveModuleIds() // ✅ NEW!
+            active_module_ids: getActiveModuleIds(),
+            active_module_prompts: modulePrompts // ✅ NIEUW: stuur prompt-teksten mee
           }),
         })
       }
@@ -409,7 +410,8 @@ function App() {
             body: JSON.stringify({
               content: titlePrompt,
               messages: [],
-              active_module_ids: [] // ✅ Empty for title generation
+              active_module_ids: [],
+              active_module_prompts: [] // ✅ Leeg voor titel-generatie
             })
           })
           
