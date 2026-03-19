@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Trash } from '@phosphor-icons/react'
+import { Plus, Pencil, Trash, X } from '@phosphor-icons/react'
 import { Module } from '@/types/module'
 import { ModuleModal } from './modulemodal'
 
-export function ModulesSidebar() {
+interface ModulesSidebarProps {
+  onClose?: () => void
+}
+
+export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
   const [modules, setModules] = useState<Module[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModule, setEditingModule] = useState<Module | null>(null)
@@ -106,18 +110,28 @@ export function ModulesSidebar() {
 
   return (
     <>
-      <div className="w-80 h-full bg-card border-l border-border flex flex-col">
+      <div className="w-full h-full bg-card border-l border-border flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold">Modules</h2>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            className="gap-2"
-          >
-            <Plus size={16} weight="bold" />
-            Nieuw
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              className="gap-2"
+            >
+              <Plus size={16} weight="bold" />
+              Nieuw
+            </Button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1"
+              >
+                <X size={20} />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modules List */}

@@ -18,7 +18,7 @@ export function ChatMessage({ role, content }: ChatMessageProps) {
       className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
     >
       <div
-        className={`max-w-[80%] rounded-lg px-4 py-3 ${
+        className={`max-w-[95%] md:max-w-[80%] rounded-lg px-4 py-3 ${
           isUser
             ? 'bg-primary text-primary-foreground'
             : 'bg-card text-card-foreground border border-border'
