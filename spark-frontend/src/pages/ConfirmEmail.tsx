@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
@@ -7,6 +7,7 @@ import logoImg from '@/assets/logo.png'
 
 export default function ConfirmEmail() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState(true)
   const [newEmail, setNewEmail] = useState<string | null>(null)
   const [confirmed, setConfirmed] = useState(false)
@@ -15,36 +16,45 @@ export default function ConfirmEmail() {
   useEffect(() => {
     const handleEmailConfirmation = async () => {
       try {
-        // Supabase stuurt de tokens via het URL-fragment (#access_token=...)
-        // supabase-js pakt dit automatisch op bij het laden van de pagina
-        const { data, error } = await supabase.auth.getSession()
+        const tokenHash = searchParams.get('token_hash')
+        const type = searchParams.get('type')
 
-        if (error) {
-          console.error('Session error:', error)
-          setError('Er is een fout opgetreden bij het bevestigen van je email.')
+        if (!tokenHash || type !== 'email_change') {
+          setError('Ongeldige of verlopen bevestigingslink.')
           setLoading(false)
           return
         }
 
-        if (data.session) {
-          // Haal de nieuwe email op uit de sessie
-          const userEmail = data.session.user.email
-          setNewEmail(userEmail || null)
+        // Verify the token with Supabase
+        const { data, error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash,
+          type: 'email_change',
+        })
+
+        if (error) {
+          console.error('Verification error:', error)
+          setError('De bevestigingslink is ongeldig of verlopen. Probeer het opnieuw.')
+          setLoading(false)
+          return
+        }
+
+        if (data.user) {
+          setNewEmail(data.user.email || null)
           setConfirmed(true)
           toast.success('Je email is succesvol gewijzigd!')
         } else {
-          setError('Geen geldige sessie gevonden. Probeer de link opnieuw.')
+          setError('Er is een fout opgetreden bij het bevestigen.')
         }
       } catch (err) {
         console.error('Confirmation error:', err)
-        setError('Er is een fout opgetreden.')
+        setError('Er is een onverwachte fout opgetreden.')
       } finally {
         setLoading(false)
       }
     }
 
     handleEmailConfirmation()
-  }, [])
+  }, [searchParams])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
