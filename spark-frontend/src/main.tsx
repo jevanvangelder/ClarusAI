@@ -6,6 +6,7 @@ import "@github/spark/spark"
 import ChatApp from './ChatApp.tsx'
 import Login from './pages/Login.tsx'
 import Register from './pages/Register.tsx'
+import ConfirmEmail from './pages/ConfirmEmail.tsx'
 import ProtectedRoute from './components/ProtectedRoute.tsx'
 import { ErrorFallback } from './ErrorFallback.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
@@ -21,6 +22,7 @@ createRoot(document.getElementById('root')!).render(
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/confirm-email" element={<ConfirmEmail />} />
           <Route
             path="/"
             element={
