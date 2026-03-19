@@ -126,7 +126,8 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
             {onClose && (
               <button
                 onClick={onClose}
-                className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1"
+                aria-label="Zijbalk sluiten"
+                className="md:hidden text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
               >
                 <X size={20} />
               </button>
@@ -170,14 +171,14 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
                 <div className="flex gap-3 pt-1">
                   <button
                     onClick={(e) => handleEdit(e, module)}
-                    className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                    className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors min-h-[44px]"
                   >
                     <Pencil size={14} />
                     Bewerken
                   </button>
                   <button
                     onClick={(e) => handleDelete(e, module.id)}
-                    className="text-xs text-red-500 hover:text-red-400 flex items-center gap-1 transition-colors"
+                    className="text-xs text-red-500 hover:text-red-400 flex items-center gap-1 transition-colors min-h-[44px]"
                   >
                     <Trash size={14} />
                     Verwijderen
