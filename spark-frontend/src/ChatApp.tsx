@@ -98,8 +98,9 @@ function App() {
   const [inputValue, setInputValue] = useState('')
   const [activeFilter, setActiveFilter] = useState<'default' | 'favorite' | 'note' | 'trash'>('default')
   const [isLoading, setIsLoading] = useState(false)
-  const [showLeftSidebar, setShowLeftSidebar] = useState(true)
-  const [showRightSidebar, setShowRightSidebar] = useState(true)
+  const [showLeftSidebar, setShowLeftSidebar] = useState(false)
+  const [showRightSidebar, setShowRightSidebar] = useState(false)
+  const [isMobile, setIsMobile] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -114,6 +115,21 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentChat = chats?.find(c => c.id === activeChat)
+
+  // Detect mobile and set sidebar defaults
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+      if (!mobile) {
+        setShowLeftSidebar(true)
+        setShowRightSidebar(true)
+      }
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -513,19 +529,38 @@ function App() {
 
   return (
     <div className="h-screen flex overflow-hidden bg-background text-foreground font-['Inter']">
+      {/* Mobile overlay backdrop for left sidebar */}
+      {isMobile && showLeftSidebar && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setShowLeftSidebar(false)}
+        />
+      )}
+
+      {/* Mobile overlay backdrop for right sidebar */}
+      {isMobile && showRightSidebar && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setShowRightSidebar(false)}
+        />
+      )}
+
       <AnimatePresence>
         {showLeftSidebar && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 256, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+            initial={isMobile ? { x: '-100%', opacity: 1 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0, opacity: 1 } : { width: 256, opacity: 1 }}
+            exit={isMobile ? { x: '-100%', opacity: 1 } : { width: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex-shrink-0"
+            className={isMobile
+              ? 'fixed top-0 left-0 h-full z-50 w-[85vw] max-w-[320px]'
+              : 'flex-shrink-0'
+            }
           >
-            <div className="w-64 h-full flex-shrink-0 overflow-hidden">
+            <div className={`${isMobile ? 'w-full' : 'w-64'} h-full flex-shrink-0 overflow-hidden`}>
               <ChatSidebar
                 chats={filteredChats}
-                onChatSelect={handleChatSelect}
+                onChatSelect={(id) => { handleChatSelect(id); if (isMobile) setShowLeftSidebar(false) }}
                 activeChat={activeChat}
                 onDeleteChat={handleDeleteChat}
                 onRenameChat={handleRenameChat}
@@ -537,6 +572,7 @@ function App() {
                 activeFilter={activeFilter}
                 onFilterChange={setActiveFilter}
                 onSettingsClick={() => setSettingsOpen(true)}
+                onClose={() => setShowLeftSidebar(false)}
               />
             </div>
           </motion.div>
@@ -547,7 +583,7 @@ function App() {
         <div className="h-14 border-b border-border flex items-center px-4 gap-4 flex-shrink-0">
           <button
             onClick={() => setShowLeftSidebar(!showLeftSidebar)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             {showLeftSidebar ? <CaretLeft size={20} /> : <CaretRight size={20} />}
           </button>
@@ -563,10 +599,10 @@ function App() {
               className="gap-2"
             >
               <span className="text-lg">+</span>
-              Nieuwe chat
+              <span className="hidden md:inline">Nieuwe chat</span>
             </Button>
             {currentChat && (
-              <h2 className="text-sm font-medium">{currentChat.title}</h2>
+              <h2 className="hidden md:block text-sm font-medium truncate max-w-[200px]">{currentChat.title}</h2>
             )}
           </div>
 
@@ -575,7 +611,7 @@ function App() {
             {activeEbook ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
                 <span>{activeEbook.cover}</span>
-                <span className="max-w-[150px] truncate">{activeEbook.title}</span>
+                <span className="hidden md:inline max-w-[150px] truncate">{activeEbook.title}</span>
                 <button
                   onClick={() => setActiveEbookId(null)}
                   className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
@@ -589,23 +625,24 @@ function App() {
                 size="sm"
                 onClick={() => setIsEbookModalOpen(true)}
                 className="gap-2"
+                aria-label="Schoolboek kiezen"
               >
                 <span>📚</span>
-                Schoolboek kiezen
+                <span className="hidden md:inline">Schoolboek kiezen</span>
               </Button>
             )}
           </div>
 
           <button
             onClick={() => setShowRightSidebar(!showRightSidebar)}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors p-1 min-w-[44px] min-h-[44px] flex items-center justify-center"
           >
             {showRightSidebar ? <CaretRight size={20} /> : <CaretLeft size={20} />}
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto" ref={scrollRef}>
-          <div className="max-w-4xl mx-auto p-6 space-y-4">
+          <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
             {!currentChat?.messages.length && (
               <div className="text-center text-muted-foreground py-12">
                 <p className="text-lg">Start een nieuw gesprek</p>
@@ -681,8 +718,10 @@ function App() {
                 variant="outline" 
                 className="flex-shrink-0"
                 onClick={handleFileButtonClick}
+                aria-label="Bestanden uploaden"
               >
-                Bestanden
+                <span className="md:hidden">📎</span>
+                <span className="hidden md:inline">Bestanden</span>
               </Button>
               <div className="flex-1 flex gap-2">
                 <textarea
@@ -732,13 +771,16 @@ function App() {
       <AnimatePresence>
         {showRightSidebar && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 320, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+            initial={isMobile ? { x: '100%', opacity: 1 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0, opacity: 1 } : { width: 320, opacity: 1 }}
+            exit={isMobile ? { x: '100%', opacity: 1 } : { width: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex-shrink-0"
+            className={isMobile
+              ? 'fixed top-0 right-0 h-full z-50 w-[85vw] max-w-[360px]'
+              : 'flex-shrink-0'
+            }
           >
-            <ModulesSidebar />
+            <ModulesSidebar onClose={() => setShowRightSidebar(false)} />
           </motion.div>
         )}
       </AnimatePresence>

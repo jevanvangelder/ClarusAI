@@ -1,5 +1,5 @@
 import { memo, useEffect } from 'react'
-import { MagnifyingGlass, Gear, Heart, Note, Trash, DotsThree } from '@phosphor-icons/react'
+import { MagnifyingGlass, Gear, Heart, Note, Trash, DotsThree, X } from '@phosphor-icons/react'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { useState } from 'react'
@@ -26,6 +26,7 @@ interface ChatSidebarProps {
   activeFilter?: 'default' | 'favorite' | 'note' | 'trash'
   onFilterChange?: (filter: 'default' | 'favorite' | 'note' | 'trash') => void
   onSettingsClick?: () => void
+  onClose?: () => void
 }
 
 function ChatSidebarComponent({ 
@@ -41,7 +42,8 @@ function ChatSidebarComponent({
   onPermanentDelete,
   activeFilter = 'default',
   onFilterChange,
-  onSettingsClick
+  onSettingsClick,
+  onClose
 }: ChatSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
@@ -75,12 +77,22 @@ function ChatSidebarComponent({
           <h1 className="font-['Space_Grotesk'] font-bold text-2xl uppercase tracking-wide">
             CHAT<br />GESCHIEDENIS
           </h1>
-          <button 
-            onClick={onSettingsClick}
-            className="text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Gear size={20} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={onSettingsClick}
+              className="text-muted-foreground hover:text-foreground transition-colors p-1"
+            >
+              <Gear size={20} />
+            </button>
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1"
+              >
+                <X size={20} />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="relative">
@@ -103,7 +115,7 @@ function ChatSidebarComponent({
           {filteredChats.map((chat) => (
             <div
               key={chat.id}
-              className={`relative group w-full max-w-full text-left py-2.5 rounded-md text-sm transition-all cursor-pointer ${
+              className={`relative group w-full max-w-full text-left py-3 rounded-md text-sm transition-all cursor-pointer ${
                 activeChat === chat.id
                   ? 'bg-muted text-foreground border-l-2 border-primary'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
