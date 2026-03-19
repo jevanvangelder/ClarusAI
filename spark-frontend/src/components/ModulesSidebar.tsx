@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
-import { Plus, Pencil, Trash } from '@phosphor-icons/react'
+import { Plus, Pencil, Trash, X } from '@phosphor-icons/react'
 import { Module } from '@/types/module'
 import { ModuleModal } from './modulemodal'
 
-export function ModulesSidebar() {
+interface ModulesSidebarProps {
+  onClose?: () => void  // ✅ NIEUW
+}
+
+export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
   const [modules, setModules] = useState<Module[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModule, setEditingModule] = useState<Module | null>(null)
@@ -70,13 +74,13 @@ export function ModulesSidebar() {
   }
 
   const handleEdit = (e: React.MouseEvent, module: Module) => {
-    e.stopPropagation() // Prevent card toggle
+    e.stopPropagation()
     setEditingModule(module)
     setIsModalOpen(true)
   }
 
   const handleDelete = (e: React.MouseEvent, id: string) => {
-    e.stopPropagation() // Prevent card toggle
+    e.stopPropagation()
     if (confirm('Weet je zeker dat je deze module wilt verwijderen?')) {
       setModules(prev => prev.filter(m => m.id !== id))
     }
@@ -84,7 +88,6 @@ export function ModulesSidebar() {
 
   const handleSave = (data: Omit<Module, 'id' | 'createdAt' | 'enabled'>) => {
     if (editingModule) {
-      // Update existing
       setModules(prev =>
         prev.map(m =>
           m.id === editingModule.id
@@ -93,7 +96,6 @@ export function ModulesSidebar() {
         )
       )
     } else {
-      // Create new
       const newModule: Module = {
         ...data,
         id: `module-${Date.now()}`,
@@ -106,18 +108,30 @@ export function ModulesSidebar() {
 
   return (
     <>
-      <div className="w-80 h-full bg-card border-l border-border flex flex-col">
+      <div className="w-full md:w-80 h-full bg-card border-l border-border flex flex-col">
         {/* Header */}
         <div className="p-4 border-b border-border flex items-center justify-between">
           <h2 className="font-semibold">Modules</h2>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            className="gap-2"
-          >
-            <Plus size={16} weight="bold" />
-            Nieuw
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              onClick={handleCreate}
+              className="gap-2"
+            >
+              <Plus size={16} weight="bold" />
+              Nieuw
+            </Button>
+            {/* ✅ Close knop — alleen zichtbaar op mobiel */}
+            {onClose && (
+              <button
+                onClick={onClose}
+                className="md:hidden text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                aria-label="Zijbalk sluiten"
+              >
+                <X size={20} weight="bold" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modules List */}
@@ -156,14 +170,14 @@ export function ModulesSidebar() {
                 <div className="flex gap-3 pt-1">
                   <button
                     onClick={(e) => handleEdit(e, module)}
-                    className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors"
+                    className="text-xs text-blue-500 hover:text-blue-400 flex items-center gap-1 transition-colors min-h-[44px]"
                   >
                     <Pencil size={14} />
                     Bewerken
                   </button>
                   <button
                     onClick={(e) => handleDelete(e, module.id)}
-                    className="text-xs text-red-500 hover:text-red-400 flex items-center gap-1 transition-colors"
+                    className="text-xs text-red-500 hover:text-red-400 flex items-center gap-1 transition-colors min-h-[44px]"
                   >
                     <Trash size={14} />
                     Verwijderen

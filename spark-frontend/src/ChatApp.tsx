@@ -93,13 +93,17 @@ const getActiveEbookContent = (ebookId: string | null): string => {
 }
 
 function App() {
+  // ✅ Mobile detection — laptop blijft exact hetzelfde
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
+
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChat, setActiveChat] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState('')
   const [activeFilter, setActiveFilter] = useState<'default' | 'favorite' | 'note' | 'trash'>('default')
   const [isLoading, setIsLoading] = useState(false)
-  const [showLeftSidebar, setShowLeftSidebar] = useState(true)
-  const [showRightSidebar, setShowRightSidebar] = useState(true)
+  // ✅ Op mobiel standaard dicht, op desktop standaard open
+  const [showLeftSidebar, setShowLeftSidebar] = useState(() => window.innerWidth >= 768)
+  const [showRightSidebar, setShowRightSidebar] = useState(() => window.innerWidth >= 768)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -114,6 +118,16 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentChat = chats?.find(c => c.id === activeChat)
+
+  // ✅ Resize listener — houdt isMobile in sync
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768
+      setIsMobile(mobile)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -257,6 +271,12 @@ function App() {
   const handleSend = async () => {
     if (!inputValue.trim() && uploadedFiles.length === 0) return
 
+    // ✅ Op mobiel: sluit sidebars bij verzenden
+    if (isMobile) {
+      setShowLeftSidebar(false)
+      setShowRightSidebar(false)
+    }
+
     // Add file names to user message
     const filesToUpload = uploadedFiles
     let userMessageContent = inputValue.trim()
@@ -343,7 +363,7 @@ function App() {
         
         formData.append('messages', JSON.stringify(messagesToSend))
         formData.append('active_module_ids', JSON.stringify(getActiveModuleIds()))
-        formData.append('active_module_prompts', JSON.stringify(modulePrompts)) // ✅ NIEUW: stuur prompt-teksten mee
+        formData.append('active_module_prompts', JSON.stringify(modulePrompts))
 
         backendResponse = await fetch(`${API_URL}/api/chat/send-with-files`, {
           method: 'POST',
@@ -373,7 +393,7 @@ function App() {
             content: userQuestion,
             messages: messagesToSend,
             active_module_ids: getActiveModuleIds(),
-            active_module_prompts: modulePrompts // ✅ NIEUW: stuur prompt-teksten mee
+            active_module_prompts: modulePrompts
           }),
         })
       }
@@ -411,7 +431,7 @@ function App() {
               content: titlePrompt,
               messages: [],
               active_module_ids: [],
-              active_module_prompts: [] // ✅ Leeg voor titel-generatie
+              active_module_prompts: []
             })
           })
           
@@ -440,6 +460,10 @@ function App() {
 
   const handleChatSelect = (chatId: string) => {
     setActiveChat(chatId)
+    // ✅ Op mobiel: sluit sidebar na chat selectie
+    if (isMobile) {
+      setShowLeftSidebar(false)
+    }
   }
 
   const handleDeleteChat = (chatId: string) => {
@@ -513,16 +537,29 @@ function App() {
 
   return (
     <div className="h-screen flex overflow-hidden bg-background text-foreground font-['Inter']">
+      
+      {/* ✅ MOBIEL: Donkere backdrop achter linker sidebar */}
+      {isMobile && showLeftSidebar && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setShowLeftSidebar(false)}
+        />
+      )}
+
       <AnimatePresence>
         {showLeftSidebar && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 256, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+            initial={isMobile ? { x: -320 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0 } : { width: 256, opacity: 1 }}
+            exit={isMobile ? { x: -320 } : { width: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex-shrink-0"
+            className={
+              isMobile
+                ? "fixed left-0 top-0 h-full w-[85vw] max-w-[320px] z-50"
+                : "flex-shrink-0"
+            }
           >
-            <div className="w-64 h-full flex-shrink-0 overflow-hidden">
+            <div className={isMobile ? "w-full h-full" : "w-64 h-full flex-shrink-0 overflow-hidden"}>
               <ChatSidebar
                 chats={filteredChats}
                 onChatSelect={handleChatSelect}
@@ -537,6 +574,7 @@ function App() {
                 activeFilter={activeFilter}
                 onFilterChange={setActiveFilter}
                 onSettingsClick={() => setSettingsOpen(true)}
+                onClose={() => setShowLeftSidebar(false)}
               />
             </div>
           </motion.div>
@@ -563,10 +601,12 @@ function App() {
               className="gap-2"
             >
               <span className="text-lg">+</span>
-              Nieuwe chat
+              {/* ✅ "Nieuwe chat" tekst verborgen op mobiel */}
+              <span className="hidden md:inline">Nieuwe chat</span>
             </Button>
             {currentChat && (
-              <h2 className="text-sm font-medium">{currentChat.title}</h2>
+              // ✅ Chat titel verborgen op mobiel
+              <h2 className="text-sm font-medium hidden md:block">{currentChat.title}</h2>
             )}
           </div>
 
@@ -575,7 +615,7 @@ function App() {
             {activeEbook ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
                 <span>{activeEbook.cover}</span>
-                <span className="max-w-[150px] truncate">{activeEbook.title}</span>
+                <span className="max-w-[150px] truncate hidden md:inline">{activeEbook.title}</span>
                 <button
                   onClick={() => setActiveEbookId(null)}
                   className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
@@ -591,7 +631,8 @@ function App() {
                 className="gap-2"
               >
                 <span>📚</span>
-                Schoolboek kiezen
+                {/* ✅ Tekst verborgen op mobiel, alleen emoji */}
+                <span className="hidden md:inline">Schoolboek kiezen</span>
               </Button>
             )}
           </div>
@@ -605,7 +646,8 @@ function App() {
         </div>
 
         <div className="flex-1 overflow-y-auto" ref={scrollRef}>
-          <div className="max-w-4xl mx-auto p-6 space-y-4">
+          {/* ✅ Responsive padding: kleiner op mobiel */}
+          <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
             {!currentChat?.messages.length && (
               <div className="text-center text-muted-foreground py-12">
                 <p className="text-lg">Start een nieuw gesprek</p>
@@ -681,8 +723,11 @@ function App() {
                 variant="outline" 
                 className="flex-shrink-0"
                 onClick={handleFileButtonClick}
+                aria-label="Bestanden"
               >
-                Bestanden
+                {/* ✅ Op mobiel: alleen 📎 icon, op desktop: "Bestanden" tekst */}
+                <span className="md:hidden">📎</span>
+                <span className="hidden md:inline">Bestanden</span>
               </Button>
               <div className="flex-1 flex gap-2">
                 <textarea
@@ -729,16 +774,28 @@ function App() {
         </div>
       </div>
 
+      {/* ✅ MOBIEL: Donkere backdrop achter rechter sidebar */}
+      {isMobile && showRightSidebar && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40"
+          onClick={() => setShowRightSidebar(false)}
+        />
+      )}
+
       <AnimatePresence>
         {showRightSidebar && (
           <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 320, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
+            initial={isMobile ? { x: 320 } : { width: 0, opacity: 0 }}
+            animate={isMobile ? { x: 0 } : { width: 320, opacity: 1 }}
+            exit={isMobile ? { x: 320 } : { width: 0, opacity: 0 }}
             transition={{ duration: 0.3 }}
-            className="flex-shrink-0"
+            className={
+              isMobile
+                ? "fixed right-0 top-0 h-full w-[85vw] max-w-[360px] z-50"
+                : "flex-shrink-0"
+            }
           >
-            <ModulesSidebar />
+            <ModulesSidebar onClose={() => setShowRightSidebar(false)} />
           </motion.div>
         )}
       </AnimatePresence>

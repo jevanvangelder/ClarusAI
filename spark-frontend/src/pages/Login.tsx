@@ -45,7 +45,8 @@ export default function Login() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-8 space-y-6">
+        {/* ✅ p-6 op kleine schermen, p-8 vanaf sm (640px) */}
+        <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-6 sm:p-8 space-y-6">
           {/* Logo */}
           <div className="flex justify-center">
             <img 
