@@ -77,17 +77,19 @@ function ChatSidebarComponent({
           <h1 className="font-['Space_Grotesk'] font-bold text-2xl uppercase tracking-wide">
             CHAT<br />GESCHIEDENIS
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button 
               onClick={onSettingsClick}
-              className="text-muted-foreground hover:text-foreground transition-colors p-1"
+              aria-label="Instellingen"
+              className="text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md hover:bg-muted/50"
             >
               <Gear size={20} />
             </button>
             {onClose && (
               <button
                 onClick={onClose}
-                className="md:hidden text-muted-foreground hover:text-foreground transition-colors p-1"
+                aria-label="Zijbalk sluiten"
+                className="md:hidden text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center rounded-md hover:bg-muted/50"
               >
                 <X size={20} />
               </button>
@@ -140,7 +142,8 @@ function ChatSidebarComponent({
                   e.stopPropagation()
                   setOpenMenuId(openMenuId === chat.id ? null : chat.id)
                 }}
-                className="three-dots-button absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-muted rounded transition-colors z-50 pointer-events-auto"
+                aria-label="Chat opties"
+                className="three-dots-button absolute right-1 top-1/2 -translate-y-1/2 min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-muted rounded transition-colors z-50 pointer-events-auto"
               >
                 <DotsThree size={18} weight="bold" color="white" />
               </button>
@@ -262,7 +265,7 @@ function ChatSidebarComponent({
         
         <button 
           onClick={() => onFilterChange?.('default')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
+          className={`w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm transition-all ${
             activeFilter === 'default' 
               ? 'bg-muted text-foreground' 
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -273,7 +276,7 @@ function ChatSidebarComponent({
 
         <button 
           onClick={() => onFilterChange?.('favorite')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
+          className={`w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm transition-all ${
             activeFilter === 'favorite' 
               ? 'bg-muted text-foreground' 
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -285,7 +288,7 @@ function ChatSidebarComponent({
 
         <button 
           onClick={() => onFilterChange?.('note')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
+          className={`w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm transition-all ${
             activeFilter === 'note' 
               ? 'bg-muted text-foreground' 
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
@@ -297,7 +300,7 @@ function ChatSidebarComponent({
 
         <button 
           onClick={() => onFilterChange?.('trash')}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
+          className={`w-full flex items-center gap-3 px-3 py-2.5 min-h-[44px] rounded-md text-sm transition-all ${
             activeFilter === 'trash' 
               ? 'bg-muted text-foreground' 
               : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
