@@ -78,23 +78,24 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
         onClick={handleClose}
       />
 
-      {/* Modal */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] max-h-[80vh] bg-card border border-border rounded-lg shadow-xl z-50 flex flex-col">
+      {/* ✅ Modal — responsive: fullscreen op mobiel, centered op desktop */}
+      <div className="fixed inset-0 md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 w-full md:w-[600px] md:max-h-[80vh] bg-card md:border md:border-border md:rounded-lg shadow-xl z-50 flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b border-border">
           <h2 className="text-lg font-semibold">
             {editModule ? '✏️ Module Bewerken' : '➕ Nieuwe Module'}
           </h2>
           <button
             onClick={handleClose}
-            className="text-muted-foreground hover:text-foreground transition-colors"
+            className="text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Sluiten"
           >
             <X size={24} />
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
           {/* Titel */}
           <div>
             <label className="block text-sm font-medium mb-2">
@@ -124,21 +125,21 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
               </span>
             </div>
 
-            {/* Emoji Scroll Container */}
+            {/* ✅ Emoji Grid op mobiel, horizontaal scrollen op desktop */}
             <div className="relative">
-  <div className="overflow-x-auto py-2 -mx-1 px-1">
-    <div className="flex gap-2 min-w-max">
+              <div className="overflow-x-auto py-2 -mx-1 px-1">
+                <div className="grid grid-cols-8 gap-2 md:flex md:gap-2 md:min-w-max">
                   {/* Geen emoji optie */}
                   <button
                     type="button"
                     onClick={() => setIcon('')}
                     className={`
-                      w-12 h-12 flex items-center justify-center rounded-md transition-all hover:bg-accent shrink-0
+                      w-10 h-10 md:w-12 md:h-12 flex items-center justify-center rounded-md transition-all hover:bg-accent shrink-0
                       ${!icon ? 'bg-blue-500/20 ring-2 ring-blue-500' : 'bg-background border border-border'}
                     `}
                     title="Geen icon"
                   >
-                    <span className="text-xl text-muted-foreground">—</span>
+                    <span className="text-lg md:text-xl text-muted-foreground">—</span>
                   </button>
 
                   {/* Emoji opties */}
@@ -148,7 +149,7 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
                       type="button"
                       onClick={() => setIcon(emoji)}
                       className={`
-                        w-12 h-12 flex items-center justify-center text-xl rounded-md transition-all hover:bg-accent shrink-0
+                        w-10 h-10 md:w-12 md:h-12 flex items-center justify-center text-lg md:text-xl rounded-md transition-all hover:bg-accent shrink-0
                         ${icon === emoji ? 'bg-blue-500/20 ring-2 ring-blue-500' : 'bg-background border border-border'}
                       `}
                       title={emoji}
@@ -159,11 +160,11 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
                 </div>
               </div>
               
-              {/* Scroll hint */}
-              <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-card to-transparent pointer-events-none" />
+              {/* Scroll hint — alleen op desktop */}
+              <div className="hidden md:block absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-card to-transparent pointer-events-none" />
             </div>
 
-            <p className="text-xs text-muted-foreground mt-2">
+            <p className="text-xs text-muted-foreground mt-2 hidden md:block">
               Scroll horizontaal voor meer emoji's →
             </p>
           </div>
@@ -177,7 +178,7 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
               placeholder="Bijv. Geef altijd een SWOT analyse met strengths, weaknesses, opportunities en threats..."
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              className="w-full min-h-[200px] resize-none font-mono text-sm"
+              className="w-full min-h-[150px] md:min-h-[200px] resize-none font-mono text-sm"
             />
             <p className="text-xs text-muted-foreground mt-1">
               Deze instructies worden aan de AI gegeven wanneer de module actief is.
@@ -186,8 +187,8 @@ export function ModuleModal({ isOpen, onClose, onSave, editModule }: ModuleModal
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-border flex justify-end">
-          <Button onClick={handleSave} size="lg">
+        <div className="px-4 md:px-6 py-4 border-t border-border flex justify-end">
+          <Button onClick={handleSave} size="lg" className="w-full md:w-auto">
             Opslaan
           </Button>
         </div>

@@ -129,6 +129,17 @@ function App() {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // ✅ FIX: Gebruik dvh (dynamic viewport height) op mobiel zodat de browser-balk wordt meegerekend
+  useEffect(() => {
+    const setVh = () => {
+      const vh = window.innerHeight * 0.01
+      document.documentElement.style.setProperty('--vh', `${vh}px`)
+    }
+    setVh()
+    window.addEventListener('resize', setVh)
+    return () => window.removeEventListener('resize', setVh)
+  }, [])
+
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -536,7 +547,11 @@ function App() {
   }) || []
 
   return (
-    <div className="h-screen flex overflow-hidden bg-background text-foreground font-['Inter']">
+    // ✅ FIX: h-screen vervangen door dynamische viewport hoogte voor mobiel
+    <div 
+      className="flex overflow-hidden bg-background text-foreground font-['Inter']"
+      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
+    >
       
       {/* ✅ MOBIEL: Donkere backdrop achter linker sidebar */}
       {isMobile && showLeftSidebar && (
@@ -737,7 +752,8 @@ function App() {
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    // ✅ FIX: Op mobiel doet Enter een nieuwe regel, alleen op desktop verzenden
+                    if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
                       e.preventDefault()
                       handleSend()
                     }
