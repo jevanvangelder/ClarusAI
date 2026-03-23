@@ -130,7 +130,7 @@ function App() {
     }
   }, [currentChat?.messages])
 
-  // ✅ Load chats from Supabase
+  // ✅ FIX: Load chats from Supabase (bewaart bestaande messages + herlaadt bij tab switch)
   useEffect(() => {
     if (!user) return
 
@@ -159,14 +159,34 @@ function App() {
         })
 
         const trashedChats = trashData.map((c: any) => mapChat(c, 'trash'))
+        const newChats = [...normalChats, ...trashedChats]
 
-        setChats([...normalChats, ...trashedChats])
+        // ✅ Bewaar bestaande messages bij herladen
+        setChats(prev => {
+          const existingMessages = new Map(
+            prev.map(c => [c.id, c.messages])
+          )
+          return newChats.map(chat => ({
+            ...chat,
+            messages: existingMessages.get(chat.id) || [],
+          }))
+        })
       } catch (error) {
         console.error('Error loading chats:', error)
       }
     }
 
     loadChats()
+
+    // ✅ Herlaad chatlijst wanneer gebruiker terugkomt op tabblad
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadChats()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [user])
 
   // ✅ FIX: Load messages when active chat changes OR when returning to tab
@@ -441,7 +461,6 @@ function App() {
           const words = userMessage.content.split(' ').slice(0, 5).join(' ')
           const generatedTitle = words.length > 40 ? words.substring(0, 40) + '...' : words
 
-          // Opslaan in Supabase
           await fetch(`${API_URL}/api/chats/${chatId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
