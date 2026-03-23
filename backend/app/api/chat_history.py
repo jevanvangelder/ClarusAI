@@ -1,31 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 from app.core.config import settings
 from supabase import create_client, Client
-import os
-
-# 🔍 DEBUG: Print Supabase connection info
-print("=" * 80)
-print("🔍 SUPABASE DEBUG INFO AT MODULE LOAD:")
-print(f"SUPABASE_URL from settings: {settings.SUPABASE_URL}")
-print(f"SUPABASE_KEY from settings exists: {bool(settings.SUPABASE_KEY)}")
-print(f"SUPABASE_KEY length: {len(settings.SUPABASE_KEY) if settings.SUPABASE_KEY else 0}")
-print(f"SUPABASE_URL from os.getenv: {os.getenv('SUPABASE_URL')}")
-print(f"SUPABASE_KEY from os.getenv exists: {bool(os.getenv('SUPABASE_KEY'))}")
-print("=" * 80)
 
 router = APIRouter(prefix="/api/chats", tags=["chats"])
 
 # Supabase client
-try:
-    print(f"🔧 Creating Supabase client with URL: {settings.SUPABASE_URL}")
-    supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-    print("✅ Supabase client created successfully!")
-except Exception as e:
-    print(f"❌ ERROR creating Supabase client: {e}")
-    raise
+supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+
 
 # Pydantic models
 class ChatCreate(BaseModel):
@@ -33,45 +17,57 @@ class ChatCreate(BaseModel):
     title: Optional[str] = "Nieuwe chat"
 
 class ChatUpdate(BaseModel):
-    title: str
+    title: Optional[str] = None
+    favorite: Optional[bool] = None
+    has_notes: Optional[bool] = None
 
 class MessageCreate(BaseModel):
-    role: str  # "user" or "assistant"
+    role: str
     content: str
     tokens_used: Optional[int] = 0
     model_used: Optional[str] = "gpt-4"
 
-class Chat(BaseModel):
+class ChatResponse(BaseModel):
     id: str
     user_id: str
     title: str
+    favorite: Optional[bool] = False
+    has_notes: Optional[bool] = False
+    trashed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
-class Message(BaseModel):
+class MessageResponse(BaseModel):
     id: str
     chat_id: str
     role: str
     content: str
     created_at: datetime
 
-# GET /api/chats - Get all chats for a user
-@router.get("", response_model=List[Chat])
+
+# GET /api/chats?user_id= — Alle chats voor een user (NIET in prullenbak)
+@router.get("", response_model=List[ChatResponse])
 async def get_chats(user_id: str):
-    """Get all chats for a specific user"""
     try:
-        print(f"🔍 DEBUG: Getting chats for user_id={user_id}")
-        response = supabase.table("chats").select("*").eq("user_id", user_id).order("updated_at", desc=True).execute()
-        print(f"✅ DEBUG: Got {len(response.data)} chats")
+        response = supabase.table("chats").select("*").eq("user_id", user_id).is_("trashed_at", "null").order("updated_at", desc=True).execute()
         return response.data
     except Exception as e:
-        print(f"❌ DEBUG ERROR in get_chats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# POST /api/chats - Create new chat
-@router.post("", response_model=Chat)
+
+# GET /api/chats/trash?user_id= — Alleen chats in prullenbak
+@router.get("/trash", response_model=List[ChatResponse])
+async def get_trashed_chats(user_id: str):
+    try:
+        response = supabase.table("chats").select("*").eq("user_id", user_id).not_.is_("trashed_at", "null").order("trashed_at", desc=True).execute()
+        return response.data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# POST /api/chats — Nieuwe chat aanmaken
+@router.post("", response_model=ChatResponse)
 async def create_chat(chat: ChatCreate):
-    """Create a new chat"""
     try:
         response = supabase.table("chats").insert({
             "user_id": chat.user_id,
@@ -81,60 +77,93 @@ async def create_chat(chat: ChatCreate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# GET /api/chats/{chat_id}/messages - Get all messages in a chat
-@router.get("/{chat_id}/messages", response_model=List[Message])
+
+# GET /api/chats/{chat_id}/messages — Berichten ophalen
+@router.get("/{chat_id}/messages", response_model=List[MessageResponse])
 async def get_messages(chat_id: str):
-    """Get all messages for a specific chat"""
     try:
         response = supabase.table("messages").select("*").eq("chat_id", chat_id).order("created_at", desc=False).execute()
         return response.data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# POST /api/chats/{chat_id}/messages - Add message to chat
-@router.post("/{chat_id}/messages", response_model=Message)
+
+# POST /api/chats/{chat_id}/messages — Bericht toevoegen
+@router.post("/{chat_id}/messages", response_model=MessageResponse)
 async def create_message(chat_id: str, message: MessageCreate):
-    """Add a new message to a chat"""
     try:
-        # Insert message
         response = supabase.table("messages").insert({
             "chat_id": chat_id,
             "role": message.role,
             "content": message.content,
-            "tokens_used": message.tokens_used,
-            "model_used": message.model_used,
         }).execute()
-        
-        # Update chat's updated_at timestamp
+
         supabase.table("chats").update({
             "updated_at": datetime.now().isoformat()
         }).eq("id", chat_id).execute()
-        
+
         return response.data[0]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# PUT /api/chats/{chat_id} - Update chat title
-@router.put("/{chat_id}", response_model=Chat)
+
+# PUT /api/chats/{chat_id} — Chat bijwerken (titel, favorite, notes)
+@router.put("/{chat_id}", response_model=ChatResponse)
 async def update_chat(chat_id: str, chat: ChatUpdate):
-    """Update chat title"""
     try:
-        response = supabase.table("chats").update({
-            "title": chat.title,
-            "updated_at": datetime.now().isoformat()
-        }).eq("id", chat_id).execute()
+        update_data = {"updated_at": datetime.now().isoformat()}
+
+        if chat.title is not None:
+            update_data["title"] = chat.title
+        if chat.favorite is not None:
+            update_data["favorite"] = chat.favorite
+        if chat.has_notes is not None:
+            update_data["has_notes"] = chat.has_notes
+
+        response = supabase.table("chats").update(update_data).eq("id", chat_id).execute()
+
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Chat not found")
+
         return response.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# DELETE /api/chats/{chat_id} - Delete chat (soft delete)
-@router.delete("/{chat_id}")
-async def delete_chat(chat_id: str):
-    """Soft delete a chat (set trashed_at)"""
+
+# PUT /api/chats/{chat_id}/trash — Naar prullenbak
+@router.put("/{chat_id}/trash")
+async def trash_chat(chat_id: str):
     try:
         response = supabase.table("chats").update({
             "trashed_at": datetime.now().isoformat()
         }).eq("id", chat_id).execute()
-        return {"message": "Chat moved to trash", "chat_id": chat_id}
+        return {"message": "Chat moved to trash"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# PUT /api/chats/{chat_id}/restore — Uit prullenbak halen
+@router.put("/{chat_id}/restore")
+async def restore_chat(chat_id: str):
+    try:
+        response = supabase.table("chats").update({
+            "trashed_at": None
+        }).eq("id", chat_id).execute()
+        return {"message": "Chat restored"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# DELETE /api/chats/{chat_id} — Permanent verwijderen
+@router.delete("/{chat_id}")
+async def delete_chat(chat_id: str):
+    try:
+        # Eerst berichten verwijderen
+        supabase.table("messages").delete().eq("chat_id", chat_id).execute()
+        # Dan chat verwijderen
+        supabase.table("chats").delete().eq("id", chat_id).execute()
+        return {"message": "Chat permanently deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
