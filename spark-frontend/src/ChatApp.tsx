@@ -11,6 +11,7 @@ import { PaperPlaneRight, CaretLeft, CaretRight, X, Gear } from '@phosphor-icons
 import { motion, AnimatePresence } from 'framer-motion'
 import { toast } from 'sonner'
 import { API_URL } from './config'
+import { useAuth } from '@/contexts/AuthContext'
 
 interface Message {
   id: string
@@ -37,35 +38,28 @@ interface Ebook {
   favorite: boolean
 }
 
-// ✅ Helper: Get active module IDs
-const getActiveModuleIds = (): string[] => {
+/// ✅ Helper: Get active module IDs from Supabase via API
+const getActiveModuleIds = async (userId: string): Promise<string[]> => {
   try {
-    const savedModules = localStorage.getItem('clarus-modules')
-    if (!savedModules) return []
-    
-    const modules = JSON.parse(savedModules)
-    const activeModules = modules.filter((m: any) => m.enabled)
-    
-    return activeModules.map((m: any) => m.id)
+    const res = await fetch(`${API_URL}/api/modules?user_id=${userId}`)
+    if (!res.ok) return []
+    const modules = await res.json()
+    return modules.filter((m: any) => m.is_active).map((m: any) => m.id)
   } catch (error) {
     console.error('Error loading module IDs:', error)
     return []
   }
 }
 
-// ✅ Helper: Get active module prompts — stuurt de TEKST van de prompts mee
-const getActiveModulePrompts = (): string[] => {
+// ✅ Helper: Get active module prompts from Supabase via API
+const getActiveModulePrompts = async (userId: string): Promise<string[]> => {
   try {
-    const savedModules = localStorage.getItem('clarus-modules')
-    if (!savedModules) return []
-    
-    const modules = JSON.parse(savedModules)
-    const activeModules = modules.filter((m: any) => m.enabled)
-    
+    const res = await fetch(`${API_URL}/api/modules?user_id=${userId}`)
+    if (!res.ok) return []
+    const modules = await res.json()
+    const activeModules = modules.filter((m: any) => m.is_active)
     if (activeModules.length === 0) return []
-    
-    // Return array van prompt-teksten
-    return activeModules.map((m: any) => `📌 ${m.title}:\n${m.prompt}`)
+    return activeModules.map((m: any) => `📌 ${m.name}:\n${m.system_prompt}`)
   } catch (error) {
     console.error('Error loading modules:', error)
     return []
@@ -94,6 +88,7 @@ const getActiveEbookContent = (ebookId: string | null): string => {
 
 function App() {
   // ✅ Mobile detection — laptop blijft exact hetzelfde
+  const { user } = useAuth()
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
 
   const [chats, setChats] = useState<Chat[]>([])
@@ -346,7 +341,8 @@ function App() {
       const ebookContent = getActiveEbookContent(activeEbookId)
       
       // ✅ Get active module prompts (de daadwerkelijke teksten!)
-      const modulePrompts = getActiveModulePrompts()
+      const modulePrompts = user ? await getActiveModulePrompts(user.id) : []
+
 
       let backendResponse
 
@@ -373,7 +369,7 @@ function App() {
         })
         
         formData.append('messages', JSON.stringify(messagesToSend))
-        formData.append('active_module_ids', JSON.stringify(getActiveModuleIds()))
+        formData.append('active_module_ids', JSON.stringify(user ? await getActiveModuleIds(user.id) : []))
         formData.append('active_module_prompts', JSON.stringify(modulePrompts))
 
         backendResponse = await fetch(`${API_URL}/api/chat/send-with-files`, {
@@ -403,7 +399,8 @@ function App() {
           body: JSON.stringify({ 
             content: userQuestion,
             messages: messagesToSend,
-            active_module_ids: getActiveModuleIds(),
+            // ✅ NIEUW:
+active_module_ids: user ? await getActiveModuleIds(user.id) : [],
             active_module_prompts: modulePrompts
           }),
         })
