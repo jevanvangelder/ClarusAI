@@ -130,22 +130,19 @@ function App() {
     }
   }, [currentChat?.messages])
 
-  // ✅ NIEUW: Load chats from Supabase
+  // ✅ Load chats from Supabase
   useEffect(() => {
     if (!user) return
 
     const loadChats = async () => {
       try {
-        // Haal normale chats op
         const res = await fetch(`${API_URL}/api/chats?user_id=${user.id}`)
         if (!res.ok) throw new Error('Failed to fetch chats')
         const data = await res.json()
 
-        // Haal trash chats op
         const trashRes = await fetch(`${API_URL}/api/chats/trash?user_id=${user.id}`)
         const trashData = trashRes.ok ? await trashRes.json() : []
 
-        // Map Supabase → frontend format
         const mapChat = (c: any, status: string): Chat => ({
           id: c.id,
           title: c.title,
@@ -172,13 +169,9 @@ function App() {
     loadChats()
   }, [user])
 
-  // ✅ NIEUW: Load messages when active chat changes
+  // ✅ FIX: Load messages when active chat changes OR when returning to tab
   useEffect(() => {
     if (!activeChat) return
-
-    const chat = chats.find(c => c.id === activeChat)
-    // Alleen laden als we nog geen messages hebben
-    if (chat && chat.messages.length > 0) return
 
     const loadMessages = async () => {
       try {
@@ -204,6 +197,16 @@ function App() {
     }
 
     loadMessages()
+
+    // ✅ Herlaad messages wanneer gebruiker terugkomt op tabblad
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadMessages()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [activeChat])
 
   // ✅ Load active ebook from localStorage
@@ -271,7 +274,7 @@ function App() {
 
     let chatId = activeChat
 
-    // ✅ NIEUW: Chat aanmaken in Supabase als er nog geen actieve chat is
+    // ✅ Chat aanmaken in Supabase als er nog geen actieve chat is
     if (!chatId) {
       try {
         const res = await fetch(`${API_URL}/api/chats`, {
@@ -298,7 +301,7 @@ function App() {
       }
     }
 
-    // ✅ NIEUW: User message opslaan in Supabase
+    // ✅ User message opslaan in Supabase
     let userMessage: Message
     try {
       const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
@@ -398,7 +401,7 @@ function App() {
       const data = await backendResponse.json()
       const response = data.message
 
-      // ✅ NIEUW: Assistant message opslaan in Supabase
+      // ✅ Assistant message opslaan in Supabase
       let assistantMessage: Message
       try {
         const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
@@ -431,25 +434,12 @@ function App() {
         )
       )
 
-      // ✅ NIEUW: Auto-titel genereren + opslaan in Supabase
+      // ✅ FIX: Auto-titel genereren zonder extra API call
       const chatToCheck = chats.find(c => c.id === chatId)
       if (chatToCheck?.title === 'Nieuwe chat') {
         try {
-          const titlePrompt = `Geef een korte titel (max 5 woorden) voor deze chat op basis van de vraag: "${userMessage.content}". Geef ALLEEN de titel, geen andere tekst.`
-
-          const titleResponse = await fetch(`${API_URL}/api/chat/send`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              content: titlePrompt,
-              messages: [],
-              active_module_ids: [],
-              active_module_prompts: [],
-            }),
-          })
-
-          const titleData = await titleResponse.json()
-          const generatedTitle = titleData.message.trim()
+          const words = userMessage.content.split(' ').slice(0, 5).join(' ')
+          const generatedTitle = words.length > 40 ? words.substring(0, 40) + '...' : words
 
           // Opslaan in Supabase
           await fetch(`${API_URL}/api/chats/${chatId}`, {
@@ -480,7 +470,7 @@ function App() {
     if (isMobile) setShowLeftSidebar(false)
   }
 
-  // ✅ NIEUW: Rename via Supabase
+  // ✅ Rename via Supabase
   const handleRenameChat = async (chatId: string, newTitle: string) => {
     setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle } : c))
     try {
@@ -494,7 +484,7 @@ function App() {
     }
   }
 
-  // ✅ NIEUW: Favorieten via Supabase
+  // ✅ Favorieten via Supabase
   const handleMoveToFavorites = async (chatId: string) => {
     const chat = chats.find(c => c.id === chatId)
     if (!chat) return
@@ -515,7 +505,7 @@ function App() {
     }
   }
 
-  // ✅ NIEUW: Aantekeningen via Supabase
+  // ✅ Aantekeningen via Supabase
   const handleMoveToNotes = async (chatId: string) => {
     const chat = chats.find(c => c.id === chatId)
     if (!chat) return
@@ -536,7 +526,7 @@ function App() {
     }
   }
 
-  // ✅ NIEUW: Prullenbak via Supabase
+  // ✅ Prullenbak via Supabase
   const handleMoveToTrash = async (chatId: string) => {
     setChats(prev =>
       prev.map(c =>
@@ -550,7 +540,7 @@ function App() {
     }
   }
 
-  // ✅ NIEUW: Herstellen via Supabase
+  // ✅ Herstellen via Supabase
   const handleRestoreFromTrash = async (chatId: string) => {
     setChats(prev =>
       prev.map(c =>
@@ -564,7 +554,7 @@ function App() {
     }
   }
 
-  // ✅ NIEUW: Permanent verwijderen via Supabase
+  // ✅ Permanent verwijderen via Supabase
   const handlePermanentDelete = async (chatId: string) => {
     setChats(prev => prev.filter(c => c.id !== chatId))
     if (activeChat === chatId) setActiveChat(null)
