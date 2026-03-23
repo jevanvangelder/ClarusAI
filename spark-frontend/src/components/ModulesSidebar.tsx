@@ -3,69 +3,66 @@ import { Button } from '@/components/ui/button'
 import { Plus, Pencil, Trash, X } from '@phosphor-icons/react'
 import { Module } from '@/types/module'
 import { ModuleModal } from './modulemodal'
+import { useAuth } from '@/contexts/AuthContext'
+import { fetchModules, createModule, updateModule, deleteModule } from '@/services/api'
 
 interface ModulesSidebarProps {
-  onClose?: () => void  // ✅ NIEUW
+  onClose?: () => void
 }
 
 export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
+  const { user } = useAuth()
   const [modules, setModules] = useState<Module[]>([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingModule, setEditingModule] = useState<Module | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  // Load modules from localStorage
+  // Load modules from Supabase
   useEffect(() => {
-    const saved = localStorage.getItem('clarus-modules')
-    if (saved) {
+    if (!user) return
+
+    const loadModules = async () => {
       try {
-        setModules(JSON.parse(saved))
+        setLoading(true)
+        const data = await fetchModules(user.id)
+        // Map Supabase velden naar frontend Module type
+        const mapped: Module[] = data.map((m: any) => ({
+          id: m.id,
+          title: m.name,
+          icon: m.icon || '📦',
+          prompt: m.system_prompt,
+          enabled: m.is_active,
+          createdAt: new Date(m.created_at).getTime(),
+        }))
+        setModules(mapped)
       } catch (error) {
         console.error('Error loading modules:', error)
+      } finally {
+        setLoading(false)
       }
-    } else {
-      // Default modules
-      const defaultModules: Module[] = [
-        {
-          id: 'swot-1',
-          title: 'SWOT Analyse',
-          icon: '🎯',
-          prompt: 'Geef altijd een SWOT analyse met:\n\n**Strengths (Sterktes):** Interne positieve factoren\n**Weaknesses (Zwaktes):** Interne verbeterpunten\n**Opportunities (Kansen):** Externe mogelijkheden\n**Threats (Bedreigingen):** Externe risico\'s\n\nGebruik bullet points en wees specifiek.',
-          enabled: false,
-          createdAt: Date.now(),
-        },
-        {
-          id: 'formal-1',
-          title: 'Formele Toon',
-          icon: '📝',
-          prompt: 'Schrijf altijd in een formele, professionele toon. Gebruik correcte grammatica, vermijd spreektaal, en houd het zakelijk.',
-          enabled: false,
-          createdAt: Date.now(),
-        },
-        {
-          id: 'study-1',
-          title: 'Studie Helper',
-          icon: '🎓',
-          prompt: 'Help me bij het leren door:\n- Concepten uit te leggen in simpele taal\n- Voorbeelden te geven\n- Vragen te stellen om begrip te controleren\n- Samenvattingen te maken van complexe onderwerpen',
-          enabled: false,
-          createdAt: Date.now(),
-        },
-      ]
-      setModules(defaultModules)
-      localStorage.setItem('clarus-modules', JSON.stringify(defaultModules))
     }
-  }, [])
 
-  // Save modules to localStorage
-  useEffect(() => {
-    if (modules.length > 0) {
-      localStorage.setItem('clarus-modules', JSON.stringify(modules))
-    }
-  }, [modules])
+    loadModules()
+  }, [user])
 
-  const handleToggle = (id: string) => {
+  const handleToggle = async (id: string) => {
+    const module = modules.find(m => m.id === id)
+    if (!module) return
+
+    // Optimistic update
     setModules(prev =>
       prev.map(m => (m.id === id ? { ...m, enabled: !m.enabled } : m))
     )
+
+    try {
+      await updateModule(id, { is_active: !module.enabled })
+    } catch (error) {
+      console.error('Error toggling module:', error)
+      // Rollback
+      setModules(prev =>
+        prev.map(m => (m.id === id ? { ...m, enabled: module.enabled } : m))
+      )
+    }
   }
 
   const handleCreate = () => {
@@ -79,30 +76,54 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
     setIsModalOpen(true)
   }
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    if (confirm('Weet je zeker dat je deze module wilt verwijderen?')) {
-      setModules(prev => prev.filter(m => m.id !== id))
+    if (!confirm('Weet je zeker dat je deze module wilt verwijderen?')) return
+
+    // Optimistic update
+    const backup = modules
+    setModules(prev => prev.filter(m => m.id !== id))
+
+    try {
+      await deleteModule(id)
+    } catch (error) {
+      console.error('Error deleting module:', error)
+      setModules(backup) // Rollback
     }
   }
 
-  const handleSave = (data: Omit<Module, 'id' | 'createdAt' | 'enabled'>) => {
-    if (editingModule) {
-      setModules(prev =>
-        prev.map(m =>
-          m.id === editingModule.id
-            ? { ...m, ...data }
-            : m
+  const handleSave = async (data: Omit<Module, 'id' | 'createdAt' | 'enabled'>) => {
+    if (!user) return
+
+    try {
+      if (editingModule) {
+        // Update bestaande module
+        await updateModule(editingModule.id, {
+          name: data.title,
+          icon: data.icon,
+          system_prompt: data.prompt,
+        })
+        setModules(prev =>
+          prev.map(m =>
+            m.id === editingModule.id ? { ...m, ...data } : m
+          )
         )
-      )
-    } else {
-      const newModule: Module = {
-        ...data,
-        id: `module-${Date.now()}`,
-        enabled: false,
-        createdAt: Date.now(),
+      } else {
+        // Nieuwe module aanmaken
+        const created = await createModule(user.id, data.title, data.prompt, data.icon)
+        const newModule: Module = {
+          id: created.id,
+          title: created.name,
+          icon: created.icon || '📦',
+          prompt: created.system_prompt,
+          enabled: created.is_active,
+          createdAt: new Date(created.created_at).getTime(),
+        }
+        setModules(prev => [...prev, newModule])
       }
-      setModules(prev => [...prev, newModule])
+    } catch (error) {
+      console.error('Error saving module:', error)
+      alert('Fout bij opslaan van module. Probeer opnieuw.')
     }
   }
 
@@ -121,7 +142,6 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
               <Plus size={16} weight="bold" />
               Nieuw
             </Button>
-            {/* ✅ Close knop — alleen zichtbaar op mobiel */}
             {onClose && (
               <button
                 onClick={onClose}
@@ -136,7 +156,11 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
 
         {/* Modules List */}
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {modules.length === 0 ? (
+          {loading ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Modules laden...
+            </p>
+          ) : modules.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
               Geen modules. Klik op "Nieuw" om er een te maken!
             </p>
@@ -153,7 +177,6 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
                   }
                 `}
               >
-                {/* Title & Icon */}
                 <div className="flex items-center gap-2">
                   <span className="text-2xl">{module.icon}</span>
                   <span className="flex-1 font-medium">
@@ -161,12 +184,10 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
                   </span>
                 </div>
 
-                {/* Prompt Preview */}
                 <p className="text-xs text-muted-foreground line-clamp-2">
                   {module.prompt}
                 </p>
 
-                {/* Actions */}
                 <div className="flex gap-3 pt-1">
                   <button
                     onClick={(e) => handleEdit(e, module)}
@@ -189,7 +210,6 @@ export function ModulesSidebar({ onClose }: ModulesSidebarProps) {
         </div>
       </div>
 
-      {/* Modal */}
       <ModuleModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
