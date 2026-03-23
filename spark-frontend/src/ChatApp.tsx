@@ -38,7 +38,7 @@ interface Ebook {
   favorite: boolean
 }
 
-/// ✅ Helper: Get active module IDs from Supabase via API
+// ✅ Helper: Get active module IDs from Supabase via API
 const getActiveModuleIds = async (userId: string): Promise<string[]> => {
   try {
     const res = await fetch(`${API_URL}/api/modules?user_id=${userId}`)
@@ -69,16 +69,12 @@ const getActiveModulePrompts = async (userId: string): Promise<string[]> => {
 // ✅ Helper: Get active ebook content
 const getActiveEbookContent = (ebookId: string | null): string => {
   if (!ebookId) return ''
-  
   try {
     const savedEbooks = localStorage.getItem('clarus-ebooks')
     if (!savedEbooks) return ''
-    
     const ebooks = JSON.parse(savedEbooks)
     const activeBook = ebooks.find((b: Ebook) => b.id === ebookId)
-    
     if (!activeBook) return ''
-    
     return `📚 ACTIEF EBOOK: ${activeBook.title} door ${activeBook.author}\n\n⚠️ De gebruiker heeft toegang tot dit schoolboek. Gebruik de informatie uit dit boek om vragen te beantwoorden. Als de vraag gerelateerd is aan het boek, verwijs dan naar specifieke hoofdstukken of pagina's (zelfs als dit demo data is).`
   } catch (error) {
     console.error('Error loading ebook:', error)
@@ -87,7 +83,6 @@ const getActiveEbookContent = (ebookId: string | null): string => {
 }
 
 function App() {
-  // ✅ Mobile detection — laptop blijft exact hetzelfde
   const { user } = useAuth()
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768)
 
@@ -96,35 +91,28 @@ function App() {
   const [inputValue, setInputValue] = useState('')
   const [activeFilter, setActiveFilter] = useState<'default' | 'favorite' | 'note' | 'trash'>('default')
   const [isLoading, setIsLoading] = useState(false)
-  // ✅ Op mobiel standaard dicht, op desktop standaard open
   const [showLeftSidebar, setShowLeftSidebar] = useState(() => window.innerWidth >= 768)
   const [showRightSidebar, setShowRightSidebar] = useState(() => window.innerWidth >= 768)
   const scrollRef = useRef<HTMLDivElement>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  
-  // ✅ Ebook state
+
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null)
   const [isEbookModalOpen, setIsEbookModalOpen] = useState(false)
   const [activeEbook, setActiveEbook] = useState<Ebook | null>(null)
-
-  // ✅ NEW: Settings modal state
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentChat = chats?.find(c => c.id === activeChat)
 
-  // ✅ Resize listener — houdt isMobile in sync
+  // ✅ Resize listener
   useEffect(() => {
-    const handleResize = () => {
-      const mobile = window.innerWidth < 768
-      setIsMobile(mobile)
-    }
+    const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // ✅ FIX: Gebruik dvh (dynamic viewport height) op mobiel zodat de browser-balk wordt meegerekend
+  // ✅ Dynamic viewport height
   useEffect(() => {
     const setVh = () => {
       const vh = window.innerHeight * 0.01
@@ -135,103 +123,95 @@ function App() {
     return () => window.removeEventListener('resize', setVh)
   }, [])
 
+  // ✅ Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [currentChat?.messages])
 
-  // Load chats from localStorage on mount + cleanup old trash
+  // ✅ NIEUW: Load chats from Supabase
   useEffect(() => {
-    const savedChats = localStorage.getItem('clarus-chats')
-    if (savedChats) {
+    if (!user) return
+
+    const loadChats = async () => {
       try {
-        const parsedChats = JSON.parse(savedChats)
-        
-        const now = Date.now()
-        const tenDaysInMs = 10 * 24 * 60 * 60 * 1000
-        
-        const cleanedChats = parsedChats.filter((chat: Chat) => {
-          if (chat.status === 'trash' && chat.deletedAt) {
-            const daysSinceDeleted = (now - chat.deletedAt) / (1000 * 60 * 60 * 24)
-            return daysSinceDeleted < 10
-          }
-          return true
+        // Haal normale chats op
+        const res = await fetch(`${API_URL}/api/chats?user_id=${user.id}`)
+        if (!res.ok) throw new Error('Failed to fetch chats')
+        const data = await res.json()
+
+        // Haal trash chats op
+        const trashRes = await fetch(`${API_URL}/api/chats/trash?user_id=${user.id}`)
+        const trashData = trashRes.ok ? await trashRes.json() : []
+
+        // Map Supabase → frontend format
+        const mapChat = (c: any, status: string): Chat => ({
+          id: c.id,
+          title: c.title,
+          messages: [],
+          status: status as any,
+          deletedAt: c.trashed_at ? new Date(c.trashed_at).getTime() : undefined,
         })
-        
-        setChats(cleanedChats)
-        
-        if (cleanedChats.length !== parsedChats.length) {
-          localStorage.setItem('clarus-chats', JSON.stringify(cleanedChats))
-          console.log(`Auto-deleted ${parsedChats.length - cleanedChats.length} old trash chats`)
-        }
+
+        const normalChats = data.map((c: any) => {
+          let status = 'default'
+          if (c.favorite) status = 'favorite'
+          if (c.has_notes) status = 'note'
+          return mapChat(c, status)
+        })
+
+        const trashedChats = trashData.map((c: any) => mapChat(c, 'trash'))
+
+        setChats([...normalChats, ...trashedChats])
       } catch (error) {
-        console.error('Error loading chats from localStorage:', error)
+        console.error('Error loading chats:', error)
       }
     }
-  }, [])
 
-  // Daily cleanup check (runs every hour)
+    loadChats()
+  }, [user])
+
+  // ✅ NIEUW: Load messages when active chat changes
   useEffect(() => {
-    const checkInterval = setInterval(() => {
-      setChats(prev => {
-        const now = Date.now()
-        const cleanedChats = prev?.filter(chat => {
-          if (chat.status === 'trash' && chat.deletedAt) {
-            const daysSinceDeleted = (now - chat.deletedAt) / (1000 * 60 * 60 * 24)
-            return daysSinceDeleted < 10
-          }
-          return true
-        }) || []
-        
-        if (cleanedChats.length !== prev?.length) {
-          console.log(`Hourly cleanup: Removed ${(prev?.length || 0) - cleanedChats.length} old trash chats`)
-        }
-        
-        return cleanedChats
-      })
-    }, 60 * 60 * 1000)
+    if (!activeChat) return
 
-    return () => clearInterval(checkInterval)
-  }, [])
+    const chat = chats.find(c => c.id === activeChat)
+    // Alleen laden als we nog geen messages hebben
+    if (chat && chat.messages.length > 0) return
 
-  // Save chats to localStorage whenever they change
-  useEffect(() => {
-    if (chats) {
-      if (chats.length > 0) {
-        localStorage.setItem('clarus-chats', JSON.stringify(chats))
-      } else {
-        localStorage.setItem('clarus-chats', JSON.stringify([]))
+    const loadMessages = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/chats/${activeChat}/messages`)
+        if (!res.ok) return
+        const data = await res.json()
+
+        const messages: Message[] = data.map((m: any) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          timestamp: new Date(m.created_at).getTime(),
+        }))
+
+        setChats(prev =>
+          prev.map(c =>
+            c.id === activeChat ? { ...c, messages } : c
+          )
+        )
+      } catch (error) {
+        console.error('Error loading messages:', error)
       }
     }
-  }, [chats])
 
-  // Load active chat from localStorage
-  useEffect(() => {
-    const savedActiveChat = localStorage.getItem('clarus-active-chat')
-    if (savedActiveChat) {
-      setActiveChat(savedActiveChat)
-    }
-  }, [])
-
-  // Save active chat to localStorage
-  useEffect(() => {
-    if (activeChat) {
-      localStorage.setItem('clarus-active-chat', activeChat)
-    } else {
-      localStorage.removeItem('clarus-active-chat')
-    }
+    loadMessages()
   }, [activeChat])
 
   // ✅ Load active ebook from localStorage
   useEffect(() => {
     const savedActiveEbook = localStorage.getItem('clarus-active-ebook')
-    if (savedActiveEbook) {
-      setActiveEbookId(savedActiveEbook)
-    }
+    if (savedActiveEbook) setActiveEbookId(savedActiveEbook)
   }, [])
 
-  // ✅ Save active ebook to localStorage
   useEffect(() => {
     if (activeEbookId) {
       localStorage.setItem('clarus-active-ebook', activeEbookId)
@@ -240,7 +220,6 @@ function App() {
     }
   }, [activeEbookId])
 
-  // ✅ Load active ebook details
   useEffect(() => {
     if (activeEbookId) {
       try {
@@ -260,10 +239,7 @@ function App() {
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (files) {
-      const newFiles = Array.from(files)
-      setUploadedFiles(prev => [...prev, ...newFiles])
-    }
+    if (files) setUploadedFiles(prev => [...prev, ...Array.from(files)])
   }
 
   const handleRemoveFile = (index: number) => {
@@ -276,100 +252,116 @@ function App() {
 
   const handleSend = async () => {
     if (!inputValue.trim() && uploadedFiles.length === 0) return
+    if (!user) return
 
-    // ✅ Op mobiel: sluit sidebars bij verzenden
     if (isMobile) {
       setShowLeftSidebar(false)
       setShowRightSidebar(false)
     }
 
-    // Add file names to user message
     const filesToUpload = uploadedFiles
     let userMessageContent = inputValue.trim()
-    
+
     if (filesToUpload.length > 0) {
       const fileNames = filesToUpload.map(f => f.name).join(', ')
-      userMessageContent = inputValue.trim() 
+      userMessageContent = inputValue.trim()
         ? `${inputValue.trim()}\n\n📎 Bijlagen: ${fileNames}`
         : `📎 Bijlagen: ${fileNames}`
     }
 
-    const userMessage: Message = {
-      id: `msg-${Date.now()}`,
-      role: 'user',
-      content: userMessageContent,
-      timestamp: Date.now(),
-    }
-
     let chatId = activeChat
 
+    // ✅ NIEUW: Chat aanmaken in Supabase als er nog geen actieve chat is
     if (!chatId) {
-      const newChat: Chat = {
-        id: `chat-${Date.now()}`,
-        title: 'Nieuwe chat',
-        messages: [userMessage],
-        active: true,
+      try {
+        const res = await fetch(`${API_URL}/api/chats`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: user.id, title: 'Nieuwe chat' }),
+        })
+        if (!res.ok) throw new Error('Failed to create chat')
+        const newChatData = await res.json()
+
+        const newChat: Chat = {
+          id: newChatData.id,
+          title: newChatData.title,
+          messages: [],
+          active: true,
+        }
+        setChats(prev => [newChat, ...(prev || [])])
+        chatId = newChatData.id
+        setActiveChat(chatId)
+      } catch (error) {
+        console.error('Error creating chat:', error)
+        toast.error('Kon chat niet aanmaken.')
+        return
       }
-      setChats((prev) => [newChat, ...(prev || [])])
-      chatId = newChat.id
-      setActiveChat(chatId)
-    } else {
-      setChats((prev) =>
-        (prev || []).map((chat) =>
-          chat.id === chatId
-            ? { ...chat, messages: [...chat.messages, userMessage] }
-            : chat
-        )
-      )
     }
 
+    // ✅ NIEUW: User message opslaan in Supabase
+    let userMessage: Message
+    try {
+      const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'user', content: userMessageContent }),
+      })
+      if (!res.ok) throw new Error('Failed to save message')
+      const savedMsg = await res.json()
+
+      userMessage = {
+        id: savedMsg.id,
+        role: 'user',
+        content: userMessageContent,
+        timestamp: new Date(savedMsg.created_at).getTime(),
+      }
+    } catch (error) {
+      console.error('Error saving user message:', error)
+      toast.error('Kon bericht niet opslaan.')
+      return
+    }
+
+    // Update UI
+    setChats(prev =>
+      prev.map(chat =>
+        chat.id === chatId
+          ? { ...chat, messages: [...chat.messages, userMessage] }
+          : chat
+      )
+    )
+
     const userQuestion = inputValue
-    
     setInputValue('')
     setUploadedFiles([])
-    // ✅ Reset textarea hoogte naar 1 regel na verzenden
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-    }
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     setIsLoading(true)
 
     try {
       const currentChatData = chats.find(c => c.id === chatId)
       const messageHistory = currentChatData?.messages || []
-
-      // ✅ Get active ebook content (still used for frontend context)
       const ebookContent = getActiveEbookContent(activeEbookId)
-      
-      // ✅ Get active module prompts (de daadwerkelijke teksten!)
-      const modulePrompts = user ? await getActiveModulePrompts(user.id) : []
-
+      const modulePrompts = await getActiveModulePrompts(user.id)
 
       let backendResponse
 
       if (filesToUpload.length > 0) {
-        // ✅ Prepare messages for backend (with ebook context)
         let messagesToSend = [...messageHistory, userMessage].map(msg => ({
           role: msg.role,
-          content: msg.content
+          content: msg.content,
         }))
-        
-        // ✅ Prepend ebook context to the FIRST user message
+
         if (ebookContent) {
           messagesToSend[0] = {
             ...messagesToSend[0],
-            content: `${ebookContent}\n\n---\n\n⚠️ Gebruik bovenstaande context voor ALLE antwoorden.\n\n---\n\n${messagesToSend[0].content}`
+            content: `${ebookContent}\n\n---\n\n⚠️ Gebruik bovenstaande context voor ALLE antwoorden.\n\n---\n\n${messagesToSend[0].content}`,
           }
         }
 
         const formData = new FormData()
         formData.append('content', userQuestion || 'Bestanden geüpload')
-        
-        filesToUpload.forEach(file => {
-          formData.append('files', file)
-        })
-        
+        filesToUpload.forEach(file => formData.append('files', file))
         formData.append('messages', JSON.stringify(messagesToSend))
-        formData.append('active_module_ids', JSON.stringify(user ? await getActiveModuleIds(user.id) : []))
+        formData.append('active_module_ids', JSON.stringify(await getActiveModuleIds(user.id)))
         formData.append('active_module_prompts', JSON.stringify(modulePrompts))
 
         backendResponse = await fetch(`${API_URL}/api/chat/send-with-files`, {
@@ -377,61 +369,74 @@ function App() {
           body: formData,
         })
       } else {
-        // ✅ Prepare messages for backend (with ebook context)
         let messagesToSend = [...messageHistory, userMessage].map(msg => ({
           role: msg.role,
-          content: msg.content
+          content: msg.content,
         }))
-        
-        // ✅ Prepend ebook context to the FIRST user message
+
         if (ebookContent) {
           messagesToSend[0] = {
             ...messagesToSend[0],
-            content: `${ebookContent}\n\n---\n\n⚠️ Gebruik bovenstaande context voor ALLE antwoorden.\n\n---\n\n${messagesToSend[0].content}`
+            content: `${ebookContent}\n\n---\n\n⚠️ Gebruik bovenstaande context voor ALLE antwoorden.\n\n---\n\n${messagesToSend[0].content}`,
           }
         }
 
         backendResponse = await fetch(`${API_URL}/api/chat/send`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
             content: userQuestion,
             messages: messagesToSend,
-            // ✅ NIEUW:
-active_module_ids: user ? await getActiveModuleIds(user.id) : [],
-            active_module_prompts: modulePrompts
+            active_module_ids: await getActiveModuleIds(user.id),
+            active_module_prompts: modulePrompts,
           }),
         })
       }
 
-      if (!backendResponse.ok) {
-        throw new Error('Backend request failed')
-      }
+      if (!backendResponse.ok) throw new Error('Backend request failed')
 
       const data = await backendResponse.json()
       const response = data.message
 
-      const assistantMessage: Message = {
-        id: `msg-${Date.now()}`,
-        role: 'assistant',
-        content: response,
-        timestamp: Date.now(),
+      // ✅ NIEUW: Assistant message opslaan in Supabase
+      let assistantMessage: Message
+      try {
+        const res = await fetch(`${API_URL}/api/chats/${chatId}/messages`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ role: 'assistant', content: response }),
+        })
+        const savedMsg = await res.json()
+
+        assistantMessage = {
+          id: savedMsg.id,
+          role: 'assistant',
+          content: response,
+          timestamp: new Date(savedMsg.created_at).getTime(),
+        }
+      } catch {
+        assistantMessage = {
+          id: `msg-${Date.now()}`,
+          role: 'assistant',
+          content: response,
+          timestamp: Date.now(),
+        }
       }
 
-      setChats((prev) =>
-        (prev || []).map((chat) =>
+      setChats(prev =>
+        prev.map(chat =>
           chat.id === chatId
             ? { ...chat, messages: [...chat.messages, assistantMessage] }
             : chat
         )
       )
 
-      if (chats?.find(c => c.id === chatId)?.title === 'Nieuwe chat') {
+      // ✅ NIEUW: Auto-titel genereren + opslaan in Supabase
+      const chatToCheck = chats.find(c => c.id === chatId)
+      if (chatToCheck?.title === 'Nieuwe chat') {
         try {
           const titlePrompt = `Geef een korte titel (max 5 woorden) voor deze chat op basis van de vraag: "${userMessage.content}". Geef ALLEEN de titel, geen andere tekst.`
-          
+
           const titleResponse = await fetch(`${API_URL}/api/chat/send`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -439,25 +444,29 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
               content: titlePrompt,
               messages: [],
               active_module_ids: [],
-              active_module_prompts: []
-            })
+              active_module_prompts: [],
+            }),
           })
-          
+
           const titleData = await titleResponse.json()
           const generatedTitle = titleData.message.trim()
-          
-          setChats(prev => 
-            prev?.map(chat => 
-              chat.id === chatId 
-                ? { ...chat, title: generatedTitle }
-                : chat
-            ) || []
+
+          // Opslaan in Supabase
+          await fetch(`${API_URL}/api/chats/${chatId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: generatedTitle }),
+          })
+
+          setChats(prev =>
+            prev.map(chat =>
+              chat.id === chatId ? { ...chat, title: generatedTitle } : chat
+            )
           )
         } catch (error) {
           console.error('Error generating title:', error)
         }
       }
-
     } catch (error) {
       toast.error('Er is een fout opgetreden bij het genereren van een antwoord.')
       console.error('Error generating response:', error)
@@ -468,75 +477,105 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
 
   const handleChatSelect = (chatId: string) => {
     setActiveChat(chatId)
-    // ✅ Op mobiel: sluit sidebar na chat selectie
-    if (isMobile) {
-      setShowLeftSidebar(false)
+    if (isMobile) setShowLeftSidebar(false)
+  }
+
+  // ✅ NIEUW: Rename via Supabase
+  const handleRenameChat = async (chatId: string, newTitle: string) => {
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, title: newTitle } : c))
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newTitle }),
+      })
+    } catch (error) {
+      console.error('Error renaming chat:', error)
     }
   }
 
-  const handleDeleteChat = (chatId: string) => {
-    setChats(prev => prev?.filter(chat => chat.id !== chatId) || [])
-    if (activeChat === chatId) {
-      setActiveChat(null)
-    }
-    const updatedChats = chats?.filter(chat => chat.id !== chatId) || []
-    localStorage.setItem('clarus-chats', JSON.stringify(updatedChats))
-  }
+  // ✅ NIEUW: Favorieten via Supabase
+  const handleMoveToFavorites = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId)
+    if (!chat) return
+    const newStatus = chat.status === 'favorite' ? 'default' : 'favorite'
 
-  const handleRenameChat = (chatId: string, newTitle: string) => {
-    setChats(prev =>
-      prev?.map(chat =>
-        chat.id === chatId ? { ...chat, title: newTitle } : chat
-      ) || []
-    )
-  }
-
-  const handleMoveToFavorites = (chatId: string) => {
-    setChats(prev =>
-      prev?.map(chat =>
-        chat.id === chatId 
-          ? { ...chat, status: chat.status === 'favorite' ? 'default' : 'favorite' as const }
-          : chat
-      ) || []
-    )
-  }
-
-  const handleMoveToNotes = (chatId: string) => {
-    setChats(prev =>
-      prev?.map(chat =>
-        chat.id === chatId 
-          ? { ...chat, status: chat.status === 'note' ? 'default' : 'note' as const }
-          : chat
-      ) || []
-    )
-  }
-
-  const handleMoveToTrash = (chatId: string) => {
-    setChats(prev =>
-      prev?.map(chat =>
-        chat.id === chatId 
-          ? { ...chat, status: 'trash' as const, deletedAt: Date.now() }
-          : chat
-      ) || []
-    )
-  }
-
-  const handleRestoreFromTrash = (chatId: string) => {
-    setChats(prev =>
-      prev?.map(chat =>
-        chat.id === chatId 
-          ? { ...chat, status: 'default' as const, deletedAt: undefined }
-          : chat
-      ) || []
-    )
-  }
-
-  const handlePermanentDelete = (chatId: string) => {
-    setChats(prev => prev?.filter(chat => chat.id !== chatId) || [])
-    if (activeChat === chatId) {
-      setActiveChat(null)
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, status: newStatus } : c))
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          favorite: newStatus === 'favorite',
+          has_notes: false,
+        }),
+      })
+    } catch (error) {
+      console.error('Error toggling favorite:', error)
     }
   }
+
+  // ✅ NIEUW: Aantekeningen via Supabase
+  const handleMoveToNotes = async (chatId: string) => {
+    const chat = chats.find(c => c.id === chatId)
+    if (!chat) return
+    const newStatus = chat.status === 'note' ? 'default' : 'note'
+
+    setChats(prev => prev.map(c => c.id === chatId ? { ...c, status: newStatus } : c))
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          has_notes: newStatus === 'note',
+          favorite: false,
+        }),
+      })
+    } catch (error) {
+      console.error('Error toggling notes:', error)
+    }
+  }
+
+  // ✅ NIEUW: Prullenbak via Supabase
+  const handleMoveToTrash = async (chatId: string) => {
+    setChats(prev =>
+      prev.map(c =>
+        c.id === chatId ? { ...c, status: 'trash' as const, deletedAt: Date.now() } : c
+      )
+    )
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}/trash`, { method: 'PUT' })
+    } catch (error) {
+      console.error('Error trashing chat:', error)
+    }
+  }
+
+  // ✅ NIEUW: Herstellen via Supabase
+  const handleRestoreFromTrash = async (chatId: string) => {
+    setChats(prev =>
+      prev.map(c =>
+        c.id === chatId ? { ...c, status: 'default' as const, deletedAt: undefined } : c
+      )
+    )
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}/restore`, { method: 'PUT' })
+    } catch (error) {
+      console.error('Error restoring chat:', error)
+    }
+  }
+
+  // ✅ NIEUW: Permanent verwijderen via Supabase
+  const handlePermanentDelete = async (chatId: string) => {
+    setChats(prev => prev.filter(c => c.id !== chatId))
+    if (activeChat === chatId) setActiveChat(null)
+    try {
+      await fetch(`${API_URL}/api/chats/${chatId}`, { method: 'DELETE' })
+    } catch (error) {
+      console.error('Error permanently deleting chat:', error)
+    }
+  }
+
+  const handleDeleteChat = handlePermanentDelete
 
   const filteredChats = chats?.filter(chat => {
     const chatStatus = chat.status || 'default'
@@ -544,15 +583,12 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
   }) || []
 
   return (
-    // ✅ FIX: h-screen vervangen door dynamische viewport hoogte voor mobiel
-    <div 
+    <div
       className="flex overflow-hidden bg-background text-foreground font-['Inter']"
       style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
     >
-      
-      {/* ✅ MOBIEL: Donkere backdrop achter linker sidebar */}
       {isMobile && showLeftSidebar && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40"
           onClick={() => setShowLeftSidebar(false)}
         />
@@ -613,16 +649,13 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
               className="gap-2"
             >
               <span className="text-lg">+</span>
-              {/* ✅ "Nieuwe chat" tekst verborgen op mobiel */}
               <span className="hidden md:inline">Nieuwe chat</span>
             </Button>
             {currentChat && (
-              // ✅ Chat titel verborgen op mobiel
               <h2 className="text-sm font-medium hidden md:block">{currentChat.title}</h2>
             )}
           </div>
 
-          {/* ✅ Ebook Button/Badge */}
           <div className="ml-auto flex items-center gap-2">
             {activeEbook ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
@@ -643,7 +676,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
                 className="gap-2"
               >
                 <span>📚</span>
-                {/* ✅ Tekst verborgen op mobiel, alleen emoji */}
                 <span className="hidden md:inline">Schoolboek kiezen</span>
               </Button>
             )}
@@ -658,7 +690,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
         </div>
 
         <div className="flex-1 overflow-y-auto" ref={scrollRef}>
-          {/* ✅ Responsive padding: kleiner op mobiel */}
           <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
             {!currentChat?.messages.length && (
               <div className="text-center text-muted-foreground py-12">
@@ -691,7 +722,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
 
         <div className="border-t border-border p-4 flex-shrink-0 bg-background">
           <div className="max-w-4xl mx-auto space-y-3">
-            {/* File Preview */}
             {uploadedFiles.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {uploadedFiles.map((file, index) => (
@@ -721,7 +751,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
               </div>
             )}
 
-            {/* Input Row */}
             <div className="flex items-center gap-3">
               <input
                 ref={fileInputRef}
@@ -731,13 +760,12 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
                 onChange={handleFileUpload}
                 className="hidden"
               />
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 className="flex-shrink-0"
                 onClick={handleFileButtonClick}
                 aria-label="Bestanden"
               >
-                {/* ✅ Op mobiel: alleen 📎 icon, op desktop: "Bestanden" tekst */}
                 <span className="md:hidden">📎</span>
                 <span className="hidden md:inline">Bestanden</span>
               </Button>
@@ -749,7 +777,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={(e) => {
-                    // ✅ FIX: Op mobiel doet Enter een nieuwe regel, alleen op desktop verzenden
                     if (e.key === 'Enter' && !e.shiftKey && !isMobile) {
                       e.preventDefault()
                       handleSend()
@@ -764,10 +791,7 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
                     disabled:cursor-not-allowed disabled:opacity-50
                     min-h-[40px] max-h-[120px]
                   "
-                  style={{
-                    height: 'auto',
-                    scrollbarWidth: 'thin',
-                  }}
+                  style={{ height: 'auto', scrollbarWidth: 'thin' }}
                   onInput={(e) => {
                     const target = e.target as HTMLTextAreaElement
                     target.style.height = 'auto'
@@ -787,9 +811,8 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
         </div>
       </div>
 
-      {/* ✅ MOBIEL: Donkere backdrop achter rechter sidebar */}
       {isMobile && showRightSidebar && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-40"
           onClick={() => setShowRightSidebar(false)}
         />
@@ -813,7 +836,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
         )}
       </AnimatePresence>
 
-      {/* ✅ Ebook Modal */}
       <EbookModal
         isOpen={isEbookModalOpen}
         onClose={() => setIsEbookModalOpen(false)}
@@ -821,7 +843,6 @@ active_module_ids: user ? await getActiveModuleIds(user.id) : [],
         activeEbookId={activeEbookId}
       />
 
-      {/* ✅ NEW: Settings Modal */}
       <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
