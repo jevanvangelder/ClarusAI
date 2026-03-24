@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { X, MagnifyingGlass, DotsThree, Star, Trash, Upload, Plus } from '@phosphor-icons/react'
+import { X, MagnifyingGlass, DotsThree, Star, Trash, Upload, Plus, PencilSimple, FilePlus } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -11,6 +11,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+
+const EMOJI_OPTIONS = ['📕', '📗', '📘', '📙', '📔', '📖', '📚', '📓', '📒', '📝', '🗂️', '🔬', '🧮', '🌍', '💻', '🎨']
 
 interface Ebook {
   id: string
@@ -45,8 +47,19 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
   const [uploadTitle, setUploadTitle] = useState('')
   const [uploadAuthor, setUploadAuthor] = useState('')
   const [uploadSubject, setUploadSubject] = useState('')
+  const [uploadEmoji, setUploadEmoji] = useState('📘')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const addDocInputRef = useRef<HTMLInputElement>(null)
+
+  // Edit state
+  const [editingEbook, setEditingEbook] = useState<Ebook | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editAuthor, setEditAuthor] = useState('')
+  const [editSubject, setEditSubject] = useState('')
+  const [editEmoji, setEditEmoji] = useState('📘')
+  const [isAddingDoc, setIsAddingDoc] = useState(false)
+  const [addDocEbookId, setAddDocEbookId] = useState<string | null>(null)
 
   // ✅ Load ebooks from Supabase
   useEffect(() => {
@@ -78,6 +91,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
       formData.append('title', uploadTitle || selectedFile.name.replace(/\.[^/.]+$/, ''))
       formData.append('author', uploadAuthor)
       formData.append('subject', uploadSubject)
+      formData.append('cover_emoji', uploadEmoji)
 
       const res = await fetch(`${API_URL}/api/ebooks/upload`, {
         method: 'POST',
@@ -99,6 +113,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
       setUploadTitle('')
       setUploadAuthor('')
       setUploadSubject('')
+      setUploadEmoji('📘')
     } catch (error: any) {
       console.error('Error uploading ebook:', error)
       toast.error(error.message || 'Kon ebook niet uploaden.')
@@ -139,12 +154,81 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
     }
   }
 
+  // ✅ Save edit
+  const handleSaveEdit = async () => {
+    if (!editingEbook) return
+
+    try {
+      const res = await fetch(`${API_URL}/api/ebooks/${editingEbook.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: editTitle,
+          author: editAuthor,
+          subject: editSubject,
+          cover_emoji: editEmoji,
+        }),
+      })
+
+      if (!res.ok) throw new Error('Update failed')
+      const updated = await res.json()
+      setEbooks(prev => prev.map(b => b.id === editingEbook.id ? updated : b))
+      setEditingEbook(null)
+      toast.success('Ebook bijgewerkt!')
+    } catch (error) {
+      console.error('Error updating ebook:', error)
+      toast.error('Kon ebook niet bijwerken.')
+    }
+  }
+
+  // ✅ Open edit form
+  const openEditForm = (book: Ebook) => {
+    setEditingEbook(book)
+    setEditTitle(book.title)
+    setEditAuthor(book.author)
+    setEditSubject(book.subject)
+    setEditEmoji(book.cover_emoji)
+  }
+
+  // ✅ Add document to existing ebook
+  const handleAddDocument = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !addDocEbookId || !user) return
+
+    setIsAddingDoc(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('user_id', user.id)
+
+      const res = await fetch(`${API_URL}/api/ebooks/${addDocEbookId}/add-document`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const error = await res.json()
+        throw new Error(error.detail || 'Upload failed')
+      }
+
+      const updated = await res.json()
+      setEbooks(prev => prev.map(b => b.id === addDocEbookId ? updated : b))
+      toast.success('Document toegevoegd!')
+    } catch (error: any) {
+      console.error('Error adding document:', error)
+      toast.error(error.message || 'Kon document niet toevoegen.')
+    } finally {
+      setIsAddingDoc(false)
+      setAddDocEbookId(null)
+      if (addDocInputRef.current) addDocInputRef.current.value = ''
+    }
+  }
+
   // ✅ File selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setSelectedFile(file)
-      // Auto-fill title from filename
       if (!uploadTitle) {
         setUploadTitle(file.name.replace(/\.[^/.]+$/, ''))
       }
@@ -172,6 +256,15 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-card border border-border rounded-lg shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col mx-4">
+        {/* Hidden input for adding documents */}
+        <input
+          ref={addDocInputRef}
+          type="file"
+          accept=".pdf,.epub,.mobi,.azw3,.kfx,.iba,.txt"
+          onChange={handleAddDocument}
+          className="hidden"
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <div className="flex items-center gap-2">
@@ -197,8 +290,73 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
           </div>
         </div>
 
+        {/* Edit Form */}
+        {editingEbook && (
+          <div className="p-4 border-b border-border bg-muted/30 space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">✏️ Ebook aanpassen</h3>
+              <button
+                onClick={() => setEditingEbook(null)}
+                className="text-muted-foreground hover:text-foreground"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-1">Titel</label>
+              <Input
+                placeholder="Titel van het boek..."
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium mb-1">Auteur</label>
+                <Input
+                  placeholder="Naam auteur..."
+                  value={editAuthor}
+                  onChange={(e) => setEditAuthor(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium mb-1">Vak</label>
+                <Input
+                  placeholder="Bijv. Wiskunde..."
+                  value={editSubject}
+                  onChange={(e) => setEditSubject(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium mb-2">Kleur / Icoon</label>
+              <div className="flex flex-wrap gap-2">
+                {EMOJI_OPTIONS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => setEditEmoji(emoji)}
+                    className={`text-2xl p-1.5 rounded-lg border-2 transition-all hover:scale-110 ${
+                      editEmoji === emoji ? 'border-primary bg-primary/10 scale-110' : 'border-transparent hover:border-border'
+                    }`}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={handleSaveEdit} className="flex-1">
+                Opslaan
+              </Button>
+              <Button variant="outline" onClick={() => setEditingEbook(null)}>
+                Annuleren
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Upload Form */}
-        {showUploadForm && (
+        {showUploadForm && !editingEbook && (
           <div className="p-4 border-b border-border bg-muted/30 space-y-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">📤 Nieuw ebook uploaden</h3>
@@ -209,6 +367,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                   setUploadTitle('')
                   setUploadAuthor('')
                   setUploadSubject('')
+                  setUploadEmoji('📘')
                 }}
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -258,7 +417,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
               )}
             </div>
 
-            {/* Title, Author, Subject */}
+            {/* Title, Author, Subject, Emoji */}
             {selectedFile && (
               <>
                 <div>
@@ -285,6 +444,22 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                       value={uploadSubject}
                       onChange={(e) => setUploadSubject(e.target.value)}
                     />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-2">Kleur / Icoon</label>
+                  <div className="flex flex-wrap gap-2">
+                    {EMOJI_OPTIONS.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => setUploadEmoji(emoji)}
+                        className={`text-2xl p-1.5 rounded-lg border-2 transition-all hover:scale-110 ${
+                          uploadEmoji === emoji ? 'border-primary bg-primary/10 scale-110' : 'border-transparent hover:border-border'
+                        }`}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
                   </div>
                 </div>
                 <Button
@@ -415,6 +590,25 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            openEditForm(book)
+                          }}
+                        >
+                          <PencilSimple size={16} />
+                          <span className="ml-2">Aanpassen</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setAddDocEbookId(book.id)
+                            setTimeout(() => addDocInputRef.current?.click(), 100)
+                          }}
+                        >
+                          <FilePlus size={16} />
+                          <span className="ml-2">Document toevoegen</span>
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation()
