@@ -29,15 +29,6 @@ interface Chat {
   deletedAt?: number
 }
 
-interface Ebook {
-  id: string
-  title: string
-  author: string
-  cover: string
-  subject: string
-  favorite: boolean
-}
-
 // ✅ Helper: Get active module IDs from Supabase via API
 const getActiveModuleIds = async (userId: string): Promise<string[]> => {
   try {
@@ -66,18 +57,24 @@ const getActiveModulePrompts = async (userId: string): Promise<string[]> => {
   }
 }
 
-// ✅ Helper: Get active ebook content
-const getActiveEbookContent = (ebookId: string | null): string => {
+// ✅ Helper: Get active ebook content from Supabase
+const getActiveEbookContent = async (ebookId: string | null): Promise<string> => {
   if (!ebookId) return ''
   try {
-    const savedEbooks = localStorage.getItem('clarus-ebooks')
-    if (!savedEbooks) return ''
-    const ebooks = JSON.parse(savedEbooks)
-    const activeBook = ebooks.find((b: Ebook) => b.id === ebookId)
-    if (!activeBook) return ''
-    return `📚 ACTIEF EBOOK: ${activeBook.title} door ${activeBook.author}\n\n⚠️ De gebruiker heeft toegang tot dit schoolboek. Gebruik de informatie uit dit boek om vragen te beantwoorden. Als de vraag gerelateerd is aan het boek, verwijs dan naar specifieke hoofdstukken of pagina's (zelfs als dit demo data is).`
+    const res = await fetch(`${API_URL}/api/ebooks/${ebookId}/text`)
+    if (!res.ok) return ''
+    const data = await res.json()
+    if (!data.text || data.text_length === 0) return ''
+
+    // Beperk tekst voor AI context (max 50K characters)
+    const maxLength = 50000
+    const text = data.text.length > maxLength
+      ? data.text.substring(0, maxLength) + '\n\n[... rest van het boek afgekort ...]'
+      : data.text
+
+    return `📚 ACTIEF EBOOK: "${data.title}" door ${data.author}\n\nHieronder staat de inhoud van het schoolboek:\n\n${text}\n\n---\n\n⚠️ INSTRUCTIE: De gebruiker heeft dit schoolboek actief. Gebruik de bovenstaande tekst om vragen te beantwoorden. Verwijs naar specifieke pagina's of hoofdstukken uit het boek wanneer relevant.`
   } catch (error) {
-    console.error('Error loading ebook:', error)
+    console.error('Error loading ebook content:', error)
     return ''
   }
 }
@@ -100,7 +97,8 @@ function App() {
 
   const [activeEbookId, setActiveEbookId] = useState<string | null>(null)
   const [isEbookModalOpen, setIsEbookModalOpen] = useState(false)
-  const [activeEbook, setActiveEbook] = useState<Ebook | null>(null)
+  const [activeEbookTitle, setActiveEbookTitle] = useState<string | null>(null)
+  const [activeEbookEmoji, setActiveEbookEmoji] = useState<string | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentChat = chats?.find(c => c.id === activeChat)
@@ -161,7 +159,6 @@ function App() {
         const trashedChats = trashData.map((c: any) => mapChat(c, 'trash'))
         const newChats = [...normalChats, ...trashedChats]
 
-        // ✅ Bewaar bestaande messages bij herladen
         setChats(prev => {
           const existingMessages = new Map(
             prev.map(c => [c.id, c.messages])
@@ -178,7 +175,6 @@ function App() {
 
     loadChats()
 
-    // ✅ Herlaad chatlijst wanneer gebruiker terugkomt op tabblad
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         loadChats()
@@ -218,7 +214,6 @@ function App() {
 
     loadMessages()
 
-    // ✅ Herlaad messages wanneer gebruiker terugkomt op tabblad
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         loadMessages()
@@ -229,7 +224,7 @@ function App() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
   }, [activeChat])
 
-  // ✅ Load active ebook from localStorage
+  // ✅ Load active ebook info from Supabase
   useEffect(() => {
     const savedActiveEbook = localStorage.getItem('clarus-active-ebook')
     if (savedActiveEbook) setActiveEbookId(savedActiveEbook)
@@ -238,25 +233,24 @@ function App() {
   useEffect(() => {
     if (activeEbookId) {
       localStorage.setItem('clarus-active-ebook', activeEbookId)
+      // Haal ebook info op van Supabase
+      const loadEbookInfo = async () => {
+        try {
+          const res = await fetch(`${API_URL}/api/ebooks/${activeEbookId}/text`)
+          if (res.ok) {
+            const data = await res.json()
+            setActiveEbookTitle(data.title)
+            setActiveEbookEmoji('📚')
+          }
+        } catch (error) {
+          console.error('Error loading ebook info:', error)
+        }
+      }
+      loadEbookInfo()
     } else {
       localStorage.removeItem('clarus-active-ebook')
-    }
-  }, [activeEbookId])
-
-  useEffect(() => {
-    if (activeEbookId) {
-      try {
-        const savedEbooks = localStorage.getItem('clarus-ebooks')
-        if (savedEbooks) {
-          const ebooks = JSON.parse(savedEbooks)
-          const book = ebooks.find((b: Ebook) => b.id === activeEbookId)
-          setActiveEbook(book || null)
-        }
-      } catch (error) {
-        console.error('Error loading active ebook:', error)
-      }
-    } else {
-      setActiveEbook(null)
+      setActiveEbookTitle(null)
+      setActiveEbookEmoji(null)
     }
   }, [activeEbookId])
 
@@ -362,7 +356,7 @@ function App() {
     try {
       const currentChatData = chats.find(c => c.id === chatId)
       const messageHistory = currentChatData?.messages || []
-      const ebookContent = getActiveEbookContent(activeEbookId)
+      const ebookContent = await getActiveEbookContent(activeEbookId)
       const modulePrompts = await getActiveModulePrompts(user.id)
 
       let backendResponse
@@ -454,7 +448,7 @@ function App() {
         )
       )
 
-      // ✅ FIX: Auto-titel genereren zonder extra API call
+      // ✅ Auto-titel genereren zonder extra API call
       const chatToCheck = chats.find(c => c.id === chatId)
       if (chatToCheck?.title === 'Nieuwe chat') {
         try {
@@ -666,10 +660,10 @@ function App() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            {activeEbook ? (
+            {activeEbookId && activeEbookTitle ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
-                <span>{activeEbook.cover}</span>
-                <span className="max-w-[150px] truncate hidden md:inline">{activeEbook.title}</span>
+                <span>{activeEbookEmoji || '📚'}</span>
+                <span className="max-w-[150px] truncate hidden md:inline">{activeEbookTitle}</span>
                 <button
                   onClick={() => setActiveEbookId(null)}
                   className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
