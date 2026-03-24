@@ -265,6 +265,67 @@ async def update_ebook(ebook_id: str, ebook: EbookUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# POST /api/ebooks/{ebook_id}/add-document — Voeg extra document toe aan bestaand ebook
+@router.post("/{ebook_id}/add-document", response_model=EbookResponse)
+async def add_document_to_ebook(
+    ebook_id: str,
+    file: UploadFile = File(...),
+    user_id: str = Form(...),
+):
+    try:
+        # Haal bestaand ebook op
+        existing = supabase.table("ebooks").select("*").eq("id", ebook_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Ebook not found")
+
+        ebook = existing.data[0]
+
+        # Lees en extraheer tekst uit nieuw bestand
+        file_bytes = await file.read()
+        new_text = extract_text(file_bytes, file.filename)
+
+        # Combineer tekst
+        old_text = ebook.get("extracted_text", "") or ""
+        combined_text = old_text + f"\n\n--- {file.filename} ---\n\n" + new_text
+
+        # Beperk tot max lengte
+        if len(combined_text) > MAX_TEXT_LENGTH:
+            combined_text = combined_text[:MAX_TEXT_LENGTH] + "\n\n[... tekst afgekort vanwege limiet ...]"
+
+        # Upload nieuw bestand naar storage
+        storage_path = f"{user_id}/{file.filename}"
+        try:
+            supabase.storage.from_(BUCKET_NAME).upload(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": file.content_type or "application/octet-stream"}
+            )
+        except Exception as storage_error:
+            if "Duplicate" in str(storage_error) or "already exists" in str(storage_error):
+                supabase.storage.from_(BUCKET_NAME).update(
+                    path=storage_path,
+                    file=file_bytes,
+                    file_options={"content-type": file.content_type or "application/octet-stream"}
+                )
+            else:
+                raise storage_error
+
+        # Update ebook met gecombineerde tekst en nieuwe bestandsgrootte
+        new_size = ebook.get("file_size", 0) + len(file_bytes)
+        response = supabase.table("ebooks").update({
+            "extracted_text": combined_text,
+            "file_size": new_size,
+        }).eq("id", ebook_id).execute()
+
+        return response.data[0]
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Error adding document: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # DELETE /api/ebooks/{ebook_id} — Ebook verwijderen
 @router.delete("/{ebook_id}")
 async def delete_ebook(ebook_id: str):
