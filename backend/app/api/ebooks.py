@@ -5,6 +5,7 @@ from datetime import datetime
 from app.core.config import settings
 from supabase import create_client, Client
 import io
+import json
 
 # Text extraction
 import PyPDF2
@@ -39,6 +40,7 @@ class EbookResponse(BaseModel):
     subject: str
     favorite: bool
     is_active: bool
+    documents: Optional[list] = []
     created_at: datetime
     updated_at: datetime
 
@@ -50,6 +52,7 @@ class EbookUpdate(BaseModel):
     subject: Optional[str] = None
     favorite: Optional[bool] = None
     is_active: Optional[bool] = None
+    removed_documents: Optional[List[str]] = None
 
 
 # ✅ Helper: Extract text from PDF
@@ -133,6 +136,27 @@ def detect_cover_emoji(file_name: str) -> str:
         return '📘'
 
 
+# Helper: Upload file to storage
+def upload_to_storage(user_id: str, file_name: str, file_bytes: bytes, content_type: str):
+    storage_path = f"{user_id}/{file_name}"
+    try:
+        supabase.storage.from_(BUCKET_NAME).upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": content_type}
+        )
+    except Exception as storage_error:
+        if "Duplicate" in str(storage_error) or "already exists" in str(storage_error):
+            supabase.storage.from_(BUCKET_NAME).update(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": content_type}
+            )
+        else:
+            raise storage_error
+    return supabase.storage.from_(BUCKET_NAME).get_public_url(storage_path)
+
+
 # GET /api/ebooks?user_id= — Alle ebooks voor een user
 @router.get("", response_model=List[EbookResponse])
 async def get_ebooks(user_id: str):
@@ -143,10 +167,10 @@ async def get_ebooks(user_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# POST /api/ebooks/upload — Nieuw ebook uploaden
+# POST /api/ebooks/upload — Nieuw ebook uploaden (meerdere bestanden)
 @router.post("/upload", response_model=EbookResponse)
 async def upload_ebook(
-    file: UploadFile = File(...),
+    files: List[UploadFile] = File(...),
     user_id: str = Form(...),
     title: str = Form(""),
     author: str = Form(""),
@@ -154,72 +178,79 @@ async def upload_ebook(
     cover_emoji: str = Form(""),
 ):
     try:
-        # Valideer bestandstype
         allowed_extensions = ['.pdf', '.epub', '.mobi', '.azw3', '.kfx', '.iba', '.txt']
-        file_ext = '.' + file.filename.lower().split('.')[-1] if '.' in file.filename else ''
-        if file_ext not in allowed_extensions:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Bestandstype niet ondersteund. Toegestaan: {', '.join(allowed_extensions)}"
-            )
 
-        # Lees bestand
-        file_bytes = await file.read()
-        file_size = len(file_bytes)
+        all_text_parts = []
+        documents = []
+        total_size = 0
+        first_file_name = ""
+        first_file_ext = ""
+        first_file_url = ""
 
-        print(f"📚 Uploading ebook: {file.filename} ({file_size} bytes)")
-
-        # Upload naar Supabase Storage
-        storage_path = f"{user_id}/{file.filename}"
-        try:
-            supabase.storage.from_(BUCKET_NAME).upload(
-                path=storage_path,
-                file=file_bytes,
-                file_options={"content-type": file.content_type or "application/octet-stream"}
-            )
-        except Exception as storage_error:
-            # Als bestand al bestaat, overschrijf het
-            if "Duplicate" in str(storage_error) or "already exists" in str(storage_error):
-                supabase.storage.from_(BUCKET_NAME).update(
-                    path=storage_path,
-                    file=file_bytes,
-                    file_options={"content-type": file.content_type or "application/octet-stream"}
+        for i, file in enumerate(files):
+            file_ext = '.' + file.filename.lower().split('.')[-1] if '.' in file.filename else ''
+            if file_ext not in allowed_extensions:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Bestandstype niet ondersteund: {file.filename}"
                 )
-            else:
-                raise storage_error
 
-        # Genereer publieke URL
-        file_url = supabase.storage.from_(BUCKET_NAME).get_public_url(storage_path)
+            file_bytes = await file.read()
+            file_size = len(file_bytes)
+            total_size += file_size
 
-        # Extract tekst uit bestand
-        print(f"📖 Extracting text from {file.filename}...")
-        extracted_text = extract_text(file_bytes, file.filename)
-        print(f"✅ Extracted {len(extracted_text)} characters")
+            print(f"📚 Uploading file {i+1}: {file.filename} ({file_size} bytes)")
 
-        # Auto-detect emoji als niet opgegeven
-        final_emoji = cover_emoji if cover_emoji else detect_cover_emoji(file.filename)
+            # Upload to storage
+            file_url = upload_to_storage(
+                user_id, file.filename, file_bytes,
+                file.content_type or "application/octet-stream"
+            )
 
-        # Gebruik bestandsnaam als titel als niet opgegeven
-        final_title = title if title else file.filename.rsplit('.', 1)[0]
+            # Extract text
+            print(f"📖 Extracting text from {file.filename}...")
+            extracted = extract_text(file_bytes, file.filename)
+            print(f"✅ Extracted {len(extracted)} characters")
+            all_text_parts.append(f"--- {file.filename} ---\n\n{extracted}")
 
-        # Sla op in database
+            # Track documents
+            documents.append({
+                "file_name": file.filename,
+                "file_size": file_size,
+                "file_url": file_url,
+            })
+
+            if i == 0:
+                first_file_name = file.filename
+                first_file_ext = file_ext
+                first_file_url = file_url
+
+        # Combine all text
+        combined_text = "\n\n".join(all_text_parts)
+        if len(combined_text) > MAX_TEXT_LENGTH:
+            combined_text = combined_text[:MAX_TEXT_LENGTH] + "\n\n[... tekst afgekort vanwege limiet ...]"
+
+        final_emoji = cover_emoji if cover_emoji else detect_cover_emoji(first_file_name)
+        final_title = title if title else first_file_name.rsplit('.', 1)[0]
+
         insert_data = {
             "user_id": user_id,
             "title": final_title,
             "author": author,
-            "file_name": file.filename,
-            "file_type": file_ext.replace('.', ''),
-            "file_size": file_size,
-            "file_url": file_url,
-            "extracted_text": extracted_text,
+            "file_name": first_file_name,
+            "file_type": first_file_ext.replace('.', ''),
+            "file_size": total_size,
+            "file_url": first_file_url,
+            "extracted_text": combined_text,
             "cover_emoji": final_emoji,
             "subject": subject,
             "favorite": False,
             "is_active": False,
+            "documents": documents,
         }
 
         response = supabase.table("ebooks").insert(insert_data).execute()
-        print(f"✅ Ebook saved to database: {response.data[0]['id']}")
+        print(f"✅ Ebook saved with {len(documents)} document(s)")
 
         return response.data[0]
 
@@ -250,6 +281,41 @@ async def update_ebook(ebook_id: str, ebook: EbookUpdate):
         if ebook.is_active is not None:
             update_data["is_active"] = ebook.is_active
 
+        # Handle document removal
+        if ebook.removed_documents and len(ebook.removed_documents) > 0:
+            # Get current ebook
+            current = supabase.table("ebooks").select("*").eq("id", ebook_id).execute()
+            if current.data:
+                current_ebook = current.data[0]
+                current_docs = current_ebook.get("documents", []) or []
+                user_id = current_ebook.get("user_id", "")
+
+                # Remove files from storage and documents list
+                remaining_docs = []
+                remaining_texts = []
+                for doc in current_docs:
+                    if doc.get("file_name") in ebook.removed_documents:
+                        # Remove from storage
+                        try:
+                            storage_path = f"{user_id}/{doc['file_name']}"
+                            supabase.storage.from_(BUCKET_NAME).remove([storage_path])
+                            print(f"🗑️ Removed {doc['file_name']} from storage")
+                        except Exception as e:
+                            print(f"⚠️ Could not remove {doc['file_name']}: {e}")
+                    else:
+                        remaining_docs.append(doc)
+
+                update_data["documents"] = remaining_docs
+
+                # Recalculate file size
+                total_size = sum(d.get("file_size", 0) for d in remaining_docs)
+                update_data["file_size"] = total_size
+
+                # Update first file reference if needed
+                if remaining_docs:
+                    update_data["file_name"] = remaining_docs[0]["file_name"]
+                    update_data["file_url"] = remaining_docs[0].get("file_url", "")
+
         if not update_data:
             raise HTTPException(status_code=400, detail="No fields to update")
 
@@ -265,7 +331,7 @@ async def update_ebook(ebook_id: str, ebook: EbookUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# POST /api/ebooks/{ebook_id}/add-document — Voeg extra document toe aan bestaand ebook
+# POST /api/ebooks/{ebook_id}/add-document — Voeg extra document toe
 @router.post("/{ebook_id}/add-document", response_model=EbookResponse)
 async def add_document_to_ebook(
     ebook_id: str,
@@ -273,48 +339,42 @@ async def add_document_to_ebook(
     user_id: str = Form(...),
 ):
     try:
-        # Haal bestaand ebook op
         existing = supabase.table("ebooks").select("*").eq("id", ebook_id).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="Ebook not found")
 
         ebook = existing.data[0]
 
-        # Lees en extraheer tekst uit nieuw bestand
+        # Read and extract text
         file_bytes = await file.read()
         new_text = extract_text(file_bytes, file.filename)
 
-        # Combineer tekst
+        # Combine text
         old_text = ebook.get("extracted_text", "") or ""
         combined_text = old_text + f"\n\n--- {file.filename} ---\n\n" + new_text
-
-        # Beperk tot max lengte
         if len(combined_text) > MAX_TEXT_LENGTH:
             combined_text = combined_text[:MAX_TEXT_LENGTH] + "\n\n[... tekst afgekort vanwege limiet ...]"
 
-        # Upload nieuw bestand naar storage
-        storage_path = f"{user_id}/{file.filename}"
-        try:
-            supabase.storage.from_(BUCKET_NAME).upload(
-                path=storage_path,
-                file=file_bytes,
-                file_options={"content-type": file.content_type or "application/octet-stream"}
-            )
-        except Exception as storage_error:
-            if "Duplicate" in str(storage_error) or "already exists" in str(storage_error):
-                supabase.storage.from_(BUCKET_NAME).update(
-                    path=storage_path,
-                    file=file_bytes,
-                    file_options={"content-type": file.content_type or "application/octet-stream"}
-                )
-            else:
-                raise storage_error
+        # Upload to storage
+        file_url = upload_to_storage(
+            user_id, file.filename, file_bytes,
+            file.content_type or "application/octet-stream"
+        )
 
-        # Update ebook met gecombineerde tekst en nieuwe bestandsgrootte
-        new_size = ebook.get("file_size", 0) + len(file_bytes)
+        # Update documents list
+        current_docs = ebook.get("documents", []) or []
+        current_docs.append({
+            "file_name": file.filename,
+            "file_size": len(file_bytes),
+            "file_url": file_url,
+        })
+
+        new_size = sum(d.get("file_size", 0) for d in current_docs)
+
         response = supabase.table("ebooks").update({
             "extracted_text": combined_text,
             "file_size": new_size,
+            "documents": current_docs,
         }).eq("id", ebook_id).execute()
 
         return response.data[0]
@@ -330,24 +390,31 @@ async def add_document_to_ebook(
 @router.delete("/{ebook_id}")
 async def delete_ebook(ebook_id: str):
     try:
-        # Haal ebook op voor file path
         ebook_response = supabase.table("ebooks").select("*").eq("id", ebook_id).execute()
         if not ebook_response.data:
             raise HTTPException(status_code=404, detail="Ebook not found")
 
         ebook = ebook_response.data[0]
+        user_id = ebook["user_id"]
 
-        # Verwijder uit Storage
-        try:
-            storage_path = f"{ebook['user_id']}/{ebook['file_name']}"
-            supabase.storage.from_(BUCKET_NAME).remove([storage_path])
-            print(f"🗑️ Removed file from storage: {storage_path}")
-        except Exception as e:
-            print(f"⚠️ Could not remove file from storage: {e}")
+        # Remove all documents from storage
+        documents = ebook.get("documents", []) or []
+        if documents:
+            for doc in documents:
+                try:
+                    storage_path = f"{user_id}/{doc['file_name']}"
+                    supabase.storage.from_(BUCKET_NAME).remove([storage_path])
+                except Exception as e:
+                    print(f"⚠️ Could not remove {doc.get('file_name')}: {e}")
+        else:
+            # Fallback: remove single file
+            try:
+                storage_path = f"{user_id}/{ebook['file_name']}"
+                supabase.storage.from_(BUCKET_NAME).remove([storage_path])
+            except Exception as e:
+                print(f"⚠️ Could not remove file: {e}")
 
-        # Verwijder uit database
         supabase.table("ebooks").delete().eq("id", ebook_id).execute()
-
         return {"message": "Ebook deleted", "ebook_id": ebook_id}
     except HTTPException:
         raise

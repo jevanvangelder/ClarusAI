@@ -14,6 +14,12 @@ import {
 
 const EMOJI_OPTIONS = ['📕', '📗', '📘', '📙', '📔', '📖', '📚', '📓', '📒', '📝', '🗂️', '🔬', '🧮', '🌍', '💻', '🎨']
 
+interface EbookDocument {
+  file_name: string
+  file_size: number
+  file_url?: string
+}
+
 interface Ebook {
   id: string
   user_id: string
@@ -27,6 +33,7 @@ interface Ebook {
   subject: string
   favorite: boolean
   is_active: boolean
+  documents: EbookDocument[]
   created_at: string
   updated_at: string
 }
@@ -48,7 +55,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
   const [uploadAuthor, setUploadAuthor] = useState('')
   const [uploadSubject, setUploadSubject] = useState('')
   const [uploadEmoji, setUploadEmoji] = useState('📘')
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Edit state
@@ -57,8 +64,9 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
   const [editAuthor, setEditAuthor] = useState('')
   const [editSubject, setEditSubject] = useState('')
   const [editEmoji, setEditEmoji] = useState('📘')
-  const [editFile, setEditFile] = useState<File | null>(null)
-  const [isAddingDoc, setIsAddingDoc] = useState(false)
+  const [editNewFiles, setEditNewFiles] = useState<File[]>([])
+  const [editExistingDocs, setEditExistingDocs] = useState<EbookDocument[]>([])
+  const [removedDocs, setRemovedDocs] = useState<string[]>([])
   const editFileInputRef = useRef<HTMLInputElement>(null)
 
   // ✅ Load ebooks from Supabase
@@ -70,7 +78,12 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
         const res = await fetch(`${API_URL}/api/ebooks?user_id=${user.id}`)
         if (!res.ok) throw new Error('Failed to fetch ebooks')
         const data = await res.json()
-        setEbooks(data)
+        // Ensure documents is always an array
+        const normalized = data.map((b: any) => ({
+          ...b,
+          documents: b.documents || [{ file_name: b.file_name, file_size: b.file_size, file_url: b.file_url }]
+        }))
+        setEbooks(normalized)
       } catch (error) {
         console.error('Error loading ebooks:', error)
       }
@@ -79,16 +92,16 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
     loadEbooks()
   }, [isOpen, user])
 
-  // ✅ Upload ebook
+  // ✅ Upload ebook with multiple files
   const handleUpload = async () => {
-    if (!selectedFile || !user) return
+    if (selectedFiles.length === 0 || !user) return
 
     setIsUploading(true)
     try {
       const formData = new FormData()
-      formData.append('file', selectedFile)
+      selectedFiles.forEach(f => formData.append('files', f))
       formData.append('user_id', user.id)
-      formData.append('title', uploadTitle || selectedFile.name.replace(/\.[^/.]+$/, ''))
+      formData.append('title', uploadTitle || selectedFiles[0].name.replace(/\.[^/.]+$/, ''))
       formData.append('author', uploadAuthor)
       formData.append('subject', uploadSubject)
       formData.append('cover_emoji', uploadEmoji)
@@ -104,12 +117,13 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
       }
 
       const newEbook = await res.json()
+      newEbook.documents = newEbook.documents || [{ file_name: newEbook.file_name, file_size: newEbook.file_size }]
       setEbooks(prev => [newEbook, ...prev])
       toast.success(`"${newEbook.title}" is geüpload!`)
 
       // Reset form
       setShowUploadForm(false)
-      setSelectedFile(null)
+      setSelectedFiles([])
       setUploadTitle('')
       setUploadAuthor('')
       setUploadSubject('')
@@ -154,13 +168,13 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
     }
   }
 
-  // ✅ Save edit (title, author, subject, emoji + optionally add document)
+  // ✅ Save edit
   const handleSaveEdit = async () => {
     if (!editingEbook || !user) return
 
     setIsUploading(true)
     try {
-      // 1. Update metadata
+      // 1. Update metadata + removed docs
       const res = await fetch(`${API_URL}/api/ebooks/${editingEbook.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -169,17 +183,17 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
           author: editAuthor,
           subject: editSubject,
           cover_emoji: editEmoji,
+          removed_documents: removedDocs,
         }),
       })
 
       if (!res.ok) throw new Error('Update failed')
       let updated = await res.json()
 
-      // 2. If a new file was added, upload it as additional document
-      if (editFile) {
-        setIsAddingDoc(true)
+      // 2. Upload new files one by one
+      for (const file of editNewFiles) {
         const formData = new FormData()
-        formData.append('file', editFile)
+        formData.append('file', file)
         formData.append('user_id', user.id)
 
         const addRes = await fetch(`${API_URL}/api/ebooks/${editingEbook.id}/add-document`, {
@@ -189,22 +203,23 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
 
         if (!addRes.ok) {
           const error = await addRes.json()
-          throw new Error(error.detail || 'Document toevoegen mislukt')
+          throw new Error(error.detail || `Kon ${file.name} niet toevoegen`)
         }
 
         updated = await addRes.json()
       }
 
+      updated.documents = updated.documents || [{ file_name: updated.file_name, file_size: updated.file_size }]
       setEbooks(prev => prev.map(b => b.id === editingEbook.id ? updated : b))
       setEditingEbook(null)
-      setEditFile(null)
+      setEditNewFiles([])
+      setRemovedDocs([])
       toast.success('Ebook bijgewerkt!')
     } catch (error: any) {
       console.error('Error updating ebook:', error)
       toast.error(error.message || 'Kon ebook niet bijwerken.')
     } finally {
       setIsUploading(false)
-      setIsAddingDoc(false)
     }
   }
 
@@ -215,27 +230,41 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
     setEditAuthor(book.author)
     setEditSubject(book.subject)
     setEditEmoji(book.cover_emoji)
-    setEditFile(null)
+    setEditNewFiles([])
+    setRemovedDocs([])
+    // Set existing documents
+    const docs = book.documents && book.documents.length > 0
+      ? book.documents
+      : [{ file_name: book.file_name, file_size: book.file_size, file_url: book.file_url }]
+    setEditExistingDocs(docs)
     setShowUploadForm(false)
   }
 
-  // ✅ File selection for new upload
+  // ✅ Add files (new upload)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setSelectedFile(file)
-      if (!uploadTitle) {
-        setUploadTitle(file.name.replace(/\.[^/.]+$/, ''))
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      setSelectedFiles(prev => [...prev, ...files])
+      if (!uploadTitle && selectedFiles.length === 0) {
+        setUploadTitle(files[0].name.replace(/\.[^/.]+$/, ''))
       }
     }
+    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
-  // ✅ File selection for edit (add document)
+  // ✅ Add files (edit)
   const handleEditFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setEditFile(file)
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      setEditNewFiles(prev => [...prev, ...files])
     }
+    if (editFileInputRef.current) editFileInputRef.current.value = ''
+  }
+
+  // ✅ Remove existing doc (edit)
+  const handleRemoveExistingDoc = (fileName: string) => {
+    setEditExistingDocs(prev => prev.filter(d => d.file_name !== fileName))
+    setRemovedDocs(prev => [...prev, fileName])
   }
 
   // ✅ Format file size
@@ -243,6 +272,14 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  // ✅ Get file icon
+  const getFileIcon = (name: string) => {
+    if (name.endsWith('.pdf')) return '📄'
+    if (name.endsWith('.epub')) return '📕'
+    if (name.endsWith('.txt')) return '📋'
+    return '📘'
   }
 
   // Filter ebooks
@@ -253,8 +290,6 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
   )
 
   const favoriteEbooks = filteredEbooks.filter(book => book.favorite)
-
-  // Check if a form is open
   const isFormOpen = showUploadForm || editingEbook !== null
 
   if (!isOpen) return null
@@ -277,6 +312,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                 onClick={() => {
                   setShowUploadForm(true)
                   setEditingEbook(null)
+                  setSelectedFiles([])
                 }}
                 className="gap-2"
               >
@@ -301,7 +337,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
               <button
                 onClick={() => {
                   setShowUploadForm(false)
-                  setSelectedFile(null)
+                  setSelectedFiles([])
                   setUploadTitle('')
                   setUploadAuthor('')
                   setUploadSubject('')
@@ -313,50 +349,53 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
               </button>
             </div>
 
-            {/* File picker */}
+            {/* Bestanden */}
             <div>
-              <label className="block text-xs font-medium mb-2">Bestand</label>
+              <label className="block text-xs font-medium mb-2">Bestanden</label>
               <input
                 ref={fileInputRef}
                 type="file"
                 accept=".pdf,.epub,.mobi,.azw3,.kfx,.iba,.txt"
                 onChange={handleFileSelect}
+                multiple
                 className="hidden"
               />
-              {selectedFile ? (
-                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-                  <span className="text-2xl">
-                    {selectedFile.name.endsWith('.pdf') ? '📄' :
-                     selectedFile.name.endsWith('.epub') ? '📕' :
-                     selectedFile.name.endsWith('.txt') ? '📋' : '📘'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(selectedFile.size)}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedFile(null)
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                    }}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X size={16} />
-                  </button>
+
+              {/* Lijst van geselecteerde bestanden */}
+              {selectedFiles.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center gap-3 p-2.5 bg-card border border-border rounded-lg">
+                      <span className="text-xl">{getFileIcon(file.name)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)}</p>
+                      </div>
+                      <button
+                        onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== index))}
+                        className="text-red-500 hover:text-red-700 flex-shrink-0"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full p-6 border-2 border-dashed border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-center"
-                >
-                  <Upload size={32} className="mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-sm font-medium">Klik om een bestand te kiezen</p>
-                  <p className="text-xs text-muted-foreground mt-1">PDF, EPUB, MOBI, AZW3, KFX, IBA, TXT</p>
-                </button>
               )}
+
+              {/* Bestand toevoegen knop */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full p-4 border-2 border-dashed border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-center"
+              >
+                <FilePlus size={24} className="mx-auto mb-1 text-muted-foreground" />
+                <p className="text-sm font-medium">
+                  {selectedFiles.length === 0 ? 'Klik om bestanden te kiezen' : 'Nog een bestand toevoegen'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">PDF, EPUB, MOBI, AZW3, KFX, IBA, TXT</p>
+              </button>
             </div>
 
-            {selectedFile && (
+            {selectedFiles.length > 0 && (
               <>
                 {/* Titel */}
                 <div>
@@ -408,11 +447,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
 
                 {/* Upload button */}
                 <div className="flex gap-2">
-                  <Button
-                    onClick={handleUpload}
-                    disabled={isUploading}
-                    className="flex-1"
-                  >
+                  <Button onClick={handleUpload} disabled={isUploading} className="flex-1">
                     {isUploading ? (
                       <span className="flex items-center gap-2">
                         <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -421,21 +456,18 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                     ) : (
                       <span className="flex items-center gap-2">
                         <Upload size={16} />
-                        Uploaden
+                        Uploaden ({selectedFiles.length} {selectedFiles.length === 1 ? 'bestand' : 'bestanden'})
                       </span>
                     )}
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowUploadForm(false)
-                      setSelectedFile(null)
-                      setUploadTitle('')
-                      setUploadAuthor('')
-                      setUploadSubject('')
-                      setUploadEmoji('📘')
-                    }}
-                  >
+                  <Button variant="outline" onClick={() => {
+                    setShowUploadForm(false)
+                    setSelectedFiles([])
+                    setUploadTitle('')
+                    setUploadAuthor('')
+                    setUploadSubject('')
+                    setUploadEmoji('📘')
+                  }}>
                     Annuleren
                   </Button>
                 </div>
@@ -452,7 +484,8 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
               <button
                 onClick={() => {
                   setEditingEbook(null)
-                  setEditFile(null)
+                  setEditNewFiles([])
+                  setRemovedDocs([])
                 }}
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -508,79 +541,95 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
               </div>
             </div>
 
-            {/* Add document */}
+            {/* Bestanden */}
             <div>
-              <label className="block text-xs font-medium mb-2">Extra document toevoegen (optioneel)</label>
+              <label className="block text-xs font-medium mb-2">Bestanden</label>
               <input
                 ref={editFileInputRef}
                 type="file"
                 accept=".pdf,.epub,.mobi,.azw3,.kfx,.iba,.txt"
                 onChange={handleEditFileSelect}
+                multiple
                 className="hidden"
               />
-              {editFile ? (
-                <div className="flex items-center gap-3 p-3 bg-card border border-border rounded-lg">
-                  <span className="text-2xl">
-                    {editFile.name.endsWith('.pdf') ? '📄' :
-                     editFile.name.endsWith('.epub') ? '📕' :
-                     editFile.name.endsWith('.txt') ? '📋' : '📘'}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{editFile.name}</p>
-                    <p className="text-xs text-muted-foreground">{formatFileSize(editFile.size)}</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setEditFile(null)
-                      if (editFileInputRef.current) editFileInputRef.current.value = ''
-                    }}
-                    className="text-red-500 hover:text-red-700"
-                  >
-                    <X size={16} />
-                  </button>
+
+              {/* Bestaande bestanden */}
+              {editExistingDocs.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {editExistingDocs.map((doc, index) => (
+                    <div key={`existing-${index}`} className="flex items-center gap-3 p-2.5 bg-card border border-border rounded-lg">
+                      <span className="text-xl">{getFileIcon(doc.file_name)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{doc.file_name}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(doc.file_size)}</p>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveExistingDoc(doc.file_name)}
+                        className="text-red-500 hover:text-red-700 flex-shrink-0"
+                        title="Bestand verwijderen"
+                      >
+                        <Trash size={16} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <button
-                  onClick={() => editFileInputRef.current?.click()}
-                  className="w-full p-4 border-2 border-dashed border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-center"
-                >
-                  <FilePlus size={24} className="mx-auto mb-1 text-muted-foreground" />
-                  <p className="text-sm font-medium">Document toevoegen</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Tekst wordt samengevoegd met bestaand ebook</p>
-                </button>
               )}
+
+              {/* Nieuw toegevoegde bestanden */}
+              {editNewFiles.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {editNewFiles.map((file, index) => (
+                    <div key={`new-${index}`} className="flex items-center gap-3 p-2.5 bg-primary/5 border border-primary/20 rounded-lg">
+                      <span className="text-xl">{getFileIcon(file.name)}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{file.name}</p>
+                        <p className="text-xs text-muted-foreground">{formatFileSize(file.size)} · <span className="text-primary">nieuw</span></p>
+                      </div>
+                      <button
+                        onClick={() => setEditNewFiles(prev => prev.filter((_, i) => i !== index))}
+                        className="text-red-500 hover:text-red-700 flex-shrink-0"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Bestand toevoegen knop */}
+              <button
+                onClick={() => editFileInputRef.current?.click()}
+                className="w-full p-3 border-2 border-dashed border-border rounded-lg hover:border-primary hover:bg-primary/5 transition-all text-center"
+              >
+                <FilePlus size={20} className="mx-auto mb-1 text-muted-foreground" />
+                <p className="text-sm font-medium">Bestand toevoegen</p>
+              </button>
             </div>
 
             {/* Save / Cancel */}
             <div className="flex gap-2">
-              <Button
-                onClick={handleSaveEdit}
-                disabled={isUploading}
-                className="flex-1"
-              >
+              <Button onClick={handleSaveEdit} disabled={isUploading} className="flex-1">
                 {isUploading ? (
                   <span className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    {isAddingDoc ? 'Document toevoegen...' : 'Opslaan...'}
+                    Opslaan...
                   </span>
                 ) : (
                   'Opslaan'
                 )}
               </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingEbook(null)
-                  setEditFile(null)
-                }}
-              >
+              <Button variant="outline" onClick={() => {
+                setEditingEbook(null)
+                setEditNewFiles([])
+                setRemovedDocs([])
+              }}>
                 Annuleren
               </Button>
             </div>
           </div>
         )}
 
-        {/* ===== BOOK LIST (alleen tonen als er geen form open is) ===== */}
+        {/* ===== BOOK LIST ===== */}
         {!isFormOpen && (
           <>
             {/* Search Bar */}
@@ -602,7 +651,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-6 min-h-[250px]">
-              {/* Favorites Section */}
+              {/* Favorites */}
               {favoriteEbooks.length > 0 && (
                 <div>
                   <h3 className="text-sm font-semibold text-muted-foreground mb-3 flex items-center gap-2">
@@ -613,15 +662,9 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                     {favoriteEbooks.map((book) => (
                       <button
                         key={book.id}
-                        onClick={() => {
-                          onSelectEbook(book.id)
-                          onClose()
-                        }}
-                        className={`
-                          flex-shrink-0 w-32 p-3 rounded-lg border transition-all
-                          hover:border-primary hover:bg-primary/10
-                          ${activeEbookId === book.id ? 'border-primary bg-primary/10' : 'border-border bg-card'}
-                        `}
+                        onClick={() => { onSelectEbook(book.id); onClose() }}
+                        className={`flex-shrink-0 w-32 p-3 rounded-lg border transition-all hover:border-primary hover:bg-primary/10
+                          ${activeEbookId === book.id ? 'border-primary bg-primary/10' : 'border-border bg-card'}`}
                       >
                         <div className="text-5xl mb-2">{book.cover_emoji}</div>
                         <p className="text-sm font-medium truncate">{book.title}</p>
@@ -632,50 +675,35 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                 </div>
               )}
 
-              {/* All Books Section */}
+              {/* All Books */}
               <div>
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">
-                  📖 ALLE BOEKEN
-                </h3>
+                <h3 className="text-sm font-semibold text-muted-foreground mb-3">📖 ALLE BOEKEN</h3>
                 <div className="space-y-2">
                   {ebooks.length === 0 ? (
                     <div className="text-center py-12">
                       <span className="text-5xl">📚</span>
                       <p className="text-muted-foreground mt-3">Nog geen ebooks</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Upload je eerste schoolboek met de "+ Nieuw" knop
-                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Upload je eerste schoolboek met de "+ Nieuw" knop</p>
                     </div>
                   ) : filteredEbooks.length === 0 ? (
-                    <p className="text-center text-muted-foreground py-8">
-                      Geen boeken gevonden
-                    </p>
+                    <p className="text-center text-muted-foreground py-8">Geen boeken gevonden</p>
                   ) : (
                     filteredEbooks.map((book) => (
                       <div
                         key={book.id}
-                        className={`
-                          flex items-center gap-3 p-3 rounded-lg border transition-all
-                          hover:border-primary hover:bg-primary/5 cursor-pointer group
-                          ${activeEbookId === book.id ? 'border-primary bg-primary/10' : 'border-border'}
-                        `}
-                        onClick={() => {
-                          onSelectEbook(book.id)
-                          onClose()
-                        }}
+                        className={`flex items-center gap-3 p-3 rounded-lg border transition-all hover:border-primary hover:bg-primary/5 cursor-pointer group
+                          ${activeEbookId === book.id ? 'border-primary bg-primary/10' : 'border-border'}`}
+                        onClick={() => { onSelectEbook(book.id); onClose() }}
                       >
                         <div className="text-3xl">{book.cover_emoji}</div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{book.title}</p>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {book.author || 'Onbekende auteur'}
-                          </p>
+                          <p className="text-sm text-muted-foreground truncate">{book.author || 'Onbekende auteur'}</p>
                           <div className="flex items-center gap-2 mt-0.5">
-                            {book.subject && (
-                              <span className="text-xs text-muted-foreground">{book.subject}</span>
-                            )}
+                            {book.subject && <span className="text-xs text-muted-foreground">{book.subject}</span>}
                             <span className="text-xs text-muted-foreground">
                               · {book.file_type.toUpperCase()} · {formatFileSize(book.file_size)}
+                              {book.documents && book.documents.length > 1 && ` · ${book.documents.length} bestanden`}
                             </span>
                           </div>
                         </div>
@@ -689,37 +717,16 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
                             </button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openEditForm(book)
-                              }}
-                            >
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); openEditForm(book) }}>
                               <PencilSimple size={16} />
                               <span className="ml-2">Aanpassen</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                toggleFavorite(book.id)
-                              }}
-                            >
-                              <Star
-                                size={16}
-                                weight={book.favorite ? 'fill' : 'regular'}
-                                className={book.favorite ? 'text-yellow-500' : ''}
-                              />
-                              <span className="ml-2">
-                                {book.favorite ? 'Uit favorieten' : 'Favoriet'}
-                              </span>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toggleFavorite(book.id) }}>
+                              <Star size={16} weight={book.favorite ? 'fill' : 'regular'} className={book.favorite ? 'text-yellow-500' : ''} />
+                              <span className="ml-2">{book.favorite ? 'Uit favorieten' : 'Favoriet'}</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                if (confirm(`"${book.title}" verwijderen?`)) {
-                                  handleDelete(book.id)
-                                }
-                              }}
+                              onClick={(e) => { e.stopPropagation(); if (confirm(`"${book.title}" verwijderen?`)) handleDelete(book.id) }}
                               className="text-red-500"
                             >
                               <Trash size={16} />
@@ -738,9 +745,7 @@ export function EbookModal({ isOpen, onClose, onSelectEbook, activeEbookId }: Eb
 
         {/* Footer */}
         <div className="p-4 border-t border-border flex-shrink-0">
-          <Button variant="outline" onClick={onClose} className="w-full">
-            Annuleren
-          </Button>
+          <Button variant="outline" onClick={onClose} className="w-full">Annuleren</Button>
         </div>
       </div>
     </div>
