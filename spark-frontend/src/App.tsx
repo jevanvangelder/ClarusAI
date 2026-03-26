@@ -1,5 +1,5 @@
-import { useEffect } from 'react'
-import { Routes, Route, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ConfirmEmail from './pages/ConfirmEmail'
@@ -9,14 +9,32 @@ import ChatApp from './ChatApp'
 
 function AppRoutes() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const [checking, setChecking] = useState(true)
 
   useEffect(() => {
-    // Vang Supabase recovery redirect op root URL
     const hash = window.location.hash
-    if (hash.includes('type=recovery') || hash.includes('error=access_denied')) {
-      navigate('/reset-password' + window.location.hash, { replace: true })
+
+    // Vang Supabase recovery/error redirect op — ongeacht welke route
+    if (hash.includes('type=recovery') || hash.includes('error=access_denied') || hash.includes('error_code=otp_expired')) {
+      // Alleen redirecten als we nog NIET op /reset-password zijn
+      if (location.pathname !== '/reset-password') {
+        navigate('/reset-password' + hash, { replace: true })
+        return
+      }
     }
-  }, [navigate])
+
+    setChecking(false)
+  }, [navigate, location.pathname])
+
+  if (checking) {
+    // Even wachten tot hash-check klaar is
+    const hash = window.location.hash
+    if (hash.includes('type=recovery') || hash.includes('error=')) {
+      return null // Niet renderen tijdens redirect
+    }
+    setChecking(false)
+  }
 
   return (
     <Routes>
