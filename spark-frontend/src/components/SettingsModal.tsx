@@ -23,11 +23,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
   const navigate = useNavigate()
   const { user, signOut } = useAuth()
   const [isChangingEmail, setIsChangingEmail] = useState(false)
-  const [isChangingPassword, setIsChangingPassword] = useState(false)
   const [newEmail, setNewEmail] = useState('')
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [passwordResetSent, setPasswordResetSent] = useState(false)
 
   const handleEmailChange = async () => {
     if (!newEmail) {
@@ -38,9 +36,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     setLoading(true)
     try {
       const { error } = await supabase.auth.updateUser({ email: newEmail })
-      
       if (error) throw error
-      
       toast.success('Verificatie email verstuurd naar je nieuwe email adres!')
       setIsChangingEmail(false)
       setNewEmail('')
@@ -51,34 +47,21 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     }
   }
 
-  const handlePasswordChange = async () => {
-    if (!newPassword || !confirmPassword) {
-      toast.error('Vul beide wachtwoord velden in')
-      return
-    }
-
-    if (newPassword !== confirmPassword) {
-      toast.error('Wachtwoorden komen niet overeen')
-      return
-    }
-
-    if (newPassword.length < 6) {
-      toast.error('Wachtwoord moet minimaal 6 karakters zijn')
+  const handlePasswordReset = async () => {
+    if (!user?.email) {
+      toast.error('Geen email adres gevonden')
       return
     }
 
     setLoading(true)
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPassword })
-      
+      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      })
       if (error) throw error
-      
-      toast.success('Wachtwoord succesvol gewijzigd!')
-      setIsChangingPassword(false)
-      setNewPassword('')
-      setConfirmPassword('')
+      setPasswordResetSent(true)
     } catch (error: any) {
-      toast.error(error.message || 'Kon wachtwoord niet wijzigen')
+      toast.error(error.message || 'Kon verificatie email niet versturen')
     } finally {
       setLoading(false)
     }
@@ -97,9 +80,29 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
     }
   }
 
+  const handleOpenChange = (isOpen: boolean) => {
+    if (!isOpen) {
+      setIsChangingEmail(false)
+      setNewEmail('')
+      setPasswordResetSent(false)
+    }
+    onOpenChange(isOpen)
+  }
+
+  // ✅ Stop keyboard events van doorbubblelen naar ChatSidebar
+  const stopKeyboard = (e: React.KeyboardEvent) => {
+    e.stopPropagation()
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="sm:max-w-[500px]"
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+        onKeyDown={stopKeyboard}
+        onKeyUp={stopKeyboard}
+      >
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold">Instellingen</DialogTitle>
         </DialogHeader>
@@ -111,18 +114,19 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               <EnvelopeSimple size={20} />
               Email
             </Label>
-            
+
             {!isChangingEmail ? (
               <div className="flex items-center gap-3">
-                <Input 
+                <Input
                   id="settings-current-email"
-                  value={user?.email || ''} 
-                  disabled 
+                  value={user?.email || ''}
+                  disabled
                   className="flex-1 bg-gray-100 dark:bg-gray-800"
                   readOnly
+                  tabIndex={-1}
                 />
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={() => setIsChangingEmail(true)}
                   className="whitespace-nowrap"
                 >
@@ -137,21 +141,16 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
                   placeholder="Nieuw email adres"
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
+                  onKeyDown={stopKeyboard}
+                  autoFocus
                 />
                 <div className="flex gap-2">
-                  <Button 
-                    onClick={handleEmailChange} 
-                    disabled={loading}
-                    className="flex-1"
-                  >
+                  <Button onClick={handleEmailChange} disabled={loading} className="flex-1">
                     {loading ? 'Bezig...' : 'Bevestigen'}
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      setIsChangingEmail(false)
-                      setNewEmail('')
-                    }}
+                  <Button
+                    variant="outline"
+                    onClick={() => { setIsChangingEmail(false); setNewEmail('') }}
                     disabled={loading}
                   >
                     Annuleren
@@ -167,52 +166,25 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               <LockKey size={20} />
               Wachtwoord
             </Label>
-            
-            {!isChangingPassword ? (
-              <Button 
-                variant="outline" 
-                onClick={() => setIsChangingPassword(true)}
+
+            {passwordResetSent ? (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center space-y-2">
+                <p className="text-green-700 dark:text-green-300 font-medium">
+                  📧 Verifieer via uw email om de wijziging te voltooien
+                </p>
+                <p className="text-green-600 dark:text-green-400 text-sm">
+                  We hebben een verificatie link gestuurd naar {user?.email}
+                </p>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handlePasswordReset}
+                disabled={loading}
                 className="w-full"
               >
-                Wachtwoord wijzigen
+                {loading ? 'Bezig...' : 'Wachtwoord wijzigen'}
               </Button>
-            ) : (
-              <div className="space-y-2">
-                <Input
-                  id="settings-new-password"
-                  type="password"
-                  placeholder="Nieuw wachtwoord"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <Input
-                  id="settings-confirm-password"
-                  type="password"
-                  placeholder="Bevestig nieuw wachtwoord"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-                <div className="flex gap-2">
-                  <Button 
-                    onClick={handlePasswordChange} 
-                    disabled={loading}
-                    className="flex-1"
-                  >
-                    {loading ? 'Bezig...' : 'Bevestigen'}
-                  </Button>
-                  <Button 
-                    variant="outline" 
-                    onClick={() => {
-                      setIsChangingPassword(false)
-                      setNewPassword('')
-                      setConfirmPassword('')
-                    }}
-                    disabled={loading}
-                  >
-                    Annuleren
-                  </Button>
-                </div>
-              </div>
             )}
           </div>
 
