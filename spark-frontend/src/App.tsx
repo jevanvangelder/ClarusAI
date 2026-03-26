@@ -1,4 +1,5 @@
-import { Routes, Route } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Routes, Route, useNavigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ConfirmEmail from './pages/ConfirmEmail'
@@ -6,7 +7,17 @@ import ResetPassword from './pages/ResetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import ChatApp from './ChatApp'
 
-export default function App() {
+function AppRoutes() {
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    // Vang Supabase recovery redirect op root URL
+    const hash = window.location.hash
+    if (hash.includes('type=recovery') || hash.includes('error=access_denied')) {
+      navigate('/reset-password' + window.location.hash, { replace: true })
+    }
+  }, [navigate])
+
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -23,4 +34,8 @@ export default function App() {
       />
     </Routes>
   )
+}
+
+export default function App() {
+  return <AppRoutes />
 }

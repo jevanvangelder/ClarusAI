@@ -12,9 +12,19 @@ export default function ResetPassword() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [sessionReady, setSessionReady] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  // Supabase zet automatisch de sessie via de link in de email
   useEffect(() => {
+    // Check voor errors in de URL hash
+    const hash = window.location.hash
+    if (hash.includes('error=')) {
+      const params = new URLSearchParams(hash.substring(1))
+      const errorDesc = params.get('error_description')?.replace(/\+/g, ' ')
+      setError(errorDesc || 'De link is ongeldig of verlopen')
+      return
+    }
+
+    // Luister naar PASSWORD_RECOVERY event
     const { data: listener } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
         setSessionReady(true)
@@ -47,9 +57,7 @@ export default function ResetPassword() {
       const { error } = await supabase.auth.updateUser({ password: newPassword })
       if (error) throw error
 
-      // Uitloggen zodat gebruiker opnieuw moet inloggen met nieuw wachtwoord
       await supabase.auth.signOut()
-
       toast.success('Wachtwoord succesvol gewijzigd! Log opnieuw in.')
       navigate('/login')
     } catch (error: any) {
@@ -64,13 +72,27 @@ export default function ResetPassword() {
       <div className="w-full max-w-md bg-card border border-border rounded-xl p-8 shadow-lg space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold">Wachtwoord wijzigen</h1>
-          <p className="text-muted-foreground">
-            Voer hieronder uw nieuwe wachtwoord in
-          </p>
         </div>
 
-        {sessionReady ? (
+        {error ? (
           <div className="space-y-4">
+            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+              <p className="text-red-700 dark:text-red-300 font-medium">
+                ❌ {error}
+              </p>
+              <p className="text-red-600 dark:text-red-400 text-sm mt-2">
+                Vraag een nieuwe wachtwoord reset aan via Instellingen.
+              </p>
+            </div>
+            <Button onClick={() => navigate('/login')} className="w-full">
+              Terug naar inloggen
+            </Button>
+          </div>
+        ) : sessionReady ? (
+          <div className="space-y-4">
+            <p className="text-muted-foreground text-center">
+              Voer hieronder uw nieuwe wachtwoord in
+            </p>
             <div className="space-y-2">
               <Label htmlFor="new-password">Nieuw wachtwoord</Label>
               <Input
