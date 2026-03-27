@@ -7,6 +7,7 @@ import ResetPassword from './pages/ResetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
 import DashboardLayout from './components/DashboardLayout'
 import Dashboard from './pages/Dashboard'
+import Instellingen from './pages/Instellingen'
 import ChatApp from './ChatApp'
 
 function AppRoutes() {
@@ -17,9 +18,7 @@ function AppRoutes() {
   useEffect(() => {
     const hash = window.location.hash
 
-    // Vang Supabase recovery/error redirect op — ongeacht welke route
     if (hash.includes('type=recovery') || hash.includes('error=access_denied') || hash.includes('error_code=otp_expired')) {
-      // Alleen redirecten als we nog NIET op /reset-password zijn
       if (location.pathname !== '/reset-password') {
         navigate('/reset-password' + hash, { replace: true })
         return
@@ -30,10 +29,9 @@ function AppRoutes() {
   }, [navigate, location.pathname])
 
   if (checking) {
-    // Even wachten tot hash-check klaar is
     const hash = window.location.hash
     if (hash.includes('type=recovery') || hash.includes('error=')) {
-      return null // Niet renderen tijdens redirect
+      return null
     }
     setChecking(false)
   }
@@ -64,6 +62,7 @@ function AppRoutes() {
             <DashboardLayout>
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/instellingen" element={<Instellingen />} />
               </Routes>
             </DashboardLayout>
           </ProtectedRoute>
