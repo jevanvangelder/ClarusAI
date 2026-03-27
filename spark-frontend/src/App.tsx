@@ -51,27 +51,7 @@ function AppRoutes() {
         path="/chat"
         element={
           <ProtectedRoute>
-            <div className="relative min-h-screen bg-[#0a0a1a]">
-              {/* Terugknop naar Dashboard */}
-              <button
-                onClick={() => window.location.href = '/'}
-                className="
-                  fixed top-4 left-4 z-50
-                  flex items-center gap-2 px-4 py-2
-                  bg-[#0f1029]/90 backdrop-blur-sm
-                  border border-white/10 rounded-xl
-                  text-white/60 hover:text-white hover:border-white/20
-                  transition-all duration-200 text-sm font-medium
-                  shadow-lg
-                "
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 12H5M12 19l-7-7 7-7" />
-                </svg>
-                Dashboard
-              </button>
-              <ChatApp />
-            </div>
+            <ChatApp />
           </ProtectedRoute>
         }
       />
