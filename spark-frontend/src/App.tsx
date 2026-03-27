@@ -5,6 +5,8 @@ import Register from './pages/Register'
 import ConfirmEmail from './pages/ConfirmEmail'
 import ResetPassword from './pages/ResetPassword'
 import ProtectedRoute from './components/ProtectedRoute'
+import DashboardLayout from './components/DashboardLayout'
+import Dashboard from './pages/Dashboard'
 import ChatApp from './ChatApp'
 
 function AppRoutes() {
@@ -38,15 +40,23 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Publieke routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/confirm-email" element={<ConfirmEmail />} />
       <Route path="/reset-password" element={<ResetPassword />} />
+
+      {/* Beschermde routes met Dashboard layout */}
       <Route
         path="/*"
         element={
           <ProtectedRoute>
-            <ChatApp />
+            <DashboardLayout>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/chat" element={<ChatApp />} />
+              </Routes>
+            </DashboardLayout>
           </ProtectedRoute>
         }
       />

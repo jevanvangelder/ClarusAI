@@ -2,9 +2,22 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
+export type UserRole = 'admin' | 'school_admin' | 'teacher' | 'student'
+
+interface Profile {
+  id: string
+  email: string
+  full_name: string | null
+  role: UserRole
+  avatar_url: string | null
+  school: string | null
+}
+
 interface AuthContextType {
   user: User | null
   session: Session | null
+  profile: Profile | null
+  role: UserRole | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
   signUp: (email: string, password: string) => Promise<{ error: any }>
@@ -16,13 +29,41 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
+  const [profile, setProfile] = useState<Profile | null>(null)
+  const [role, setRole] = useState<UserRole | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Profiel ophalen uit de profiles tabel
+  const fetchProfile = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single()
+
+      if (error) {
+        console.error('Fout bij ophalen profiel:', error)
+        return
+      }
+
+      if (data) {
+        setProfile(data)
+        setRole(data.role)
+      }
+    } catch (err) {
+      console.error('Onverwachte fout bij ophalen profiel:', err)
+    }
+  }
 
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchProfile(session.user.id)
+      }
       setLoading(false)
     })
 
@@ -32,6 +73,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
+      if (session?.user) {
+        fetchProfile(session.user.id)
+      } else {
+        setProfile(null)
+        setRole(null)
+      }
       setLoading(false)
     })
 
@@ -61,6 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const value = {
     user,
     session,
+    profile,
+    role,
     loading,
     signIn,
     signUp,
