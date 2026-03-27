@@ -132,193 +132,205 @@ export default function Instellingen() {
       </div>
 
       {/* Profiel sectie */}
-      <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-blue-500/10 rounded-lg">
-            <User size={20} className="text-blue-400" />
+      <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-blue-500/10 rounded-lg">
+              <User size={20} className="text-blue-400" />
+            </div>
+            <h2 className="text-lg font-semibold text-white">Profiel</h2>
           </div>
-          <h2 className="text-lg font-semibold text-white">Profiel</h2>
-        </div>
 
-        {/* Email (niet bewerkbaar) */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">
-            <span className="flex items-center gap-2">
-              <Mail size={14} />
-              E-mail
-            </span>
-          </label>
-          <input
-            type="email"
-            value={user?.email || ''}
-            disabled
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
-          />
-          <p className="text-xs text-white/30 mt-1">Je e-mail kan niet worden gewijzigd</p>
-        </div>
-
-        {/* Rol (niet bewerkbaar) */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">
-            <span className="flex items-center gap-2">
-              <Shield size={14} />
-              Rol
-            </span>
-          </label>
-          <input
-            type="text"
-            value={getRoleName()}
-            disabled
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
-          />
-          <p className="text-xs text-white/30 mt-1">Je rol kan alleen door een admin worden gewijzigd</p>
-        </div>
-
-        {/* Volledige naam */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">
-            <span className="flex items-center gap-2">
-              <User size={14} />
-              Volledige naam
-            </span>
-          </label>
-          <input
-            type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            placeholder="Bijv. Jan de Vries"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-          />
-        </div>
-
-        {/* School */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">
-            <span className="flex items-center gap-2">
-              <School size={14} />
-              School
-            </span>
-          </label>
-          <input
-            type="text"
-            value={school}
-            onChange={(e) => setSchool(e.target.value)}
-            placeholder="Bijv. Hogeschool Rotterdam"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-          />
-        </div>
-
-        {/* Error / Success */}
-        {error && (
-          <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-            <AlertCircle size={16} />
-            {error}
+          {/* Email (niet bewerkbaar) */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">
+              <span className="flex items-center gap-2">
+                <Mail size={14} />
+                E-mail
+              </span>
+            </label>
+            <input
+              type="email"
+              value={user?.email || ''}
+              disabled
+              autoComplete="off"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
+            />
+            <p className="text-xs text-white/30 mt-1">Je e-mail kan niet worden gewijzigd</p>
           </div>
-        )}
 
-        {saved && (
-          <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-            <Check size={16} />
-            Profiel succesvol opgeslagen!
+          {/* Rol (niet bewerkbaar) */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">
+              <span className="flex items-center gap-2">
+                <Shield size={14} />
+                Rol
+              </span>
+            </label>
+            <input
+              type="text"
+              value={getRoleName()}
+              disabled
+              autoComplete="off"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
+            />
+            <p className="text-xs text-white/30 mt-1">Je rol kan alleen door een admin worden gewijzigd</p>
           </div>
-        )}
 
-        {/* Opslaan knop */}
-        <button
-          onClick={handleSaveProfile}
-          disabled={saving}
-          className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-medium rounded-lg transition-all text-sm"
-        >
-          {saving ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Opslaan...
-            </>
-          ) : (
-            <>
-              <Save size={16} />
-              Profiel opslaan
-            </>
+          {/* Volledige naam */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">
+              <span className="flex items-center gap-2">
+                <User size={14} />
+                Volledige naam
+              </span>
+            </label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="Bijv. Jan de Vries"
+              autoComplete="off"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+            />
+          </div>
+
+          {/* School */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">
+              <span className="flex items-center gap-2">
+                <School size={14} />
+                School
+              </span>
+            </label>
+            <input
+              type="text"
+              value={school}
+              onChange={(e) => setSchool(e.target.value)}
+              placeholder="Bijv. Hogeschool Rotterdam"
+              autoComplete="off"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+            />
+          </div>
+
+          {/* Error / Success */}
+          {error && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+              <AlertCircle size={16} />
+              {error}
+            </div>
           )}
-        </button>
-      </div>
+
+          {saved && (
+            <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
+              <Check size={16} />
+              Profiel succesvol opgeslagen!
+            </div>
+          )}
+
+          {/* Opslaan knop */}
+          <button
+            type="button"
+            onClick={handleSaveProfile}
+            disabled={saving}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-medium rounded-lg transition-all text-sm"
+          >
+            {saving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Opslaan...
+              </>
+            ) : (
+              <>
+                <Save size={16} />
+                Profiel opslaan
+              </>
+            )}
+          </button>
+        </div>
+      </form>
 
       {/* Wachtwoord sectie */}
-      <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-6">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 bg-purple-500/10 rounded-lg">
-            <Lock size={20} className="text-purple-400" />
+      <form autoComplete="off" onSubmit={(e) => e.preventDefault()}>
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-purple-500/10 rounded-lg">
+              <Lock size={20} className="text-purple-400" />
+            </div>
+            <h2 className="text-lg font-semibold text-white">Wachtwoord wijzigen</h2>
           </div>
-          <h2 className="text-lg font-semibold text-white">Wachtwoord wijzigen</h2>
-        </div>
 
-        {/* Nieuw wachtwoord */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">Nieuw wachtwoord</label>
-          <div className="relative">
+          {/* Nieuw wachtwoord */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">Nieuw wachtwoord</label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="Minimaal 6 tekens"
+                autoComplete="new-password"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+              >
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Bevestig wachtwoord */}
+          <div>
+            <label className="block text-sm font-medium text-white/60 mb-2">Bevestig wachtwoord</label>
             <input
               type={showPassword ? 'text' : 'password'}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Minimaal 6 tekens"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all pr-12"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Herhaal je wachtwoord"
+              autoComplete="new-password"
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
             />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-            >
-              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-            </button>
           </div>
-        </div>
 
-        {/* Bevestig wachtwoord */}
-        <div>
-          <label className="block text-sm font-medium text-white/60 mb-2">Bevestig wachtwoord</label>
-          <input
-            type={showPassword ? 'text' : 'password'}
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            placeholder="Herhaal je wachtwoord"
-            className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all"
-          />
-        </div>
-
-        {/* Error / Success */}
-        {passwordError && (
-          <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-            <AlertCircle size={16} />
-            {passwordError}
-          </div>
-        )}
-
-        {passwordSaved && (
-          <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-            <Check size={16} />
-            Wachtwoord succesvol gewijzigd!
-          </div>
-        )}
-
-        {/* Wijzig knop */}
-        <button
-          onClick={handleChangePassword}
-          disabled={passwordSaving || !newPassword || !confirmPassword}
-          className="flex items-center gap-2 px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all text-sm"
-        >
-          {passwordSaving ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Wijzigen...
-            </>
-          ) : (
-            <>
-              <Lock size={16} />
-              Wachtwoord wijzigen
-            </>
+          {/* Error / Success */}
+          {passwordError && (
+            <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
+              <AlertCircle size={16} />
+              {passwordError}
+            </div>
           )}
-        </button>
-      </div>
+
+          {passwordSaved && (
+            <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
+              <Check size={16} />
+              Wachtwoord succesvol gewijzigd!
+            </div>
+          )}
+
+          {/* Wijzig knop */}
+          <button
+            type="button"
+            onClick={handleChangePassword}
+            disabled={passwordSaving || !newPassword || !confirmPassword}
+            className="flex items-center gap-2 px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all text-sm"
+          >
+            {passwordSaving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Wijzigen...
+              </>
+            ) : (
+              <>
+                <Lock size={16} />
+                Wachtwoord wijzigen
+              </>
+            )}
+          </button>
+        </div>
+      </form>
     </div>
   )
 }
