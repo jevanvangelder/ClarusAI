@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash } from 'lucide-react'
+import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil, Check, X } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+const OPDRACHT_TYPES = ['huiswerk', 'oefentoets', 'casus', 'opdracht']
 
 interface Vraag {
   nummer: number
@@ -27,6 +30,13 @@ interface Opdracht {
   created_at: string
 }
 
+interface Klas {
+  id: string
+  naam: string
+  vak: string
+  schooljaar: string
+}
+
 interface SparMessage {
   role: 'user' | 'assistant'
   content: string
@@ -48,7 +58,16 @@ export default function Opdrachten() {
   const [view, setView] = useState<View>('overzicht')
   const [opdrachten, setOpdrachten] = useState<Opdracht[]>([])
   const [selectedOpdracht, setSelectedOpdracht] = useState<Opdracht | null>(null)
+  const [klassen, setKlassen] = useState<Klas[]>([])
 
+  // Edit state
+  const [editTitel, setEditTitel] = useState('')
+  const [editType, setEditType] = useState('')
+  const [editKlasId, setEditKlasId] = useState<string>('')
+  const [editingTitel, setEditingTitel] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  // Spar state
   const [sparMessages, setSparMessages] = useState<SparMessage[]>([])
   const [sparInput, setSparInput] = useState('')
   const [sparLoading, setSparLoading] = useState(false)
@@ -74,14 +93,56 @@ export default function Opdrachten() {
       .catch(() => {})
   }, [user])
 
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('klassen')
+      .select('id, naam, vak, schooljaar')
+      .eq('teacher_id', user.id)
+      .eq('is_active', true)
+      .then(({ data }) => setKlassen(data || []))
+  }, [user])
+
+  // Sync edit state when opdracht changes
+  useEffect(() => {
+    if (selectedOpdracht) {
+      setEditTitel(selectedOpdracht.titel)
+      setEditType(selectedOpdracht.type)
+      setEditKlasId(selectedOpdracht.klas_id || '')
+    }
+  }, [selectedOpdracht])
+
+  const handleSaveChanges = async () => {
+    if (!selectedOpdracht) return
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/opdrachten/${selectedOpdracht.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          titel: editTitel,
+          type: editType,
+          klas_id: editKlasId || null,
+        }),
+      })
+      const updated = await res.json()
+      const parsedUpdated = { ...updated, vragen: parseVragen(updated.vragen) }
+      setSelectedOpdracht(parsedUpdated)
+      setOpdrachten(prev => prev.map(o => o.id === parsedUpdated.id ? parsedUpdated : o))
+      setEditingTitel(false)
+    } catch {
+      alert('Opslaan mislukt, probeer opnieuw.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   const tryParseOpdracht = (text: string) => {
     try {
       const match = text.match(/\{[\s\S]*\}/)
       if (match) {
         const parsed = JSON.parse(match[0])
-        if (parsed.titel && parsed.vragen) {
-          setGegenereerdeOpdracht(parsed)
-        }
+        if (parsed.titel && parsed.vragen) setGegenereerdeOpdracht(parsed)
       }
     } catch {}
   }
@@ -89,12 +150,10 @@ export default function Opdrachten() {
   const handleSparSend = async () => {
     if (!sparInput.trim() && sparFiles.length === 0) return
     setSparLoading(true)
-
     const userMsg: SparMessage = { role: 'user', content: sparInput.trim() || '📎 Bestand meegestuurd' }
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
-
     try {
       let data
       if (sparFiles.length > 0) {
@@ -116,7 +175,6 @@ export default function Opdrachten() {
         })
         data = await res.json()
       }
-
       const assistantMsg: SparMessage = { role: 'assistant', content: data.message }
       setSparMessages(prev => [...prev, assistantMsg])
       tryParseOpdracht(data.message)
@@ -134,10 +192,7 @@ export default function Opdrachten() {
       const res = await fetch(`${API_URL}/api/opdrachten`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...gegenereerdeOpdracht,
-          teacher_id: user.id,
-        }),
+        body: JSON.stringify({ ...gegenereerdeOpdracht, teacher_id: user.id }),
       })
       const created = await res.json()
       const parsed = { ...created, vragen: parseVragen(created.vragen) }
@@ -156,7 +211,7 @@ export default function Opdrachten() {
     if (!confirm(`Weet je zeker dat je "${opdracht.titel}" wilt verwijderen?`)) return
     await fetch(`${API_URL}/api/opdrachten/${opdracht.id}`, { method: 'DELETE' })
     setOpdrachten(prev => prev.filter(o => o.id !== opdracht.id))
-    if (selectedOpdracht?.id === opdracht.id) setView('overzicht')
+    setView('overzicht')
   }
 
   // ===== SPAR VIEW =====
@@ -177,7 +232,6 @@ export default function Opdrachten() {
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
               <p className="text-white/30 text-xs mt-0.5">Vertel wat voor opdracht je wilt maken. Je kunt ook bestanden meesturen.</p>
             </div>
-
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {sparMessages.length === 0 && (
                 <p className="text-white/30 text-sm text-center mt-8">
@@ -191,9 +245,7 @@ export default function Opdrachten() {
                 return (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                     <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
-                      msg.role === 'user'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white/5 border border-white/10 text-white/80'
+                      msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
                     }`}>
                       {msg.content}
                     </div>
@@ -214,7 +266,6 @@ export default function Opdrachten() {
               )}
               <div ref={chatEndRef} />
             </div>
-
             {sparFiles.length > 0 && (
               <div className="px-3 pt-2 flex flex-wrap gap-2">
                 {sparFiles.map((f, i) => (
@@ -225,7 +276,6 @@ export default function Opdrachten() {
                 ))}
               </div>
             )}
-
             <div className="p-3 border-t border-white/10 flex gap-2">
               <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
               <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 transition-colors">
@@ -249,12 +299,11 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Rechts: gegenereerde opdracht preview */}
+          {/* Rechts: preview */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 Gegenereerde opdracht</span>
             </div>
-
             {!gegenereerdeOpdracht ? (
               <div className="flex-1 flex items-center justify-center text-white/20 text-sm text-center p-8">
                 De opdracht verschijnt hier zodra de AI hem heeft gegenereerd.
@@ -263,13 +312,10 @@ export default function Opdrachten() {
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 <div>
                   <h3 className="text-white font-bold text-lg">{gegenereerdeOpdracht.titel}</h3>
-                  <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded mt-1 inline-block">
-                    {gegenereerdeOpdracht.type}
-                  </span>
+                  <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded mt-1 inline-block">{gegenereerdeOpdracht.type}</span>
                   <p className="text-white/60 text-sm mt-2">{gegenereerdeOpdracht.beschrijving}</p>
                   <p className="text-white/40 text-xs mt-1">Max punten: {gegenereerdeOpdracht.max_punten}</p>
                 </div>
-
                 <div className="space-y-3">
                   {parseVragen(gegenereerdeOpdracht.vragen).map((v: Vraag, i: number) => (
                     <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-3">
@@ -279,21 +325,14 @@ export default function Opdrachten() {
                       </div>
                       {v.opties && v.opties.length > 0 && (
                         <ul className="mt-2 space-y-1">
-                          {v.opties.map((opt, j) => (
-                            <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>
-                          ))}
+                          {v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}
                         </ul>
                       )}
                       <p className="text-green-400/70 text-xs mt-2">✓ {v.antwoord}</p>
                     </div>
                   ))}
                 </div>
-
-                <button
-                  onClick={handleOpslaanOpdracht}
-                  disabled={opslaan}
-                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-all"
-                >
+                <button onClick={handleOpslaanOpdracht} disabled={opslaan} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-all">
                   {opslaan ? 'Opslaan...' : '💾 Opdracht opslaan'}
                 </button>
               </div>
@@ -308,28 +347,77 @@ export default function Opdrachten() {
   if (view === 'detail' && selectedOpdracht) {
     return (
       <div className="space-y-4">
-        <div className="flex items-center gap-3">
+        {/* Header */}
+        <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white transition-colors">
             <ArrowLeft size={20} />
           </button>
-          <h2 className="text-2xl font-bold text-white">{selectedOpdracht.titel}</h2>
-          <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded">
-            {selectedOpdracht.type}
-          </span>
-          <div className="ml-auto">
-            <button
-              onClick={() => handleDelete(selectedOpdracht)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all"
-            >
+
+          {/* Titel */}
+          {editingTitel ? (
+            <input
+              autoFocus
+              value={editTitel}
+              onChange={e => setEditTitel(e.target.value)}
+              className="text-2xl font-bold bg-white/5 border border-blue-500/50 rounded-lg px-3 py-1 text-white outline-none"
+            />
+          ) : (
+            <h2 className="text-2xl font-bold text-white">{editTitel}</h2>
+          )}
+          <button onClick={() => setEditingTitel(!editingTitel)} className="text-white/30 hover:text-white/70 transition-colors">
+            <Pencil size={15} />
+          </button>
+
+          <div className="ml-auto flex items-center gap-2">
+            <button onClick={handleSaveChanges} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg transition-all">
+              <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
+            </button>
+            <button onClick={() => handleDelete(selectedOpdracht)} className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all">
               <Trash size={14} /> Verwijderen
             </button>
           </div>
         </div>
 
+        {/* Instellingen balk */}
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 flex flex-wrap gap-4 items-center">
+          {/* Type */}
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-wider">Type</label>
+            <select
+              value={editType}
+              onChange={e => setEditType(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm outline-none focus:border-blue-500/50"
+            >
+              {OPDRACHT_TYPES.map(t => (
+                <option key={t} value={t} className="bg-[#0f1029]">{t}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Klas */}
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-wider">Klas toewijzen</label>
+            <select
+              value={editKlasId}
+              onChange={e => setEditKlasId(e.target.value)}
+              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm outline-none focus:border-blue-500/50"
+            >
+              <option value="" className="bg-[#0f1029]">— Geen klas —</option>
+              {klassen.map(k => (
+                <option key={k.id} value={k.id} className="bg-[#0f1029]">{k.naam} — {k.vak} ({k.schooljaar})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <label className="text-white/40 text-xs uppercase tracking-wider">Max punten</label>
+            <span className="text-white text-sm px-3 py-1.5">{selectedOpdracht.max_punten}pt</span>
+          </div>
+        </div>
+
+        {/* Vragen */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <p className="text-white/60 text-sm">{selectedOpdracht.beschrijving}</p>
-          <p className="text-white/40 text-xs">Max punten: {selectedOpdracht.max_punten}</p>
-
           <div className="space-y-3">
             {parseVragen(selectedOpdracht.vragen).map((v: Vraag, i: number) => (
               <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
@@ -339,9 +427,7 @@ export default function Opdrachten() {
                 </div>
                 {v.opties && v.opties.length > 0 && (
                   <ul className="mt-2 space-y-1">
-                    {v.opties.map((opt, j) => (
-                      <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>
-                    ))}
+                    {v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}
                   </ul>
                 )}
                 <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
@@ -401,17 +487,18 @@ export default function Opdrachten() {
               className="bg-[#0f1029] border border-white/10 hover:border-blue-500/40 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group"
             >
               <div className="flex items-start justify-between mb-2">
-                <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded">
-                  {opdracht.type}
-                </span>
+                <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded">{opdracht.type}</span>
                 <span className="text-xs text-white/30">{opdracht.max_punten}pt</span>
               </div>
               <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
               <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
               <p className="text-white/20 text-xs mt-2">{parseVragen(opdracht.vragen).length} vragen</p>
-              <div className="mt-3 text-blue-400/60 text-xs group-hover:text-blue-400 transition-colors">
-                Klik om te openen →
-              </div>
+              {opdracht.klas_id && (
+                <p className="text-blue-400/60 text-xs mt-1">
+                  📚 {klassen.find(k => k.id === opdracht.klas_id)?.naam || 'Klas toegewezen'}
+                </p>
+              )}
+              <div className="mt-3 text-blue-400/60 text-xs group-hover:text-blue-400 transition-colors">Klik om te openen →</div>
             </div>
           ))}
         </div>
