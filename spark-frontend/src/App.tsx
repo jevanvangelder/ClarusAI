@@ -12,6 +12,7 @@ import Klassen from './pages/Klassen'
 import Opdrachten from './pages/Opdrachten'
 import Analyse from './pages/Analyse'
 import Admin from './pages/Admin'
+import Modules from './pages/Modules'
 import ChatApp from './ChatApp'
 
 function AppRoutes() {
@@ -67,6 +68,7 @@ function AppRoutes() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/instellingen" element={<Instellingen />} />
+                <Route path="/modules" element={<Modules />} />
                 <Route path="/klassen" element={<Klassen />} />
                 <Route path="/opdrachten" element={<Opdrachten />} />
                 <Route path="/analyse" element={<Analyse />} />
