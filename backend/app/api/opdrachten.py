@@ -7,6 +7,7 @@ from app.services.ai_service import ai_service
 from app.utils.file_parser import parse_file
 from supabase import create_client, Client
 import json
+import traceback
 
 router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -49,6 +50,8 @@ async def get_opdrachten(teacher_id: str):
         response = supabase.table("opdrachten").select("*").eq("teacher_id", teacher_id).order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
+        print(f"❌ GET opdrachten error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -63,6 +66,8 @@ async def get_opdracht(opdracht_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ GET opdracht error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -70,23 +75,31 @@ async def get_opdracht(opdracht_id: str):
 @router.post("")
 async def create_opdracht(opdracht: OpdachtCreate):
     try:
+        print(f"🔍 CREATE OPDRACHT: {opdracht.titel}")
+        print(f"  vragen count: {len(opdracht.vragen) if opdracht.vragen else 0}")
+
         insert_data = {
             "titel": opdracht.titel,
             "beschrijving": opdracht.beschrijving or "",
             "teacher_id": opdracht.teacher_id,
             "type": opdracht.type or "huiswerk",
-            "vragen": opdracht.vragen or [],
+            "vragen": json.dumps(opdracht.vragen) if opdracht.vragen else json.dumps([]),
             "max_punten": opdracht.max_punten or 10,
             "is_actief": False,
         }
+
         if opdracht.klas_id:
             insert_data["klas_id"] = opdracht.klas_id
         if opdracht.deadline:
             insert_data["deadline"] = opdracht.deadline
 
+        print(f"  insert_data keys: {list(insert_data.keys())}")
         response = supabase.table("opdrachten").insert(insert_data).execute()
+        print(f"✅ Opdracht created: {response.data[0]['id']}")
         return response.data[0]
     except Exception as e:
+        print(f"❌ CREATE opdracht error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -106,7 +119,7 @@ async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
         if opdracht.type is not None:
             update_data["type"] = opdracht.type
         if opdracht.vragen is not None:
-            update_data["vragen"] = opdracht.vragen
+            update_data["vragen"] = json.dumps(opdracht.vragen)
         if opdracht.max_punten is not None:
             update_data["max_punten"] = opdracht.max_punten
         if opdracht.is_actief is not None:
@@ -119,6 +132,8 @@ async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ UPDATE opdracht error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -130,6 +145,8 @@ async def delete_opdracht(opdracht_id: str):
         supabase.table("opdrachten").delete().eq("id", opdracht_id).execute()
         return {"message": "Opdracht verwijderd"}
     except Exception as e:
+        print(f"❌ DELETE opdracht error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -169,6 +186,8 @@ async def spar_chat(body: SparChatMessage):
         )
         return {"message": response}
     except Exception as e:
+        print(f"❌ SPAR CHAT error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -220,4 +239,6 @@ async def spar_upload(
         )
         return {"message": response}
     except Exception as e:
+        print(f"❌ SPAR UPLOAD error: {e}")
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
