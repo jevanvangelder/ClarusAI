@@ -1,11 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil, Check, X } from 'lucide-react'
+import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 const OPDRACHT_TYPES = ['huiswerk', 'oefentoets', 'casus', 'opdracht']
+
+const TYPE_COLORS: Record<string, string> = {
+  huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+}
+
+const getTypeColor = (type: string) => TYPE_COLORS[type] || 'text-blue-400 bg-blue-500/10 border-blue-500/20'
 
 interface Vraag {
   nummer: number
@@ -25,6 +34,7 @@ interface Opdracht {
   max_punten: number
   vragen: Vraag[]
   klas_id: string | null
+  klas_ids: string[]
   deadline: string | null
   is_actief: boolean
   created_at: string
@@ -46,9 +56,7 @@ type View = 'overzicht' | 'spar' | 'detail'
 
 const parseVragen = (vragen: any): Vraag[] => {
   if (!vragen) return []
-  if (typeof vragen === 'string') {
-    try { return JSON.parse(vragen) } catch { return [] }
-  }
+  if (typeof vragen === 'string') { try { return JSON.parse(vragen) } catch { return [] } }
   if (Array.isArray(vragen)) return vragen
   return []
 }
@@ -63,7 +71,7 @@ export default function Opdrachten() {
   // Edit state
   const [editTitel, setEditTitel] = useState('')
   const [editType, setEditType] = useState('')
-  const [editKlasId, setEditKlasId] = useState<string>('')
+  const [editKlasIds, setEditKlasIds] = useState<string[]>([])
   const [editingTitel, setEditingTitel] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -78,9 +86,7 @@ export default function Opdrachten() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [sparMessages])
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [sparMessages])
 
   useEffect(() => {
     if (!user) return
@@ -88,29 +94,29 @@ export default function Opdrachten() {
       .then(r => r.json())
       .then(data => setOpdrachten(Array.isArray(data) ? data.map((o: any) => ({
         ...o,
-        vragen: parseVragen(o.vragen)
+        vragen: parseVragen(o.vragen),
+        klas_ids: Array.isArray(o.klas_ids) ? o.klas_ids : [],
       })) : []))
       .catch(() => {})
   }, [user])
 
   useEffect(() => {
     if (!user) return
-    supabase
-      .from('klassen')
-      .select('id, naam, vak, schooljaar')
-      .eq('teacher_id', user.id)
-      .eq('is_active', true)
+    supabase.from('klassen').select('id, naam, vak, schooljaar').eq('teacher_id', user.id).eq('is_active', true)
       .then(({ data }) => setKlassen(data || []))
   }, [user])
 
-  // Sync edit state when opdracht changes
   useEffect(() => {
     if (selectedOpdracht) {
       setEditTitel(selectedOpdracht.titel)
       setEditType(selectedOpdracht.type)
-      setEditKlasId(selectedOpdracht.klas_id || '')
+      setEditKlasIds(selectedOpdracht.klas_ids || [])
     }
   }, [selectedOpdracht])
+
+  const toggleKlas = (id: string) => {
+    setEditKlasIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
+  }
 
   const handleSaveChanges = async () => {
     if (!selectedOpdracht) return
@@ -119,31 +125,21 @@ export default function Opdrachten() {
       const res = await fetch(`${API_URL}/api/opdrachten/${selectedOpdracht.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          titel: editTitel,
-          type: editType,
-          klas_id: editKlasId || null,
-        }),
+        body: JSON.stringify({ titel: editTitel, type: editType, klas_ids: editKlasIds }),
       })
       const updated = await res.json()
-      const parsedUpdated = { ...updated, vragen: parseVragen(updated.vragen) }
+      const parsedUpdated = { ...updated, vragen: parseVragen(updated.vragen), klas_ids: updated.klas_ids || [] }
       setSelectedOpdracht(parsedUpdated)
       setOpdrachten(prev => prev.map(o => o.id === parsedUpdated.id ? parsedUpdated : o))
       setEditingTitel(false)
-    } catch {
-      alert('Opslaan mislukt, probeer opnieuw.')
-    } finally {
-      setSaving(false)
-    }
+    } catch { alert('Opslaan mislukt, probeer opnieuw.') }
+    finally { setSaving(false) }
   }
 
   const tryParseOpdracht = (text: string) => {
     try {
       const match = text.match(/\{[\s\S]*\}/)
-      if (match) {
-        const parsed = JSON.parse(match[0])
-        if (parsed.titel && parsed.vragen) setGegenereerdeOpdracht(parsed)
-      }
+      if (match) { const parsed = JSON.parse(match[0]); if (parsed.titel && parsed.vragen) setGegenereerdeOpdracht(parsed) }
     } catch {}
   }
 
@@ -162,27 +158,18 @@ export default function Opdrachten() {
         formData.append('messages', JSON.stringify(newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }))))
         sparFiles.forEach(f => formData.append('files', f))
         const res = await fetch(`${API_URL}/api/opdrachten/spar/upload`, { method: 'POST', body: formData })
-        data = await res.json()
-        setSparFiles([])
+        data = await res.json(); setSparFiles([])
       } else {
         const res = await fetch(`${API_URL}/api/opdrachten/spar/chat`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: userMsg.content,
-            messages: newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content })),
-          }),
-        })
-        data = await res.json()
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: userMsg.content, messages: newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content })) }),
+        }); data = await res.json()
       }
       const assistantMsg: SparMessage = { role: 'assistant', content: data.message }
       setSparMessages(prev => [...prev, assistantMsg])
       tryParseOpdracht(data.message)
-    } catch {
-      setSparMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }])
-    } finally {
-      setSparLoading(false)
-    }
+    } catch { setSparMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }]) }
+    finally { setSparLoading(false) }
   }
 
   const handleOpslaanOpdracht = async () => {
@@ -190,21 +177,15 @@ export default function Opdrachten() {
     setOpslaan(true)
     try {
       const res = await fetch(`${API_URL}/api/opdrachten`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...gegenereerdeOpdracht, teacher_id: user.id }),
       })
       const created = await res.json()
-      const parsed = { ...created, vragen: parseVragen(created.vragen) }
+      const parsed = { ...created, vragen: parseVragen(created.vragen), klas_ids: created.klas_ids || [] }
       setOpdrachten(prev => [parsed, ...prev])
-      setView('overzicht')
-      setSparMessages([])
-      setGegenereerdeOpdracht(null)
-    } catch {
-      alert('Opslaan mislukt, probeer opnieuw.')
-    } finally {
-      setOpslaan(false)
-    }
+      setView('overzicht'); setSparMessages([]); setGegenereerdeOpdracht(null)
+    } catch { alert('Opslaan mislukt, probeer opnieuw.') }
+    finally { setOpslaan(false) }
   }
 
   const handleDelete = async (opdracht: Opdracht) => {
@@ -224,29 +205,23 @@ export default function Opdrachten() {
           </button>
           <h2 className="text-2xl font-bold text-white">Nieuwe opdracht maken</h2>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>
-          {/* Links: spar chatbox */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
-              <p className="text-white/30 text-xs mt-0.5">Vertel wat voor opdracht je wilt maken. Je kunt ook bestanden meesturen.</p>
+              <p className="text-white/30 text-xs mt-0.5">Vertel wat voor opdracht je wilt maken.</p>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {sparMessages.length === 0 && (
                 <p className="text-white/30 text-sm text-center mt-8">
-                  Vertel de AI wat voor opdracht je wilt maken.<br />
                   Bijv: "Maak een oefentoets over de Franse Revolutie voor havo 4, 5 vragen"
                 </p>
               )}
               {sparMessages.map((msg, i) => {
-                const isJson = msg.role === 'assistant' && msg.content.trim().startsWith('{')
-                if (isJson) return null
+                if (msg.role === 'assistant' && msg.content.trim().startsWith('{')) return null
                 return (
                   <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
-                      msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
-                    }`}>
+                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'}`}>
                       {msg.content}
                     </div>
                   </div>
@@ -254,16 +229,10 @@ export default function Opdrachten() {
               })}
               {gegenereerdeOpdracht && (
                 <div className="flex justify-start">
-                  <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-xl text-sm text-green-400">
-                    ✅ Opdracht gegenereerd! Bekijk en sla op rechts →
-                  </div>
+                  <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-xl text-sm text-green-400">✅ Opdracht gegenereerd! Bekijk en sla op rechts →</div>
                 </div>
               )}
-              {sparLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">Aan het denken...</div>
-                </div>
-              )}
+              {sparLoading && <div className="flex justify-start"><div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">Aan het denken...</div></div>}
               <div ref={chatEndRef} />
             </div>
             {sparFiles.length > 0 && (
@@ -271,48 +240,30 @@ export default function Opdrachten() {
                 {sparFiles.map((f, i) => (
                   <div key={i} className="flex items-center gap-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/60">
                     📎 {f.name}
-                    <button onClick={() => setSparFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400 hover:text-red-300">×</button>
+                    <button onClick={() => setSparFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400">×</button>
                   </div>
                 ))}
               </div>
             )}
             <div className="p-3 border-t border-white/10 flex gap-2">
               <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 transition-colors">
-                <Paperclip size={16} />
-              </button>
-              <input
-                type="text"
-                value={sparInput}
-                onChange={e => setSparInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSparSend()}
-                placeholder="Beschrijf je opdracht..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50"
-              />
-              <button
-                onClick={handleSparSend}
-                disabled={sparLoading || (!sparInput.trim() && sparFiles.length === 0)}
-                className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-all"
-              >
-                <Send size={16} />
-              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70"><Paperclip size={16} /></button>
+              <input type="text" value={sparInput} onChange={e => setSparInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSparSend()} placeholder="Beschrijf je opdracht..." className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50" />
+              <button onClick={handleSparSend} disabled={sparLoading || (!sparInput.trim() && sparFiles.length === 0)} className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg"><Send size={16} /></button>
             </div>
           </div>
 
-          {/* Rechts: preview */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 Gegenereerde opdracht</span>
             </div>
             {!gegenereerdeOpdracht ? (
-              <div className="flex-1 flex items-center justify-center text-white/20 text-sm text-center p-8">
-                De opdracht verschijnt hier zodra de AI hem heeft gegenereerd.
-              </div>
+              <div className="flex-1 flex items-center justify-center text-white/20 text-sm text-center p-8">De opdracht verschijnt hier zodra de AI hem heeft gegenereerd.</div>
             ) : (
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 <div>
                   <h3 className="text-white font-bold text-lg">{gegenereerdeOpdracht.titel}</h3>
-                  <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded mt-1 inline-block">{gegenereerdeOpdracht.type}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded mt-1 inline-block border ${getTypeColor(gegenereerdeOpdracht.type)}`}>{gegenereerdeOpdracht.type}</span>
                   <p className="text-white/60 text-sm mt-2">{gegenereerdeOpdracht.beschrijving}</p>
                   <p className="text-white/40 text-xs mt-1">Max punten: {gegenereerdeOpdracht.max_punten}</p>
                 </div>
@@ -323,16 +274,12 @@ export default function Opdrachten() {
                         <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
-                      {v.opties && v.opties.length > 0 && (
-                        <ul className="mt-2 space-y-1">
-                          {v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}
-                        </ul>
-                      )}
+                      {v.opties && v.opties.length > 0 && <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
                       <p className="text-green-400/70 text-xs mt-2">✓ {v.antwoord}</p>
                     </div>
                   ))}
                 </div>
-                <button onClick={handleOpslaanOpdracht} disabled={opslaan} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-all">
+                <button onClick={handleOpslaanOpdracht} disabled={opslaan} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg">
                   {opslaan ? 'Opslaan...' : '💾 Opdracht opslaan'}
                 </button>
               </div>
@@ -347,71 +294,62 @@ export default function Opdrachten() {
   if (view === 'detail' && selectedOpdracht) {
     return (
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white transition-colors">
-            <ArrowLeft size={20} />
-          </button>
-
-          {/* Titel */}
+          <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
           {editingTitel ? (
-            <input
-              autoFocus
-              value={editTitel}
-              onChange={e => setEditTitel(e.target.value)}
-              className="text-2xl font-bold bg-white/5 border border-blue-500/50 rounded-lg px-3 py-1 text-white outline-none"
-            />
+            <input autoFocus value={editTitel} onChange={e => setEditTitel(e.target.value)} className="text-2xl font-bold bg-white/5 border border-blue-500/50 rounded-lg px-3 py-1 text-white outline-none" />
           ) : (
             <h2 className="text-2xl font-bold text-white">{editTitel}</h2>
           )}
-          <button onClick={() => setEditingTitel(!editingTitel)} className="text-white/30 hover:text-white/70 transition-colors">
-            <Pencil size={15} />
-          </button>
-
+          <button onClick={() => setEditingTitel(!editingTitel)} className="text-white/30 hover:text-white/70"><Pencil size={15} /></button>
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={handleSaveChanges} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg transition-all">
-              <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
+            <button onClick={handleSaveChanges} disabled={saving} className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
+              {saving ? 'Opslaan...' : '✓ Opslaan'}
             </button>
-            <button onClick={() => handleDelete(selectedOpdracht)} className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all">
+            <button onClick={() => handleDelete(selectedOpdracht)} className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg">
               <Trash size={14} /> Verwijderen
             </button>
           </div>
         </div>
 
-        {/* Instellingen balk */}
-        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 flex flex-wrap gap-4 items-center">
+        {/* Instellingen */}
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 flex flex-wrap gap-6 items-start">
           {/* Type */}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
             <label className="text-white/40 text-xs uppercase tracking-wider">Type</label>
-            <select
-              value={editType}
-              onChange={e => setEditType(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm outline-none focus:border-blue-500/50"
-            >
+            <div className="flex gap-2 flex-wrap">
               {OPDRACHT_TYPES.map(t => (
-                <option key={t} value={t} className="bg-[#0f1029]">{t}</option>
+                <button
+                  key={t}
+                  onClick={() => setEditType(t)}
+                  className={`px-3 py-1 rounded-lg text-xs border transition-all ${editType === t ? getTypeColor(t) + ' font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/20'}`}
+                >
+                  {t}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
-          {/* Klas */}
-          <div className="flex flex-col gap-1">
-            <label className="text-white/40 text-xs uppercase tracking-wider">Klas toewijzen</label>
-            <select
-              value={editKlasId}
-              onChange={e => setEditKlasId(e.target.value)}
-              className="bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm outline-none focus:border-blue-500/50"
-            >
-              <option value="" className="bg-[#0f1029]">— Geen klas —</option>
+          {/* Klassen */}
+          <div className="flex flex-col gap-2">
+            <label className="text-white/40 text-xs uppercase tracking-wider">Klassen toewijzen</label>
+            <div className="flex gap-2 flex-wrap">
+              {klassen.length === 0 && <span className="text-white/30 text-xs">Geen klassen gevonden</span>}
               {klassen.map(k => (
-                <option key={k.id} value={k.id} className="bg-[#0f1029]">{k.naam} — {k.vak} ({k.schooljaar})</option>
+                <button
+                  key={k.id}
+                  onClick={() => toggleKlas(k.id)}
+                  className={`px-3 py-1 rounded-lg text-xs border transition-all ${editKlasIds.includes(k.id) ? 'text-blue-400 bg-blue-500/10 border-blue-500/30 font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/20'}`}
+                >
+                  {k.naam} — {k.vak}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-white/40 text-xs uppercase tracking-wider">Max punten</label>
-            <span className="text-white text-sm px-3 py-1.5">{selectedOpdracht.max_punten}pt</span>
+            <span className="text-white text-sm">{selectedOpdracht.max_punten}pt</span>
           </div>
         </div>
 
@@ -425,11 +363,7 @@ export default function Opdrachten() {
                   <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                   <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                 </div>
-                {v.opties && v.opties.length > 0 && (
-                  <ul className="mt-2 space-y-1">
-                    {v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}
-                  </ul>
-                )}
+                {v.opties && v.opties.length > 0 && <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
                 <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
                 {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
               </div>
@@ -447,16 +381,11 @@ export default function Opdrachten() {
         <div>
           <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
           <p className="text-white/50 text-sm mt-1">
-            {role === 'teacher' ? 'Maak en beheer opdrachten voor jouw klassen'
-              : role === 'school_admin' || role === 'admin' ? 'Overzicht van alle opdrachten'
-              : 'Jouw openstaande en voltooide opdrachten'}
+            {role === 'teacher' ? 'Maak en beheer opdrachten voor jouw klassen' : role === 'school_admin' || role === 'admin' ? 'Overzicht van alle opdrachten' : 'Jouw openstaande en voltooide opdrachten'}
           </p>
         </div>
         {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
-          <button
-            onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setView('spar') }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-all"
-          >
+          <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setView('spar') }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-all">
             <Plus size={16} /> Nieuwe opdracht aanmaken
           </button>
         )}
@@ -470,10 +399,7 @@ export default function Opdrachten() {
           <h3 className="text-lg font-semibold text-white mb-2">Nog geen opdrachten</h3>
           <p className="text-white/40 text-sm max-w-sm">Opdrachten worden hier weergegeven zodra ze zijn aangemaakt.</p>
           {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
-            <button
-              onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setView('spar') }}
-              className="mt-6 flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all"
-            >
+            <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setView('spar') }} className="mt-6 flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg">
               <Plus size={16} /> Nieuwe opdracht aanmaken
             </button>
           )}
@@ -481,24 +407,24 @@ export default function Opdrachten() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {opdrachten.map(opdracht => (
-            <div
-              key={opdracht.id}
-              onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
-              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/40 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group"
-            >
+            <div key={opdracht.id} onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
+              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group">
               <div className="flex items-start justify-between mb-2">
-                <span className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded">{opdracht.type}</span>
+                <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
                 <span className="text-xs text-white/30">{opdracht.max_punten}pt</span>
               </div>
               <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
               <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
               <p className="text-white/20 text-xs mt-2">{parseVragen(opdracht.vragen).length} vragen</p>
-              {opdracht.klas_id && (
-                <p className="text-blue-400/60 text-xs mt-1">
-                  📚 {klassen.find(k => k.id === opdracht.klas_id)?.naam || 'Klas toegewezen'}
-                </p>
+              {opdracht.klas_ids && opdracht.klas_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {opdracht.klas_ids.map(kid => {
+                    const k = klassen.find(k => k.id === kid)
+                    return k ? <span key={kid} className="text-xs text-blue-400/60 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded">📚 {k.naam}</span> : null
+                  })}
+                </div>
               )}
-              <div className="mt-3 text-blue-400/60 text-xs group-hover:text-blue-400 transition-colors">Klik om te openen →</div>
+              <div className="mt-3 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
             </div>
           ))}
         </div>

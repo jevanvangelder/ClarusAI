@@ -19,6 +19,7 @@ class OpdachtCreate(BaseModel):
     titel: str
     beschrijving: Optional[str] = ""
     klas_id: Optional[str] = None
+    klas_ids: Optional[List[str]] = []
     teacher_id: str
     deadline: Optional[str] = None
     type: Optional[str] = "huiswerk"
@@ -29,6 +30,7 @@ class OpdachtUpdate(BaseModel):
     titel: Optional[str] = None
     beschrijving: Optional[str] = None
     klas_id: Optional[str] = None
+    klas_ids: Optional[List[str]] = None
     deadline: Optional[str] = None
     type: Optional[str] = None
     vragen: Optional[list] = None
@@ -43,7 +45,6 @@ class SparChatMessage(BaseModel):
 
 # ============ ENDPOINTS ============
 
-# GET /api/opdrachten?teacher_id=
 @router.get("")
 async def get_opdrachten(teacher_id: str):
     try:
@@ -55,7 +56,6 @@ async def get_opdrachten(teacher_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# GET /api/opdrachten/{id}
 @router.get("/{opdracht_id}")
 async def get_opdracht(opdracht_id: str):
     try:
@@ -71,29 +71,25 @@ async def get_opdracht(opdracht_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# POST /api/opdrachten
 @router.post("")
 async def create_opdracht(opdracht: OpdachtCreate):
     try:
         print(f"🔍 CREATE OPDRACHT: {opdracht.titel}")
-        print(f"  vragen count: {len(opdracht.vragen) if opdracht.vragen else 0}")
-
         insert_data = {
             "titel": opdracht.titel,
             "beschrijving": opdracht.beschrijving or "",
             "teacher_id": opdracht.teacher_id,
             "type": opdracht.type or "huiswerk",
-            "vragen": json.dumps(opdracht.vragen) if opdracht.vragen else json.dumps([]),
+            "vragen": opdracht.vragen or [],
             "max_punten": opdracht.max_punten or 10,
+            "klas_ids": opdracht.klas_ids or [],
             "is_actief": False,
         }
-
         if opdracht.klas_id:
             insert_data["klas_id"] = opdracht.klas_id
         if opdracht.deadline:
             insert_data["deadline"] = opdracht.deadline
 
-        print(f"  insert_data keys: {list(insert_data.keys())}")
         response = supabase.table("opdrachten").insert(insert_data).execute()
         print(f"✅ Opdracht created: {response.data[0]['id']}")
         return response.data[0]
@@ -103,7 +99,6 @@ async def create_opdracht(opdracht: OpdachtCreate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# PUT /api/opdrachten/{id}
 @router.put("/{opdracht_id}")
 async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
     try:
@@ -114,12 +109,14 @@ async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
             update_data["beschrijving"] = opdracht.beschrijving
         if opdracht.klas_id is not None:
             update_data["klas_id"] = opdracht.klas_id
+        if opdracht.klas_ids is not None:
+            update_data["klas_ids"] = opdracht.klas_ids
         if opdracht.deadline is not None:
             update_data["deadline"] = opdracht.deadline
         if opdracht.type is not None:
             update_data["type"] = opdracht.type
         if opdracht.vragen is not None:
-            update_data["vragen"] = json.dumps(opdracht.vragen)
+            update_data["vragen"] = opdracht.vragen
         if opdracht.max_punten is not None:
             update_data["max_punten"] = opdracht.max_punten
         if opdracht.is_actief is not None:
@@ -137,7 +134,6 @@ async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# DELETE /api/opdrachten/{id}
 @router.delete("/{opdracht_id}")
 async def delete_opdracht(opdracht_id: str):
     try:
@@ -150,29 +146,23 @@ async def delete_opdracht(opdracht_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# POST /api/opdrachten/spar/chat
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
         json_voorbeeld = (
-            '{"titel": "...", "beschrijving": "...", "type": "huiswerk|casus|oefentoets|anders", '
+            '{"titel": "...", "beschrijving": "...", "type": "huiswerk|casus|oefentoets|opdracht", '
             '"max_punten": 10, "vragen": [{"nummer": 1, "vraag": "...", "type": "open|meerkeuze|waar-onwaar", '
             '"punten": 2, "opties": ["optie A", "optie B"], "antwoord": "het correcte antwoord", '
             '"toelichting": "waarom dit het juiste antwoord is"}]}'
         )
-
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten. "
             "Je helpt met het maken van huiswerk, casussen, oefentoetsen en andere opdrachten.\n\n"
             "Stel eerst verhelderingsvragen als de docent nog niet duidelijk heeft aangegeven:\n"
-            "- Welk vak / onderwerp?\n"
-            "- Welk niveau (vmbo, havo, vwo)?\n"
-            "- Hoeveel vragen?\n"
-            "- Welk type opdracht?\n\n"
+            "- Welk vak / onderwerp?\n- Welk niveau (vmbo, havo, vwo)?\n- Hoeveel vragen?\n- Welk type opdracht?\n\n"
             "Zodra je genoeg weet, genereer je de opdracht als geldig JSON object (geen markdown, geen uitleg eromheen):\n"
             + json_voorbeeld
         )
-
         if body.context:
             system_prompt += f"\n\nHuidige concept-opdracht van de docent:\n{body.context}"
 
@@ -180,9 +170,7 @@ async def spar_chat(body: SparChatMessage):
         conversation.append({"role": "user", "content": body.content})
 
         response = await ai_service.generate_response(
-            messages=conversation,
-            role="teacher",
-            module_prompts=[system_prompt],
+            messages=conversation, role="teacher", module_prompts=[system_prompt],
         )
         return {"message": response}
     except Exception as e:
@@ -191,7 +179,6 @@ async def spar_chat(body: SparChatMessage):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# POST /api/opdrachten/spar/upload
 @router.post("/spar/upload")
 async def spar_upload(
     content: str = Form(...),
@@ -200,7 +187,6 @@ async def spar_upload(
 ):
     try:
         message_history = json.loads(messages) if messages else []
-
         file_context = ""
         images = []
         if files:
@@ -209,8 +195,7 @@ async def spar_upload(
                 file_bytes = await file.read()
                 parsed = parse_file(file.filename, file_bytes)
                 if parsed["type"] == "image":
-                    if parsed.get("image"):
-                        images.append(parsed["image"])
+                    if parsed.get("image"): images.append(parsed["image"])
                     parts.append(f"=== AFBEELDING: {file.filename} ===\n[Zie afbeelding]")
                 else:
                     parts.append(f"=== BESTAND: {file.filename} ===\n{parsed['text']}")
@@ -221,20 +206,14 @@ async def spar_upload(
             "Analyseer het meegestuurde materiaal en help de docent een passende opdracht te maken. "
             "Zodra je genoeg informatie hebt, genereer je de opdracht als geldig JSON object (geen markdown, geen uitleg eromheen)."
         )
-
         conversation = []
         if file_context:
-            conversation.append({
-                "role": "system",
-                "content": f"Bronmateriaal van de docent:\n\n{file_context}"
-            })
+            conversation.append({"role": "system", "content": f"Bronmateriaal van de docent:\n\n{file_context}"})
         conversation.extend(message_history)
         conversation.append({"role": "user", "content": content})
 
         response = await ai_service.generate_response(
-            messages=conversation,
-            role="teacher",
-            module_prompts=[system_prompt],
+            messages=conversation, role="teacher", module_prompts=[system_prompt],
             images=images if images else None,
         )
         return {"message": response}
