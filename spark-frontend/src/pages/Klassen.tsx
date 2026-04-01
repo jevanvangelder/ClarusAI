@@ -28,19 +28,17 @@ export default function Klassen() {
   const [schooljaar, setSchooljaar] = useState('')
   const [beschrijving, setBeschrijving] = useState('')
 
-  // Klassen ophalen uit Supabase
+  // Klassen ophalen uit Supabase — RLS regelt wie wat ziet
   const fetchKlassen = async () => {
     if (!user) return
     setLoading(true)
     try {
-      let query = supabase.from('klassen').select('*').eq('is_active', true).order('created_at', { ascending: false })
+      const { data, error } = await supabase
+        .from('klassen')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
 
-      // Docenten zien alleen hun eigen klassen
-      if (role === 'teacher') {
-        query = query.eq('teacher_id', user.id)
-      }
-
-      const { data, error } = await query
       if (error) throw error
       setKlassen(data || [])
     } catch (err) {
@@ -51,8 +49,10 @@ export default function Klassen() {
   }
 
   useEffect(() => {
-    fetchKlassen()
-  }, [user, role])
+    if (user) {
+      fetchKlassen()
+    }
+  }, [user])
 
   // Nieuwe klas opslaan
   const handleSave = async (e: React.FormEvent) => {
