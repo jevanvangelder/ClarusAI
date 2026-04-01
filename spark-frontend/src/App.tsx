@@ -8,6 +8,10 @@ import ProtectedRoute from './components/ProtectedRoute'
 import DashboardLayout from './components/DashboardLayout'
 import Dashboard from './pages/Dashboard'
 import Instellingen from './pages/Instellingen'
+import Klassen from './pages/Klassen'
+import Opdrachten from './pages/Opdrachten'
+import Analyse from './pages/Analyse'
+import Admin from './pages/Admin'
 import ChatApp from './ChatApp'
 
 function AppRoutes() {
@@ -63,6 +67,10 @@ function AppRoutes() {
               <Routes>
                 <Route path="/" element={<Dashboard />} />
                 <Route path="/instellingen" element={<Instellingen />} />
+                <Route path="/klassen" element={<Klassen />} />
+                <Route path="/opdrachten" element={<Opdrachten />} />
+                <Route path="/analyse" element={<Analyse />} />
+                <Route path="/admin" element={<Admin />} />
               </Routes>
             </DashboardLayout>
           </ProtectedRoute>
