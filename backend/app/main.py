@@ -4,7 +4,8 @@ from app.core.config import settings
 from app.api.chat import router as chat_router
 from app.api.chat_history import router as chat_history_router
 from app.api.modules import router as modules_router
-from app.api.ebooks import router as ebooks_router  # ✅ NIEUW
+from app.api.ebooks import router as ebooks_router
+from app.api.opdrachten import router as opdrachten_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -31,7 +32,8 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(chat_history_router)
 app.include_router(modules_router)
-app.include_router(ebooks_router)  # ✅ NIEUW
+app.include_router(ebooks_router)
+app.include_router(opdrachten_router)
 
 # Health check endpoint
 @app.get("/")
