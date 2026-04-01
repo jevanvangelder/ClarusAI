@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { FileText, ArrowLeft, Send, Paperclip, Trash, Plus } from 'lucide-react'
+import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -34,18 +34,26 @@ interface SparMessage {
 
 type View = 'overzicht' | 'spar' | 'detail'
 
+const parseVragen = (vragen: any): Vraag[] => {
+  if (!vragen) return []
+  if (typeof vragen === 'string') {
+    try { return JSON.parse(vragen) } catch { return [] }
+  }
+  if (Array.isArray(vragen)) return vragen
+  return []
+}
+
 export default function Opdrachten() {
   const { role, user } = useAuth()
   const [view, setView] = useState<View>('overzicht')
   const [opdrachten, setOpdrachten] = useState<Opdracht[]>([])
   const [selectedOpdracht, setSelectedOpdracht] = useState<Opdracht | null>(null)
 
-  // Spar state
   const [sparMessages, setSparMessages] = useState<SparMessage[]>([])
   const [sparInput, setSparInput] = useState('')
   const [sparLoading, setSparLoading] = useState(false)
   const [sparFiles, setSparFiles] = useState<File[]>([])
-  const [gegenereerdeOpdracht, setGegenereerdeOpdracht] = useState<Omit<Opdracht, 'id' | 'klas_id' | 'deadline' | 'is_actief' | 'created_at'> | null>(null)
+  const [gegenereerdeOpdracht, setGegenereerdeOpdracht] = useState<any | null>(null)
   const [opslaan, setOpslaan] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -59,11 +67,13 @@ export default function Opdrachten() {
     if (!user) return
     fetch(`${API_URL}/api/opdrachten?teacher_id=${user.id}`)
       .then(r => r.json())
-      .then(data => setOpdrachten(Array.isArray(data) ? data : []))
+      .then(data => setOpdrachten(Array.isArray(data) ? data.map((o: any) => ({
+        ...o,
+        vragen: parseVragen(o.vragen)
+      })) : []))
       .catch(() => {})
   }, [user])
 
-  // Probeer JSON te parsen uit AI antwoord
   const tryParseOpdracht = (text: string) => {
     try {
       const match = text.match(/\{[\s\S]*\}/)
@@ -130,7 +140,8 @@ export default function Opdrachten() {
         }),
       })
       const created = await res.json()
-      setOpdrachten(prev => [created, ...prev])
+      const parsed = { ...created, vragen: parseVragen(created.vragen) }
+      setOpdrachten(prev => [parsed, ...prev])
       setView('overzicht')
       setSparMessages([])
       setGegenereerdeOpdracht(null)
@@ -152,7 +163,6 @@ export default function Opdrachten() {
   if (view === 'spar') {
     return (
       <div className="flex flex-col h-full space-y-4">
-        {/* Header */}
         <div className="flex items-center gap-3">
           <button onClick={() => { setView('overzicht'); setSparMessages([]); setGegenereerdeOpdracht(null) }} className="text-white/50 hover:text-white transition-colors">
             <ArrowLeft size={20} />
@@ -168,7 +178,6 @@ export default function Opdrachten() {
               <p className="text-white/30 text-xs mt-0.5">Vertel wat voor opdracht je wilt maken. Je kunt ook bestanden meesturen.</p>
             </div>
 
-            {/* Berichten */}
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
               {sparMessages.length === 0 && (
                 <p className="text-white/30 text-sm text-center mt-8">
@@ -176,17 +185,28 @@ export default function Opdrachten() {
                   Bijv: "Maak een oefentoets over de Franse Revolutie voor havo 4, 5 vragen"
                 </p>
               )}
-              {sparMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-white/5 border border-white/10 text-white/80'
-                  }`}>
-                    {msg.content}
+              {sparMessages.map((msg, i) => {
+                const isJson = msg.role === 'assistant' && msg.content.trim().startsWith('{')
+                if (isJson) return null
+                return (
+                  <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white/5 border border-white/10 text-white/80'
+                    }`}>
+                      {msg.content}
+                    </div>
+                  </div>
+                )
+              })}
+              {gegenereerdeOpdracht && (
+                <div className="flex justify-start">
+                  <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-xl text-sm text-green-400">
+                    ✅ Opdracht gegenereerd! Bekijk en sla op rechts →
                   </div>
                 </div>
-              ))}
+              )}
               {sparLoading && (
                 <div className="flex justify-start">
                   <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">Aan het denken...</div>
@@ -195,7 +215,6 @@ export default function Opdrachten() {
               <div ref={chatEndRef} />
             </div>
 
-            {/* Bestanden preview */}
             {sparFiles.length > 0 && (
               <div className="px-3 pt-2 flex flex-wrap gap-2">
                 {sparFiles.map((f, i) => (
@@ -207,7 +226,6 @@ export default function Opdrachten() {
               </div>
             )}
 
-            {/* Input */}
             <div className="p-3 border-t border-white/10 flex gap-2">
               <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
               <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 transition-colors">
@@ -253,7 +271,7 @@ export default function Opdrachten() {
                 </div>
 
                 <div className="space-y-3">
-                  {gegenereerdeOpdracht.vragen?.map((v, i) => (
+                  {parseVragen(gegenereerdeOpdracht.vragen).map((v: Vraag, i: number) => (
                     <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
@@ -313,7 +331,7 @@ export default function Opdrachten() {
           <p className="text-white/40 text-xs">Max punten: {selectedOpdracht.max_punten}</p>
 
           <div className="space-y-3">
-            {(selectedOpdracht.vragen || []).map((v, i) => (
+            {parseVragen(selectedOpdracht.vragen).map((v: Vraag, i: number) => (
               <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
@@ -390,7 +408,7 @@ export default function Opdrachten() {
               </div>
               <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
               <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
-              <p className="text-white/20 text-xs mt-2">{(opdracht.vragen || []).length} vragen</p>
+              <p className="text-white/20 text-xs mt-2">{parseVragen(opdracht.vragen).length} vragen</p>
               <div className="mt-3 text-blue-400/60 text-xs group-hover:text-blue-400 transition-colors">
                 Klik om te openen →
               </div>
