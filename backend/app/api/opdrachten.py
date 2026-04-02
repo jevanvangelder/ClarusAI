@@ -14,7 +14,8 @@ import os
 router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
-UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+GOOGLE_SEARCH_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
+GOOGLE_SEARCH_CX = os.getenv("GOOGLE_SEARCH_CX", "")
 
 
 # ============ MODELS ============
@@ -52,23 +53,34 @@ class AfbeeldingZoekRequest(BaseModel):
 
 # ============ HELPERS ============
 
-async def zoek_unsplash_afbeelding(query: str) -> Optional[str]:
-    if not UNSPLASH_KEY:
+async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
+    """Zoek een educatieve afbeelding via Google Custom Search."""
+    if not GOOGLE_SEARCH_KEY or not GOOGLE_SEARCH_CX:
         return None
     try:
         async with httpx.AsyncClient() as client:
             resp = await client.get(
-                "https://api.unsplash.com/search/photos",
-                params={"query": query, "per_page": 1, "orientation": "landscape"},
-                headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
+                "https://www.googleapis.com/customsearch/v1",
+                params={
+                    "key": GOOGLE_SEARCH_KEY,
+                    "cx": GOOGLE_SEARCH_CX,
+                    "q": query,
+                    "searchType": "image",
+                    "num": 5,
+                    "safe": "active",
+                },
                 timeout=8.0
             )
             data = resp.json()
-            results = data.get("results", [])
-            if results:
-                return results[0]["urls"]["regular"]
+            items = data.get("items", [])
+            for item in items:
+                url = item.get("link", "")
+                if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']):
+                    return url
+            if items:
+                return items[0].get("link")
     except Exception as e:
-        print(f"❌ Unsplash fout: {e}")
+        print(f"❌ Google Search fout: {e}")
     return None
 
 
@@ -155,8 +167,8 @@ async def delete_opdracht(opdracht_id: str):
 
 @router.post("/afbeelding/zoek")
 async def zoek_afbeelding(req: AfbeeldingZoekRequest):
-    """Zoek een afbeelding via Unsplash op basis van een zoekterm."""
-    url = await zoek_unsplash_afbeelding(req.query)
+    """Zoek een educatieve afbeelding via Google Custom Search."""
+    url = await zoek_educatieve_afbeelding(req.query)
     if not url:
         raise HTTPException(status_code=404, detail="Geen afbeelding gevonden")
     return {"url": url, "query": req.query}
@@ -165,7 +177,7 @@ async def zoek_afbeelding(req: AfbeeldingZoekRequest):
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding_zoekterm":"optionele zoekterm voor afbeelding"}]}'
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding_zoekterm":"optionele Engelse zoekterm voor educatieve afbeelding"}]}'
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
@@ -174,8 +186,8 @@ async def spar_chat(body: SparChatMessage):
             "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen:\n"
             f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
             "AFBEELDINGEN:\n"
-            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, grafiek, foto), voeg dan het veld 'afbeelding_zoekterm' toe aan die vraag.\n"
-            "- Gebruik een korte Engelse zoekterm die goed werkt op Unsplash (bijv. 'balance sheet accounting', 'supply demand graph', 'human heart anatomy').\n"
+            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, schema, grafiek, lege invultabel), voeg dan het veld 'afbeelding_zoekterm' toe aan die vraag.\n"
+            "- Gebruik een beschrijvende Engelse zoekterm die goed werkt voor educatief materiaal (bijv. 'blank balance sheet template', 'supply and demand graph economics', 'human heart anatomy diagram', 'empty t-account bookkeeping').\n"
             "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is voor de vraag.\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
@@ -195,7 +207,7 @@ async def spar_chat(body: SparChatMessage):
             module_prompts=[system_prompt],
         )
 
-        # Verwerk OPDRACHT_UPDATE en zoek afbeeldingen automatisch
+        # Verwerk OPDRACHT_UPDATE en zoek afbeeldingen automatisch via Google
         PREFIX = "OPDRACHT_UPDATE:"
         if response.startswith(PREFIX):
             try:
@@ -204,7 +216,7 @@ async def spar_chat(body: SparChatMessage):
                 for vraag in vragen:
                     zoekterm = vraag.pop("afbeelding_zoekterm", None)
                     if zoekterm and not vraag.get("afbeelding"):
-                        url = await zoek_unsplash_afbeelding(zoekterm)
+                        url = await zoek_educatieve_afbeelding(zoekterm)
                         if url:
                             vraag["afbeelding"] = url
                 parsed["vragen"] = vragen
