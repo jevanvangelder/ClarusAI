@@ -13,8 +13,6 @@ router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
 
-# ============ MODELS ============
-
 class OpdachtCreate(BaseModel):
     titel: str
     beschrijving: Optional[str] = ""
@@ -42,8 +40,6 @@ class SparChatMessage(BaseModel):
     messages: Optional[List[dict]] = []
     context: Optional[str] = ""
 
-
-# ============ ENDPOINTS ============
 
 @router.get("")
 async def get_opdrachten(teacher_id: str):
@@ -74,7 +70,6 @@ async def get_opdracht(opdracht_id: str):
 @router.post("")
 async def create_opdracht(opdracht: OpdachtCreate):
     try:
-        print(f"🔍 CREATE OPDRACHT: {opdracht.titel}")
         insert_data = {
             "titel": opdracht.titel,
             "beschrijving": opdracht.beschrijving or "",
@@ -91,7 +86,6 @@ async def create_opdracht(opdracht: OpdachtCreate):
             insert_data["deadline"] = opdracht.deadline
 
         response = supabase.table("opdrachten").insert(insert_data).execute()
-        print(f"✅ Opdracht created: {response.data[0]['id']}")
         return response.data[0]
     except Exception as e:
         print(f"❌ CREATE opdracht error: {e}")
@@ -103,24 +97,15 @@ async def create_opdracht(opdracht: OpdachtCreate):
 async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
     try:
         update_data = {"updated_at": datetime.now().isoformat()}
-        if opdracht.titel is not None:
-            update_data["titel"] = opdracht.titel
-        if opdracht.beschrijving is not None:
-            update_data["beschrijving"] = opdracht.beschrijving
-        if opdracht.klas_id is not None:
-            update_data["klas_id"] = opdracht.klas_id
-        if opdracht.klas_ids is not None:
-            update_data["klas_ids"] = opdracht.klas_ids
-        if opdracht.deadline is not None:
-            update_data["deadline"] = opdracht.deadline
-        if opdracht.type is not None:
-            update_data["type"] = opdracht.type
-        if opdracht.vragen is not None:
-            update_data["vragen"] = opdracht.vragen
-        if opdracht.max_punten is not None:
-            update_data["max_punten"] = opdracht.max_punten
-        if opdracht.is_actief is not None:
-            update_data["is_actief"] = opdracht.is_actief
+        if opdracht.titel is not None: update_data["titel"] = opdracht.titel
+        if opdracht.beschrijving is not None: update_data["beschrijving"] = opdracht.beschrijving
+        if opdracht.klas_id is not None: update_data["klas_id"] = opdracht.klas_id
+        if opdracht.klas_ids is not None: update_data["klas_ids"] = opdracht.klas_ids
+        if opdracht.deadline is not None: update_data["deadline"] = opdracht.deadline
+        if opdracht.type is not None: update_data["type"] = opdracht.type
+        if opdracht.vragen is not None: update_data["vragen"] = opdracht.vragen
+        if opdracht.max_punten is not None: update_data["max_punten"] = opdracht.max_punten
+        if opdracht.is_actief is not None: update_data["is_actief"] = opdracht.is_actief
 
         response = supabase.table("opdrachten").update(update_data).eq("id", opdracht_id).execute()
         if not response.data:
@@ -149,28 +134,31 @@ async def delete_opdracht(opdracht_id: str):
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = (
-            '{"titel": "...", "beschrijving": "...", "type": "huiswerk|casus|oefentoets|opdracht", '
-            '"max_punten": 10, "vragen": [{"nummer": 1, "vraag": "...", "type": "open|meerkeuze|waar-onwaar", '
-            '"punten": 2, "opties": ["optie A", "optie B"], "antwoord": "het correcte antwoord", '
-            '"toelichting": "waarom dit het juiste antwoord is"}]}'
-        )
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg"}]}'
+
         system_prompt = (
-            "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten. "
-            "Je helpt met het maken van huiswerk, casussen, oefentoetsen en andere opdrachten.\n\n"
-            "Stel eerst verhelderingsvragen als de docent nog niet duidelijk heeft aangegeven:\n"
-            "- Welk vak / onderwerp?\n- Welk niveau (vmbo, havo, vwo)?\n- Hoeveel vragen?\n- Welk type opdracht?\n\n"
-            "Zodra je genoeg weet, genereer je de opdracht als geldig JSON object (geen markdown, geen uitleg eromheen):\n"
-            + json_voorbeeld
+            "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
+            "Je kunt op twee manieren reageren:\n\n"
+            "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil, of iets bespreekt zonder de opdracht te willen aanpassen — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
+            "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen, stuur je UITSLUITEND dit formaat (geen tekst eromheen):\n"
+            f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
+            "Regels:\n"
+            "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
+            "- Geef gewoon advies als de docent dat vraagt\n"
+            "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om (een aanpassing van) de opdracht vraagt\n"
+            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg\n"
         )
+
         if body.context:
-            system_prompt += f"\n\nHuidige concept-opdracht van de docent:\n{body.context}"
+            system_prompt += f"\n\nDe docent werkt aan deze bestaande opdracht:\n{body.context}"
 
         conversation = list(body.messages) if body.messages else []
         conversation.append({"role": "user", "content": body.content})
 
         response = await ai_service.generate_response(
-            messages=conversation, role="teacher", module_prompts=[system_prompt],
+            messages=conversation,
+            role="teacher",
+            module_prompts=[system_prompt],
         )
         return {"message": response}
     except Exception as e:
@@ -196,19 +184,20 @@ async def spar_upload(
                 parsed = parse_file(file.filename, file_bytes)
                 if parsed["type"] == "image":
                     if parsed.get("image"): images.append(parsed["image"])
-                    parts.append(f"=== AFBEELDING: {file.filename} ===\n[Zie afbeelding]")
+                    parts.append(f"=== AFBEELDING: {file.filename} ===")
                 else:
                     parts.append(f"=== BESTAND: {file.filename} ===\n{parsed['text']}")
             file_context = "\n\n".join(parts)
 
         system_prompt = (
-            "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten op basis van bronmateriaal. "
-            "Analyseer het meegestuurde materiaal en help de docent een passende opdracht te maken. "
-            "Zodra je genoeg informatie hebt, genereer je de opdracht als geldig JSON object (geen markdown, geen uitleg eromheen)."
+            "Je bent een ervaren onderwijsassistent. Analyseer het meegestuurde materiaal en help de docent.\n"
+            "Als de docent een opdracht wil genereren op basis van het materiaal, stuur dan:\n"
+            "OPDRACHT_UPDATE:{...json...}\n"
+            "Anders antwoord je normaal."
         )
         conversation = []
         if file_context:
-            conversation.append({"role": "system", "content": f"Bronmateriaal van de docent:\n\n{file_context}"})
+            conversation.append({"role": "system", "content": f"Bronmateriaal:\n\n{file_context}"})
         conversation.extend(message_history)
         conversation.append({"role": "user", "content": content})
 
