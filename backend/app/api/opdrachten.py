@@ -8,10 +8,16 @@ from app.utils.file_parser import parse_file
 from supabase import create_client, Client
 import json
 import traceback
+import httpx
+import os
 
 router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 
+UNSPLASH_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+
+
+# ============ MODELS ============
 
 class OpdachtCreate(BaseModel):
     titel: str
@@ -40,6 +46,33 @@ class SparChatMessage(BaseModel):
     messages: Optional[List[dict]] = []
     context: Optional[str] = ""
 
+class AfbeeldingZoekRequest(BaseModel):
+    query: str
+
+
+# ============ HELPERS ============
+
+async def zoek_unsplash_afbeelding(query: str) -> Optional[str]:
+    if not UNSPLASH_KEY:
+        return None
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://api.unsplash.com/search/photos",
+                params={"query": query, "per_page": 1, "orientation": "landscape"},
+                headers={"Authorization": f"Client-ID {UNSPLASH_KEY}"},
+                timeout=8.0
+            )
+            data = resp.json()
+            results = data.get("results", [])
+            if results:
+                return results[0]["urls"]["regular"]
+    except Exception as e:
+        print(f"❌ Unsplash fout: {e}")
+    return None
+
+
+# ============ ENDPOINTS ============
 
 @router.get("")
 async def get_opdrachten(teacher_id: str):
@@ -47,8 +80,6 @@ async def get_opdrachten(teacher_id: str):
         response = supabase.table("opdrachten").select("*").eq("teacher_id", teacher_id).order("created_at", desc=True).execute()
         return response.data
     except Exception as e:
-        print(f"❌ GET opdrachten error: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -62,8 +93,6 @@ async def get_opdracht(opdracht_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ GET opdracht error: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -84,12 +113,9 @@ async def create_opdracht(opdracht: OpdachtCreate):
             insert_data["klas_id"] = opdracht.klas_id
         if opdracht.deadline:
             insert_data["deadline"] = opdracht.deadline
-
         response = supabase.table("opdrachten").insert(insert_data).execute()
         return response.data[0]
     except Exception as e:
-        print(f"❌ CREATE opdracht error: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -114,8 +140,6 @@ async def update_opdracht(opdracht_id: str, opdracht: OpdachtUpdate):
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ UPDATE opdracht error: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -126,26 +150,36 @@ async def delete_opdracht(opdracht_id: str):
         supabase.table("opdrachten").delete().eq("id", opdracht_id).execute()
         return {"message": "Opdracht verwijderd"}
     except Exception as e:
-        print(f"❌ DELETE opdracht error: {e}")
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/afbeelding/zoek")
+async def zoek_afbeelding(req: AfbeeldingZoekRequest):
+    """Zoek een afbeelding via Unsplash op basis van een zoekterm."""
+    url = await zoek_unsplash_afbeelding(req.query)
+    if not url:
+        raise HTTPException(status_code=404, detail="Geen afbeelding gevonden")
+    return {"url": url, "query": req.query}
 
 
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg"}]}'
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding_zoekterm":"optionele zoekterm voor afbeelding"}]}'
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
             "Je kunt op twee manieren reageren:\n\n"
-            "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil, of iets bespreekt zonder de opdracht te willen aanpassen — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
-            "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen, stuur je UITSLUITEND dit formaat (geen tekst eromheen):\n"
+            "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil of iets bespreekt — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
+            "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen:\n"
             f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
+            "AFBEELDINGEN:\n"
+            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, grafiek, foto), voeg dan het veld 'afbeelding_zoekterm' toe aan die vraag.\n"
+            "- Gebruik een korte Engelse zoekterm die goed werkt op Unsplash (bijv. 'balance sheet accounting', 'supply demand graph', 'human heart anatomy').\n"
+            "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is voor de vraag.\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
-            "- Geef gewoon advies als de docent dat vraagt\n"
-            "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om (een aanpassing van) de opdracht vraagt\n"
+            "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om een opdracht vraagt\n"
             "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg\n"
         )
 
@@ -160,7 +194,26 @@ async def spar_chat(body: SparChatMessage):
             role="teacher",
             module_prompts=[system_prompt],
         )
+
+        # Verwerk OPDRACHT_UPDATE en zoek afbeeldingen automatisch
+        PREFIX = "OPDRACHT_UPDATE:"
+        if response.startswith(PREFIX):
+            try:
+                parsed = json.loads(response[len(PREFIX):].strip())
+                vragen = parsed.get("vragen", [])
+                for vraag in vragen:
+                    zoekterm = vraag.pop("afbeelding_zoekterm", None)
+                    if zoekterm and not vraag.get("afbeelding"):
+                        url = await zoek_unsplash_afbeelding(zoekterm)
+                        if url:
+                            vraag["afbeelding"] = url
+                parsed["vragen"] = vragen
+                return {"message": f"{PREFIX}{json.dumps(parsed)}"}
+            except Exception as e:
+                print(f"⚠️ Kon afbeeldingen niet verwerken: {e}")
+
         return {"message": response}
+
     except Exception as e:
         print(f"❌ SPAR CHAT error: {e}")
         traceback.print_exc()
