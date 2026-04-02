@@ -73,10 +73,7 @@ async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
             )
             data = resp.json()
             items = data.get("items", [])
-            for item in items:
-                url = item.get("link", "")
-                if url and any(ext in url.lower() for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']):
-                    return url
+            # Pak eerste resultaat direct — searchType=image geeft altijd afbeeldingen terug
             if items:
                 return items[0].get("link")
     except Exception as e:
@@ -185,18 +182,26 @@ async def spar_chat(body: SparChatMessage):
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil of iets bespreekt — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
             "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen:\n"
             f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
+            "BELANGRIJK BIJ AANPASSEN VAN EEN BESTAANDE OPDRACHT:\n"
+            "- Behoud ALTIJD alle bestaande vragen, tenzij de docent expliciet vraagt om vragen te verwijderen\n"
+            "- Voeg alleen toe of pas alleen de gevraagde vraag/vragen aan\n"
+            "- Kopieer de volledige bestaande opdracht inclusief ALLE vragen en pas uitsluitend het gevraagde onderdeel aan\n"
+            "- Als je een afbeelding toevoegt aan vraag X, laat dan alle andere vragen exact zoals ze zijn\n\n"
             "AFBEELDINGEN:\n"
             "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, schema, grafiek, lege invultabel), voeg dan het veld 'afbeelding_zoekterm' toe aan die vraag.\n"
-            "- Gebruik een beschrijvende Engelse zoekterm die goed werkt voor educatief materiaal (bijv. 'blank balance sheet template', 'supply and demand graph economics', 'human heart anatomy diagram', 'empty t-account bookkeeping').\n"
+            "- Gebruik een beschrijvende Engelse zoekterm (bijv. 'blank balance sheet template', 'supply and demand graph economics', 'human heart anatomy diagram', 'empty t-account bookkeeping').\n"
             "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is voor de vraag.\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
             "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om een opdracht vraagt\n"
-            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg\n"
+            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg erbij\n"
         )
 
         if body.context:
-            system_prompt += f"\n\nDe docent werkt aan deze bestaande opdracht:\n{body.context}"
+            system_prompt += (
+                f"\n\nDe docent werkt aan deze BESTAANDE opdracht. "
+                f"Neem alle vragen over en pas ALLEEN aan wat gevraagd wordt:\n{body.context}"
+            )
 
         conversation = list(body.messages) if body.messages else []
         conversation.append({"role": "user", "content": body.content})
