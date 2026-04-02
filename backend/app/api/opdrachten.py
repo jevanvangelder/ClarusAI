@@ -55,7 +55,10 @@ class AfbeeldingZoekRequest(BaseModel):
 
 async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
     """Zoek een educatieve afbeelding via Google Custom Search."""
-    if not GOOGLE_SEARCH_KEY or not GOOGLE_SEARCH_CX:
+    key = os.getenv("GOOGLE_SEARCH_API_KEY", "")
+    cx = os.getenv("GOOGLE_SEARCH_CX", "")
+    print(f"🔑 Google key: {key[:10]}... | cx: {cx[:10]}...")
+    if not key or not cx:
         print("⚠️ Google Search keys niet ingesteld")
         return None
     try:
@@ -63,8 +66,8 @@ async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
             resp = await client.get(
                 "https://www.googleapis.com/customsearch/v1",
                 params={
-                    "key": GOOGLE_SEARCH_KEY,
-                    "cx": GOOGLE_SEARCH_CX,
+                    "key": key,
+                    "cx": cx,
                     "q": query,
                     "searchType": "image",
                     "num": 3,
