@@ -46,6 +46,9 @@ const parseVragen = (vragen: any): Vraag[] => {
   return []
 }
 
+const berekenMaxPunten = (vragen: Vraag[]) =>
+  vragen.reduce((acc, v) => acc + (Number(v.punten) || 0), 0)
+
 export default function Opdrachten() {
   const { role, user } = useAuth()
   const [view, setView] = useState<View>('overzicht')
@@ -57,7 +60,6 @@ export default function Opdrachten() {
   const [editTitel, setEditTitel] = useState('')
   const [editType, setEditType] = useState('')
   const [editKlasIds, setEditKlasIds] = useState<string[]>([])
-  const [editMaxPunten, setEditMaxPunten] = useState<number>(10)
   const [editingTitel, setEditingTitel] = useState(false)
   const [editingVragen, setEditingVragen] = useState(false)
   const [editVragen, setEditVragen] = useState<Vraag[]>([])
@@ -109,19 +111,10 @@ export default function Opdrachten() {
       setEditTitel(selectedOpdracht.titel)
       setEditType(selectedOpdracht.type)
       setEditKlasIds(selectedOpdracht.klas_ids || [])
-      setEditMaxPunten(selectedOpdracht.max_punten)
       setEditVragen(parseVragen(selectedOpdracht.vragen))
       setEditingVragen(false)
     }
   }, [selectedOpdracht])
-
-  // Auto bereken max_punten uit vragen
-  useEffect(() => {
-    if (editingVragen && editVragen.length > 0) {
-      const som = editVragen.reduce((acc, v) => acc + (Number(v.punten) || 0), 0)
-      setEditMaxPunten(som)
-    }
-  }, [editVragen, editingVragen])
 
   const toggleKlas = (id: string) => {
     setEditKlasIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
@@ -131,13 +124,15 @@ export default function Opdrachten() {
     if (!selectedOpdracht) return
     setSaving(true)
     try {
+      const vragenToSave = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
+      const autoMaxPunten = berekenMaxPunten(vragenToSave)
       const body: any = {
         titel: editTitel,
         type: editType,
         klas_ids: editKlasIds,
-        max_punten: editMaxPunten,
+        max_punten: autoMaxPunten,
+        vragen: vragenToSave,
       }
-      if (editingVragen) body.vragen = editVragen
       const res = await fetch(`${API_URL}/api/opdrachten/${selectedOpdracht.id}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       })
@@ -152,7 +147,6 @@ export default function Opdrachten() {
   }
 
   const handleVervolgSpar = (opdracht: Opdracht) => {
-    // Zet de bestaande opdracht als context voor de spar
     const context = JSON.stringify({
       titel: opdracht.titel,
       beschrijving: opdracht.beschrijving,
@@ -168,10 +162,7 @@ export default function Opdrachten() {
       max_punten: opdracht.max_punten,
       vragen: parseVragen(opdracht.vragen),
     })
-    setSparMessages([{
-      role: 'assistant',
-      content: `Ik heb de opdracht "${opdracht.titel}" geladen. Wat wil je aanpassen of uitbreiden?`
-    }])
+    setSparMessages([{ role: 'assistant', content: `Ik heb de opdracht "${opdracht.titel}" geladen. Wat wil je aanpassen of uitbreiden?` }])
     setView('spar')
   }
 
@@ -218,7 +209,9 @@ export default function Opdrachten() {
     if (!gegenereerdeOpdracht || !user) return
     setOpslaan(true)
     try {
-      // Als we een bestaande opdracht aan het bewerken zijn via spar, update dan
+      const vragen = parseVragen(gegenereerdeOpdracht.vragen)
+      const autoMaxPunten = berekenMaxPunten(vragen)
+
       if (selectedOpdracht && sparContext) {
         const res = await fetch(`${API_URL}/api/opdrachten/${selectedOpdracht.id}`, {
           method: 'PUT', headers: { 'Content-Type': 'application/json' },
@@ -226,8 +219,8 @@ export default function Opdrachten() {
             titel: gegenereerdeOpdracht.titel,
             beschrijving: gegenereerdeOpdracht.beschrijving,
             type: gegenereerdeOpdracht.type,
-            max_punten: gegenereerdeOpdracht.max_punten,
-            vragen: gegenereerdeOpdracht.vragen,
+            max_punten: autoMaxPunten,
+            vragen,
           }),
         })
         const updated = await res.json()
@@ -237,7 +230,7 @@ export default function Opdrachten() {
       } else {
         const res = await fetch(`${API_URL}/api/opdrachten`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...gegenereerdeOpdracht, teacher_id: user.id }),
+          body: JSON.stringify({ ...gegenereerdeOpdracht, max_punten: autoMaxPunten, vragen, teacher_id: user.id }),
         })
         const created = await res.json()
         setOpdrachten(prev => [{ ...created, vragen: parseVragen(created.vragen), klas_ids: created.klas_ids || [] }, ...prev])
@@ -271,7 +264,6 @@ export default function Opdrachten() {
           </h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>
-          {/* Chat */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
@@ -296,7 +288,7 @@ export default function Opdrachten() {
               {gegenereerdeOpdracht && sparMessages.length > 0 && (
                 <div className="flex justify-start">
                   <div className="bg-green-500/10 border border-green-500/20 px-3 py-2 rounded-xl text-sm text-green-400">
-                    ✅ {sparContext ? 'Opdracht bijgewerkt! Sla op rechts op →' : 'Opdracht gegenereerd! Bekijk en sla op rechts →'}
+                    ✅ {sparContext ? 'Opdracht bijgewerkt! Sla op rechts op →' : 'Opdracht gegenereerd! Bekijk en sla op rechts op →'}
                   </div>
                 </div>
               )}
@@ -320,7 +312,6 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Preview */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}</span>
@@ -333,7 +324,9 @@ export default function Opdrachten() {
                   <h3 className="text-white font-bold text-lg">{gegenereerdeOpdracht.titel}</h3>
                   <span className={`text-xs px-2 py-0.5 rounded mt-1 inline-block border ${getTypeColor(gegenereerdeOpdracht.type)}`}>{gegenereerdeOpdracht.type}</span>
                   <p className="text-white/60 text-sm mt-2">{gegenereerdeOpdracht.beschrijving}</p>
-                  <p className="text-white/40 text-xs mt-1">Max punten: {gegenereerdeOpdracht.max_punten}</p>
+                  <p className="text-white/40 text-xs mt-1">
+                    Max punten: {berekenMaxPunten(parseVragen(gegenereerdeOpdracht.vragen))}pt
+                  </p>
                 </div>
                 <div className="space-y-3">
                   {parseVragen(gegenereerdeOpdracht.vragen).map((v: Vraag, i: number) => (
@@ -360,9 +353,11 @@ export default function Opdrachten() {
 
   // ===== DETAIL VIEW =====
   if (view === 'detail' && selectedOpdracht) {
+    const huidigeVragen = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
+    const autoMaxPunten = berekenMaxPunten(huidigeVragen)
+
     return (
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white transition-colors"><ArrowLeft size={20} /></button>
           {editingTitel ? (
@@ -373,16 +368,16 @@ export default function Opdrachten() {
           )}
           <button onClick={() => setEditingTitel(true)} className="text-white/30 hover:text-white/70"><Pencil size={15} /></button>
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => handleVervolgSpar(selectedOpdracht)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 text-sm rounded-lg transition-all"
-            >
-              <MessageSquarePlus size={14} /> Verder spar met AI
+            <button onClick={() => handleVervolgSpar(selectedOpdracht)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 text-sm rounded-lg transition-all">
+              <MessageSquarePlus size={14} /> Spar verder met AI
             </button>
-            <button onClick={handleSaveChanges} disabled={saving} className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
+            <button onClick={handleSaveChanges} disabled={saving}
+              className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
               <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
             </button>
-            <button onClick={() => handleDelete(selectedOpdracht)} className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg">
+            <button onClick={() => handleDelete(selectedOpdracht)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg">
               <Trash size={14} /> Verwijderen
             </button>
           </div>
@@ -446,21 +441,14 @@ export default function Opdrachten() {
             )}
           </div>
 
-          {/* Max punten */}
+          {/* Max punten — alleen lezen, automatisch berekend */}
           <div className="flex flex-col gap-1">
             <label className="text-white/40 text-xs uppercase tracking-wider">Max punten</label>
             <div className="flex items-center gap-1">
-              <input
-                type="number"
-                value={editMaxPunten}
-                onChange={e => setEditMaxPunten(Number(e.target.value))}
-                className="w-16 bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-sm text-center outline-none focus:border-blue-500/50"
-              />
+              <span className="text-white text-lg font-semibold">{autoMaxPunten}</span>
               <span className="text-white/40 text-sm">pt</span>
             </div>
-            {editingVragen && (
-              <span className="text-white/30 text-xs">Auto: {editVragen.reduce((a, v) => a + (Number(v.punten) || 0), 0)}pt</span>
-            )}
+            <span className="text-white/20 text-xs">Automatisch berekend uit vragen</span>
           </div>
         </div>
 
@@ -468,15 +456,13 @@ export default function Opdrachten() {
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <p className="text-white/60 text-sm">{selectedOpdracht.beschrijving}</p>
-            <button
-              onClick={() => setEditingVragen(prev => !prev)}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/20'}`}
-            >
+            <button onClick={() => setEditingVragen(prev => !prev)}
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/20'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
           <div className="space-y-3">
-            {(editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)).map((v: Vraag, i: number) => (
+            {huidigeVragen.map((v: Vraag, i: number) => (
               <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
                 {editingVragen ? (
                   <div className="space-y-2">
@@ -485,7 +471,7 @@ export default function Opdrachten() {
                       <textarea value={v.vraag}
                         onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
                         className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-blue-500/50 resize-none" rows={2} />
-                      <input type="number" value={v.punten}
+                      <input type="number" min={0} value={v.punten}
                         onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
                         className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs text-center outline-none focus:border-blue-500/50" />
                       <span className="text-white/40 text-xs">pt</span>
@@ -511,6 +497,11 @@ export default function Opdrachten() {
               </div>
             ))}
           </div>
+          {editingVragen && (
+            <div className="flex justify-end">
+              <span className="text-white/40 text-sm">Totaal: <span className="text-white font-semibold">{autoMaxPunten}pt</span></span>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -555,7 +546,7 @@ export default function Opdrachten() {
               className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group">
               <div className="flex items-start justify-between mb-2">
                 <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
-                <span className="text-xs text-white/30">{opdracht.max_punten}pt</span>
+                <span className="text-xs text-white/30">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
               </div>
               <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
               <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
