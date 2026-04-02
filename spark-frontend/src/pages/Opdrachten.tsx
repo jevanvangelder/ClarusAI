@@ -166,6 +166,7 @@ export default function Opdrachten() {
     setView('spar')
   }
 
+  // ✅ Context updaten na elke AI wijziging zodat volgende aanpassing altijd de meest recente versie heeft
   const parseAIResponse = (text: string) => {
     const PREFIX = 'OPDRACHT_UPDATE:'
     if (text.startsWith(PREFIX)) {
@@ -173,6 +174,7 @@ export default function Opdrachten() {
         const parsed = JSON.parse(text.slice(PREFIX.length).trim())
         if (parsed.titel && parsed.vragen) {
           setGegenereerdeOpdracht(parsed)
+          setSparContext(JSON.stringify(parsed))
           return { type: 'update' as const, content: '✅ Opdracht bijgewerkt! Bekijk de wijzigingen rechts →' }
         }
       } catch {}
@@ -317,7 +319,7 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Preview — met afbeelding support */}
+          {/* Preview */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}</span>
@@ -339,7 +341,6 @@ export default function Opdrachten() {
                         <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
-                      {/* ✅ Afbeelding tonen als de AI er een heeft gevonden */}
                       {v.afbeelding && (
                         <img
                           src={v.afbeelding}

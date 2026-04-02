@@ -56,6 +56,7 @@ class AfbeeldingZoekRequest(BaseModel):
 async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
     """Zoek een educatieve afbeelding via Google Custom Search."""
     if not GOOGLE_SEARCH_KEY or not GOOGLE_SEARCH_CX:
+        print("⚠️ Google Search keys niet ingesteld")
         return None
     try:
         async with httpx.AsyncClient() as client:
@@ -66,16 +67,18 @@ async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
                     "cx": GOOGLE_SEARCH_CX,
                     "q": query,
                     "searchType": "image",
-                    "num": 5,
+                    "num": 3,
                     "safe": "active",
                 },
                 timeout=8.0
             )
             data = resp.json()
+            print(f"🔍 Google Search '{query}': status={resp.status_code}, items={len(data.get('items', []))}, error={data.get('error')}")
             items = data.get("items", [])
-            # Pak eerste resultaat direct — searchType=image geeft altijd afbeeldingen terug
             if items:
-                return items[0].get("link")
+                url = items[0].get("link")
+                print(f"✅ Afbeelding gevonden: {url}")
+                return url
     except Exception as e:
         print(f"❌ Google Search fout: {e}")
     return None
@@ -182,15 +185,15 @@ async def spar_chat(body: SparChatMessage):
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil of iets bespreekt — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
             "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen:\n"
             f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
-            "BELANGRIJK BIJ AANPASSEN VAN EEN BESTAANDE OPDRACHT:\n"
-            "- Behoud ALTIJD alle bestaande vragen, tenzij de docent expliciet vraagt om vragen te verwijderen\n"
-            "- Voeg alleen toe of pas alleen de gevraagde vraag/vragen aan\n"
-            "- Kopieer de volledige bestaande opdracht inclusief ALLE vragen en pas uitsluitend het gevraagde onderdeel aan\n"
-            "- Als je een afbeelding toevoegt aan vraag X, laat dan alle andere vragen exact zoals ze zijn\n\n"
+            "KRITIEKE REGELS BIJ AANPASSEN VAN EEN BESTAANDE OPDRACHT:\n"
+            "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn, tenzij de docent expliciet vraagt een vraag te verwijderen\n"
+            "- Tel het aantal vragen in de context en zorg dat de output EXACT dat aantal + eventuele nieuwe vragen bevat\n"
+            "- Als je een afbeelding toevoegt aan vraag X, kopieer dan alle andere vragen 1-op-1 zonder wijzigingen\n"
+            "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n\n"
             "AFBEELDINGEN:\n"
-            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, schema, grafiek, lege invultabel), voeg dan het veld 'afbeelding_zoekterm' toe aan die vraag.\n"
-            "- Gebruik een beschrijvende Engelse zoekterm (bijv. 'blank balance sheet template', 'supply and demand graph economics', 'human heart anatomy diagram', 'empty t-account bookkeeping').\n"
-            "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is voor de vraag.\n\n"
+            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, schema, grafiek, lege invultabel), voeg dan 'afbeelding_zoekterm' toe\n"
+            "- Gebruik beschrijvende Engelse zoektermen (bijv. 'blank balance sheet template', 'empty t-account bookkeeping', 'supply demand graph economics')\n"
+            "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
             "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om een opdracht vraagt\n"
@@ -200,7 +203,7 @@ async def spar_chat(body: SparChatMessage):
         if body.context:
             system_prompt += (
                 f"\n\nDe docent werkt aan deze BESTAANDE opdracht. "
-                f"Neem alle vragen over en pas ALLEEN aan wat gevraagd wordt:\n{body.context}"
+                f"Dit is de VOLLEDIGE en MEEST RECENTE versie. Neem ALLE vragen over en pas ALLEEN aan wat gevraagd wordt:\n{body.context}"
             )
 
         conversation = list(body.messages) if body.messages else []
@@ -218,9 +221,11 @@ async def spar_chat(body: SparChatMessage):
             try:
                 parsed = json.loads(response[len(PREFIX):].strip())
                 vragen = parsed.get("vragen", [])
+                print(f"📝 AI genereerde {len(vragen)} vragen")
                 for vraag in vragen:
                     zoekterm = vraag.pop("afbeelding_zoekterm", None)
                     if zoekterm and not vraag.get("afbeelding"):
+                        print(f"🔍 Zoeken afbeelding voor vraag {vraag.get('nummer')}: '{zoekterm}'")
                         url = await zoek_educatieve_afbeelding(zoekterm)
                         if url:
                             vraag["afbeelding"] = url
@@ -228,6 +233,7 @@ async def spar_chat(body: SparChatMessage):
                 return {"message": f"{PREFIX}{json.dumps(parsed)}"}
             except Exception as e:
                 print(f"⚠️ Kon afbeeldingen niet verwerken: {e}")
+                traceback.print_exc()
 
         return {"message": response}
 
