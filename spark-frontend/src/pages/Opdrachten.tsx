@@ -23,7 +23,7 @@ interface Vraag {
   opties?: string[]
   antwoord: string
   toelichting: string
-  afbeelding?: string // base64 of URL
+  afbeelding?: string
 }
 interface Opdracht {
   id: string
@@ -317,7 +317,7 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Preview */}
+          {/* Preview — met afbeelding support */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}</span>
@@ -339,7 +339,18 @@ export default function Opdrachten() {
                         <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
-                      {v.opties && v.opties.length > 0 && <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
+                      {/* ✅ Afbeelding tonen als de AI er een heeft gevonden */}
+                      {v.afbeelding && (
+                        <img
+                          src={v.afbeelding}
+                          alt={`Afbeelding bij vraag ${v.nummer}`}
+                          className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      )}
+                      {v.opties && v.opties.length > 0 && (
+                        <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
+                      )}
                       <p className="text-green-400/70 text-xs mt-1">✓ {v.antwoord}</p>
                     </div>
                   ))}
@@ -362,7 +373,6 @@ export default function Opdrachten() {
 
     return (
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white"><ArrowLeft size={20} /></button>
           {editingTitel ? (
@@ -384,7 +394,6 @@ export default function Opdrachten() {
           </div>
         </div>
 
-        {/* Instellingen */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 flex flex-wrap gap-6 items-start">
           <div className="flex flex-col gap-2">
             <label className="text-white/40 text-xs uppercase tracking-wider">Type</label>
@@ -444,7 +453,6 @@ export default function Opdrachten() {
           </div>
         </div>
 
-        {/* Beschrijving */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-white/40 text-xs uppercase tracking-wider">Beschrijving</label>
@@ -460,7 +468,6 @@ export default function Opdrachten() {
           )}
         </div>
 
-        {/* Vragen met drag & drop */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
@@ -481,7 +488,6 @@ export default function Opdrachten() {
                           <div ref={provided.innerRef} {...provided.draggableProps}
                             className={`bg-white/5 border rounded-lg p-4 space-y-2 transition-all ${snapshot.isDragging ? 'border-blue-500/40 shadow-lg shadow-blue-500/10' : 'border-white/10'}`}>
                             <div className="flex items-start gap-2">
-                              {/* Drag handle */}
                               <div {...provided.dragHandleProps} className="mt-2 text-white/20 hover:text-white/50 cursor-grab active:cursor-grabbing shrink-0">
                                 <GripVertical size={16} />
                               </div>
@@ -505,8 +511,6 @@ export default function Opdrachten() {
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
                                     className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-green-400/80 text-xs outline-none focus:border-blue-500/50" placeholder="Modelantwoord..." />
                                 </div>
-
-                                {/* Afbeelding per vraag */}
                                 <div className="flex items-center gap-2">
                                   {v.afbeelding ? (
                                     <div className="relative inline-block">
@@ -545,7 +549,14 @@ export default function Opdrachten() {
                     <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                     <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                   </div>
-                  {v.afbeelding && <img src={v.afbeelding} alt="vraag" className="mt-2 max-h-32 rounded border border-white/10" />}
+                  {v.afbeelding && (
+                    <img
+                      src={v.afbeelding}
+                      alt="vraag"
+                      className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  )}
                   {v.opties && v.opties.length > 0 && <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
                   <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
                   {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
