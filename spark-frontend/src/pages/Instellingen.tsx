@@ -2,23 +2,15 @@ import { useState, useEffect } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
-  User,
-  Mail,
-  School,
-  Shield,
-  Save,
-  Check,
-  AlertCircle,
-  Lock,
-  Eye,
-  EyeOff,
+  User, Mail, School, Shield, Save, Check, AlertCircle, Lock, Eye, EyeOff,
 } from 'lucide-react'
 
 export default function Instellingen() {
-  const { user, profile, role } = useAuth()
+  const { user, profile, role, refreshProfile } = useAuth()
 
   // Profiel velden
-  const [fullName, setFullName] = useState('')
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
   const [school, setSchool] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -32,17 +24,18 @@ export default function Instellingen() {
   const [passwordSaved, setPasswordSaved] = useState(false)
   const [passwordError, setPasswordError] = useState<string | null>(null)
 
-  // Laad huidige waarden
   useEffect(() => {
     if (profile) {
-      setFullName(profile.full_name || '')
+      setFirstName(profile.first_name || '')
+      setLastName(profile.last_name || '')
       setSchool(profile.school || '')
     }
   }, [profile])
 
-  // Profiel opslaan
   const handleSaveProfile = async () => {
     if (!user) return
+    if (!firstName.trim()) { setError('Voornaam is verplicht'); return }
+    if (!lastName.trim()) { setError('Achternaam is verplicht'); return }
 
     setSaving(true)
     setError(null)
@@ -52,23 +45,18 @@ export default function Instellingen() {
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
-          full_name: fullName.trim() || null,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
           school: school.trim() || null,
+          // full_name wordt automatisch bijgewerkt door de trigger
         })
         .eq('id', user.id)
 
-      if (updateError) {
-        setError('Fout bij opslaan: ' + updateError.message)
-        return
-      }
+      if (updateError) { setError('Fout bij opslaan: ' + updateError.message); return }
 
+      await refreshProfile()
       setSaved(true)
       setTimeout(() => setSaved(false), 3000)
-
-      // Herlaad de pagina na 1 seconde zodat de sidebar ook bijwerkt
-      setTimeout(() => {
-        window.location.reload()
-      }, 1000)
     } catch (err) {
       setError('Er ging iets mis bij het opslaan')
     } finally {
@@ -76,33 +64,17 @@ export default function Instellingen() {
     }
   }
 
-  // Wachtwoord wijzigen
   const handleChangePassword = async () => {
     setPasswordError(null)
     setPasswordSaved(false)
 
-    if (newPassword.length < 6) {
-      setPasswordError('Wachtwoord moet minimaal 6 tekens zijn')
-      return
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError('Wachtwoorden komen niet overeen')
-      return
-    }
+    if (newPassword.length < 6) { setPasswordError('Wachtwoord moet minimaal 6 tekens zijn'); return }
+    if (newPassword !== confirmPassword) { setPasswordError('Wachtwoorden komen niet overeen'); return }
 
     setPasswordSaving(true)
-
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      })
-
-      if (error) {
-        setPasswordError('Fout bij wijzigen: ' + error.message)
-        return
-      }
-
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) { setPasswordError('Fout bij wijzigen: ' + error.message); return }
       setPasswordSaved(true)
       setNewPassword('')
       setConfirmPassword('')
@@ -144,107 +116,85 @@ export default function Instellingen() {
           {/* Email (niet bewerkbaar) */}
           <div>
             <label className="block text-sm font-medium text-white/60 mb-2">
-              <span className="flex items-center gap-2">
-                <Mail size={14} />
-                E-mail
-              </span>
+              <span className="flex items-center gap-2"><Mail size={14} /> E-mail</span>
             </label>
-            <input
-              type="email"
-              value={user?.email || ''}
-              disabled
-              autoComplete="off"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
-            />
+            <input type="email" value={user?.email || ''} disabled
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed" />
             <p className="text-xs text-white/30 mt-1">Je e-mail kan niet worden gewijzigd</p>
           </div>
 
           {/* Rol (niet bewerkbaar) */}
           <div>
             <label className="block text-sm font-medium text-white/60 mb-2">
-              <span className="flex items-center gap-2">
-                <Shield size={14} />
-                Rol
-              </span>
+              <span className="flex items-center gap-2"><Shield size={14} /> Rol</span>
             </label>
-            <input
-              type="text"
-              value={getRoleName()}
-              disabled
-              autoComplete="off"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed"
-            />
+            <input type="text" value={getRoleName()} disabled
+              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white/40 text-sm cursor-not-allowed" />
             <p className="text-xs text-white/30 mt-1">Je rol kan alleen door een admin worden gewijzigd</p>
           </div>
 
-          {/* Volledige naam */}
-          <div>
-            <label className="block text-sm font-medium text-white/60 mb-2">
-              <span className="flex items-center gap-2">
-                <User size={14} />
-                Volledige naam
-              </span>
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="Bijv. Jan de Vries"
-              autoComplete="off"
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
-            />
+          {/* Voornaam + Achternaam */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-white/60 mb-2">
+                <span className="flex items-center gap-2"><User size={14} /> Voornaam <span className="text-red-400">*</span></span>
+              </label>
+              <input
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                placeholder="bijv. Jan"
+                autoComplete="off"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-white/60 mb-2">
+                <span className="flex items-center gap-2"><User size={14} /> Achternaam <span className="text-red-400">*</span></span>
+              </label>
+              <input
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                placeholder="bijv. de Vries"
+                autoComplete="off"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
+              />
+            </div>
           </div>
 
           {/* School */}
           <div>
             <label className="block text-sm font-medium text-white/60 mb-2">
-              <span className="flex items-center gap-2">
-                <School size={14} />
-                School
-              </span>
+              <span className="flex items-center gap-2"><School size={14} /> School</span>
             </label>
             <input
               type="text"
               value={school}
               onChange={(e) => setSchool(e.target.value)}
-              placeholder="Bijv. Hogeschool Rotterdam"
+              placeholder="bijv. Hogeschool Rotterdam"
               autoComplete="off"
               className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 transition-all"
             />
           </div>
 
-          {/* Error / Success */}
           {error && (
             <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-              <AlertCircle size={16} />
-              {error}
+              <AlertCircle size={16} /> {error}
             </div>
           )}
-
           {saved && (
             <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-              <Check size={16} />
-              Profiel succesvol opgeslagen!
+              <Check size={16} /> Profiel succesvol opgeslagen!
             </div>
           )}
 
-          {/* Opslaan knop */}
-          <button
-            type="button"
-            onClick={handleSaveProfile}
-            disabled={saving}
-            className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-medium rounded-lg transition-all text-sm"
-          >
+          <button type="button" onClick={handleSaveProfile} disabled={saving}
+            className="flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 disabled:bg-blue-500/50 text-white font-medium rounded-lg transition-all text-sm">
             {saving ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Opslaan...
-              </>
+              <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Opslaan...</>
             ) : (
-              <>
-                <Save size={16} />
-                Profiel opslaan
-              </>
+              <><Save size={16} /> Profiel opslaan</>
             )}
           </button>
         </div>
@@ -260,7 +210,6 @@ export default function Instellingen() {
             <h2 className="text-lg font-semibold text-white">Wachtwoord wijzigen</h2>
           </div>
 
-          {/* Nieuw wachtwoord */}
           <div>
             <label className="block text-sm font-medium text-white/60 mb-2">Nieuw wachtwoord</label>
             <div className="relative">
@@ -272,17 +221,13 @@ export default function Instellingen() {
                 autoComplete="new-password"
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-white text-sm placeholder:text-white/20 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 transition-all pr-12"
               />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
-              >
+              <button type="button" onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors">
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </div>
 
-          {/* Bevestig wachtwoord */}
           <div>
             <label className="block text-sm font-medium text-white/60 mb-2">Bevestig wachtwoord</label>
             <input
@@ -295,38 +240,24 @@ export default function Instellingen() {
             />
           </div>
 
-          {/* Error / Success */}
           {passwordError && (
             <div className="flex items-center gap-2 text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3">
-              <AlertCircle size={16} />
-              {passwordError}
+              <AlertCircle size={16} /> {passwordError}
             </div>
           )}
-
           {passwordSaved && (
             <div className="flex items-center gap-2 text-green-400 text-sm bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3">
-              <Check size={16} />
-              Wachtwoord succesvol gewijzigd!
+              <Check size={16} /> Wachtwoord succesvol gewijzigd!
             </div>
           )}
 
-          {/* Wijzig knop */}
-          <button
-            type="button"
-            onClick={handleChangePassword}
+          <button type="button" onClick={handleChangePassword}
             disabled={passwordSaving || !newPassword || !confirmPassword}
-            className="flex items-center gap-2 px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all text-sm"
-          >
+            className="flex items-center gap-2 px-6 py-3 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-500/50 disabled:cursor-not-allowed text-white font-medium rounded-lg transition-all text-sm">
             {passwordSaving ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Wijzigen...
-              </>
+              <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Wijzigen...</>
             ) : (
-              <>
-                <Lock size={16} />
-                Wachtwoord wijzigen
-              </>
+              <><Lock size={16} /> Wachtwoord wijzigen</>
             )}
           </button>
         </div>

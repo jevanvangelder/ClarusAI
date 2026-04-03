@@ -8,10 +8,12 @@ interface Profile {
   id: string
   email: string
   full_name: string | null
+  first_name: string | null
+  last_name: string | null
   role: UserRole
   avatar_url: string | null
   school: string | null
-  school_id: string | null  // ← nieuw: FK naar schools tabel
+  school_id: string | null
 }
 
 interface AuthContextType {
@@ -20,10 +22,11 @@ interface AuthContextType {
   profile: Profile | null
   role: UserRole | null
   loading: boolean
+  needsOnboarding: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string, role?: UserRole, fullName?: string) => Promise<{ error: any }>
+  signUp: (email: string, password: string, role?: UserRole, firstName?: string, lastName?: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
-  refreshProfile: () => Promise<void>  // ← nieuw: handmatig profiel herladen
+  refreshProfile: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -34,6 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [role, setRole] = useState<UserRole | null>(null)
   const [loading, setLoading] = useState(true)
+  const [needsOnboarding, setNeedsOnboarding] = useState(false)
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -43,7 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userId)
         .single()
       if (error) { console.error('Fout bij ophalen profiel:', error); return }
-      if (data) { setProfile(data); setRole(data.role) }
+      if (data) {
+        setProfile(data)
+        setRole(data.role)
+        // Onboarding nodig als first_name nog leeg is
+        setNeedsOnboarding(!data.first_name || data.first_name.trim() === '')
+      }
     } catch (err) {
       console.error('Onverwachte fout bij ophalen profiel:', err)
     }
@@ -73,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) fetchProfile(session.user.id)
-      else { setProfile(null); setRole(null) }
+      else { setProfile(null); setRole(null); setNeedsOnboarding(false) }
       setLoading(false)
     })
 
@@ -89,7 +98,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     email: string,
     password: string,
     role: UserRole = 'student',
-    fullName?: string
+    firstName?: string,
+    lastName?: string
   ) => {
     try {
       const { data, error } = await supabase.auth.signUp({
@@ -98,16 +108,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         options: {
           data: {
             role,
-            full_name: fullName ?? '',
+            first_name: firstName ?? '',
+            last_name: lastName ?? '',
+            full_name: `${firstName ?? ''} ${lastName ?? ''}`.trim(),
           }
         }
       })
       console.log('signUp result:', { data, error })
-
       if (error && !error.message?.includes('sending confirmation email')) {
         return { error }
       }
-
       return { error: null }
     } catch (err: any) {
       console.error('signUp crash:', err)
@@ -119,7 +129,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  const value = { user, session, profile, role, loading, signIn, signUp, signOut, refreshProfile }
+  const value = {
+    user, session, profile, role, loading, needsOnboarding,
+    signIn, signUp, signOut, refreshProfile
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

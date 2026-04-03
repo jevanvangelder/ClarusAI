@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Users, BookOpen, Calendar, Copy, Check,
-  Trash2, Plus, X, Settings, FileText, Tag, Pencil
+  Trash2, Plus, X, Settings, FileText
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -24,6 +24,8 @@ interface KlasInfo {
 
 interface Leerling {
   student_id: string
+  first_name: string | null
+  last_name: string | null
   full_name: string | null
   email: string | null
   joined_at: string
@@ -52,7 +54,7 @@ export default function KlasDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('leerlingen')
   const [copied, setCopied] = useState(false)
 
-  // Instellingen form state
+  // Instellingen form
   const [editNaam, setEditNaam] = useState('')
   const [editVak, setEditVak] = useState('')
   const [editSchooljaar, setEditSchooljaar] = useState('')
@@ -68,10 +70,8 @@ export default function KlasDetail() {
   const [opdrachtDeadline, setOpdrachtDeadline] = useState('')
   const [savingOpdracht, setSavingOpdracht] = useState(false)
 
-  // Leerling verwijderen
+  // Modals
   const [verwijderLeerlingId, setVerwijderLeerlingId] = useState<string | null>(null)
-
-  // Klas archiveren bevestiging
   const [archiverenModal, setArchiverenModal] = useState(false)
 
   const fetchKlas = async () => {
@@ -93,17 +93,12 @@ export default function KlasDetail() {
   const fetchLeerlingen = async () => {
     if (!id) return
     const { data, error } = await supabase
-      .from('class_members')
-      .select('student_id, joined_at, profiles(full_name, email)')
+      .from('klas_leerlingen')
+      .select('student_id, first_name, last_name, full_name, email, joined_at')
       .eq('class_id', id)
       .order('joined_at', { ascending: true })
-    if (error) { console.error(error); return }
-    setLeerlingen((data || []).map((r: any) => ({
-      student_id: r.student_id,
-      full_name: r.profiles?.full_name || null,
-      email: r.profiles?.email || null,
-      joined_at: r.joined_at,
-    })))
+    if (error) { console.error('Fout bij ophalen leerlingen:', error); return }
+    setLeerlingen(data || [])
   }
 
   const fetchOpdrachten = async () => {
@@ -219,6 +214,18 @@ export default function KlasDetail() {
     }
   }
 
+  const getInitials = (l: Leerling) => {
+    if (l.first_name && l.last_name) return `${l.first_name[0]}${l.last_name[0]}`.toUpperCase()
+    if (l.full_name) return l.full_name[0].toUpperCase()
+    return '?'
+  }
+
+  const getDisplayName = (l: Leerling) => {
+    if (l.first_name && l.last_name) return `${l.first_name} ${l.last_name}`
+    if (l.full_name) return l.full_name
+    return l.email || 'Onbekend'
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -239,10 +246,7 @@ export default function KlasDetail() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={() => navigate('/klassen')}
-          className="mt-1 text-white/50 hover:text-white transition-colors"
-        >
+        <button onClick={() => navigate('/klassen')} className="mt-1 text-white/50 hover:text-white transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
@@ -250,18 +254,15 @@ export default function KlasDetail() {
             <h2 className="text-2xl font-bold text-white">{klas.name}</h2>
             {klas.vak && (
               <span className="flex items-center gap-1 text-white/40 text-sm">
-                <BookOpen size={13} />
-                {klas.vak}
+                <BookOpen size={13} /> {klas.vak}
               </span>
             )}
             {klas.schooljaar && (
               <span className="flex items-center gap-1 text-white/40 text-sm">
-                <Calendar size={13} />
-                {klas.schooljaar}
+                <Calendar size={13} /> {klas.schooljaar}
               </span>
             )}
           </div>
-          {/* Tags */}
           {(klas.tags || []).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
               {klas.tags.map(tag => (
@@ -272,13 +273,12 @@ export default function KlasDetail() {
             </div>
           )}
         </div>
-        {/* Klascode */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="text-xs text-white/30">Code:</span>
           <code className="text-xs font-mono bg-white/5 border border-white/10 rounded px-2 py-1 text-blue-300 tracking-widest">
             {klas.code}
           </code>
-          <button onClick={copyCode} className="text-white/30 hover:text-blue-400 transition-colors" title="Kopieer klascode">
+          <button onClick={copyCode} className="text-white/30 hover:text-blue-400 transition-colors">
             {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
           </button>
         </div>
@@ -331,19 +331,19 @@ export default function KlasDetail() {
             </div>
           ) : (
             <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
-                <p className="text-white/50 text-xs uppercase tracking-wider">{leerlingen.length} leerling{leerlingen.length !== 1 ? 'en' : ''}</p>
+              <div className="px-5 py-3 border-b border-white/5">
+                <p className="text-white/50 text-xs uppercase tracking-wider">
+                  {leerlingen.length} leerling{leerlingen.length !== 1 ? 'en' : ''}
+                </p>
               </div>
               <div className="divide-y divide-white/5">
                 {leerlingen.map((leerling) => (
-                  <div key={leerling.student_id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/2 transition-colors group">
+                  <div key={leerling.student_id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-colors group">
                     <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                      <span className="text-blue-400 text-xs font-semibold">
-                        {leerling.full_name?.[0]?.toUpperCase() || '?'}
-                      </span>
+                      <span className="text-blue-400 text-xs font-semibold">{getInitials(leerling)}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-white text-sm font-medium truncate">{leerling.full_name || 'Onbekend'}</p>
+                      <p className="text-white text-sm font-medium truncate">{getDisplayName(leerling)}</p>
                       <p className="text-white/30 text-xs truncate">{leerling.email || ''}</p>
                     </div>
                     <p className="text-white/25 text-xs shrink-0">
@@ -372,11 +372,9 @@ export default function KlasDetail() {
               onClick={() => setOpdrachtModalOpen(true)}
               className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all"
             >
-              <Plus size={16} />
-              Nieuwe opdracht
+              <Plus size={16} /> Nieuwe opdracht
             </button>
           </div>
-
           {opdrachten.length === 0 ? (
             <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
@@ -410,7 +408,6 @@ export default function KlasDetail() {
                     <button
                       onClick={() => handleVerwijderOpdracht(opdracht.id)}
                       className="opacity-0 group-hover:opacity-100 p-1.5 text-red-400/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
-                      title="Opdracht verwijderen"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -463,8 +460,7 @@ export default function KlasDetail() {
                 ))}
               </div>
               <input type="text" value={editTagInput} onChange={e => setEditTagInput(e.target.value)}
-                onKeyDown={handleTagKeyDown}
-                placeholder="Typ een label en druk Enter"
+                onKeyDown={handleTagKeyDown} placeholder="Typ een label en druk Enter"
                 className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-purple-500/50" />
             </div>
             <button type="submit" disabled={savingInstellingen}
@@ -473,16 +469,12 @@ export default function KlasDetail() {
             </button>
           </form>
 
-          {/* Gevaarzone */}
           <div className="bg-[#0f1029] border border-red-500/20 rounded-xl p-6 space-y-3">
             <h3 className="text-red-400 font-semibold text-sm">Gevaarzone</h3>
             <p className="text-white/40 text-sm">De klas wordt gearchiveerd en is niet meer zichtbaar voor leerlingen.</p>
-            <button
-              onClick={() => setArchiverenModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition-all"
-            >
-              <Trash2 size={14} />
-              Klas archiveren
+            <button onClick={() => setArchiverenModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition-all">
+              <Trash2 size={14} /> Klas archiveren
             </button>
           </div>
         </div>
@@ -558,7 +550,7 @@ export default function KlasDetail() {
         </div>
       )}
 
-      {/* Modal: Archiveren bevestiging */}
+      {/* Modal: Archiveren */}
       {archiverenModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl p-6 space-y-4">
