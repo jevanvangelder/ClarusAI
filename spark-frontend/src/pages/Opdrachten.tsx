@@ -123,7 +123,6 @@ export default function Opdrachten() {
     }
   }, [selectedOpdracht])
 
-  // ===== PASTE HANDLER (Ctrl+V afbeelding) =====
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const items = e.clipboardData?.items
     if (!items) return
@@ -133,7 +132,6 @@ export default function Opdrachten() {
         const file = items[i].getAsFile()
         if (!file) continue
         const previewUrl = URL.createObjectURL(file)
-        // Geef het bestand een naam met timestamp
         const namedFile = new File([file], `geplakt-${Date.now()}.png`, { type: file.type })
         setSparPastedImages(prev => [...prev, { file: namedFile, previewUrl }])
       }
@@ -205,7 +203,6 @@ export default function Opdrachten() {
     const heeftFiles = sparFiles.length > 0 || sparPastedImages.length > 0
     if (!sparInput.trim() && !heeftFiles) return
     setSparLoading(true)
-
     const userMsg: SparMessage = {
       role: 'user',
       content: sparInput.trim() || '📎 Afbeelding meegestuurd',
@@ -214,11 +211,9 @@ export default function Opdrachten() {
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
-
     try {
       let rawResponse: string
       const alleFiles = [...sparFiles, ...sparPastedImages.map(p => p.file)]
-
       if (alleFiles.length > 0) {
         setUploadingImage(true)
         const formData = new FormData()
@@ -243,8 +238,7 @@ export default function Opdrachten() {
     } catch {
       setUploadingImage(false)
       setSparMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }])
-    }
-    finally { setSparLoading(false) }
+    } finally { setSparLoading(false) }
   }
 
   const handleOpslaanOpdracht = async () => {
@@ -282,8 +276,7 @@ export default function Opdrachten() {
     setOpdrachten(prev => prev.filter(o => o.id !== opdracht.id))
     setView('overzicht')
   }
-
-  // ===== SPAR VIEW =====
+    // ===== SPAR VIEW =====
   if (view === 'spar') {
     return (
       <div className="flex flex-col h-full space-y-4">
@@ -294,7 +287,6 @@ export default function Opdrachten() {
           <h2 className="text-2xl font-bold text-white">{sparContext ? `Opdracht aanpassen: ${gegenereerdeOpdracht?.titel || ''}` : 'Nieuwe opdracht maken'}</h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>
-          {/* Chat */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
@@ -345,8 +337,6 @@ export default function Opdrachten() {
               )}
               <div ref={chatEndRef} />
             </div>
-
-            {/* Preview van geplakte/geüploade afbeeldingen */}
             {(sparFiles.length > 0 || sparPastedImages.length > 0) && (
               <div className="px-3 pt-2 flex flex-wrap gap-2">
                 {sparFiles.map((f, i) => (
@@ -358,20 +348,14 @@ export default function Opdrachten() {
                 {sparPastedImages.map((p, i) => (
                   <div key={`paste-${i}`} className="relative">
                     <img src={p.previewUrl} alt="geplakt" className="h-16 w-auto rounded border border-white/20 object-cover" />
-                    <button
-                      onClick={() => setSparPastedImages(prev => prev.filter((_, j) => j !== i))}
-                      className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-white text-xs"
-                    >×</button>
+                    <button onClick={() => setSparPastedImages(prev => prev.filter((_, j) => j !== i))} className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-white text-xs">×</button>
                   </div>
                 ))}
               </div>
             )}
-
             <div className="p-3 border-t border-white/10 flex gap-2">
               <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70" title="Bestand uploaden">
-                <Paperclip size={16} />
-              </button>
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70" title="Bestand uploaden"><Paperclip size={16} /></button>
               <input
                 ref={sparInputRef}
                 type="text"
@@ -387,8 +371,6 @@ export default function Opdrachten() {
               </button>
             </div>
           </div>
-
-          {/* Preview */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}</span>
@@ -411,12 +393,7 @@ export default function Opdrachten() {
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
                       {v.afbeelding && (
-                        <img
-                          src={v.afbeelding}
-                          alt={`Afbeelding bij vraag ${v.nummer}`}
-                          className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
+                        <img src={v.afbeelding} alt={`Afbeelding bij vraag ${v.nummer}`} className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                       )}
                       {v.opties && v.opties.length > 0 && (
                         <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
@@ -440,19 +417,16 @@ export default function Opdrachten() {
   if (view === 'detail' && selectedOpdracht) {
     const huidigeVragen = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
     const autoMaxPunten = berekenMaxPunten(huidigeVragen)
-
     return (
       <div className="space-y-4">
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white"><ArrowLeft size={20} /></button>
           {editingTitel ? (
-            <input autoFocus value={editTitel} onChange={e => setEditTitel(e.target.value)} onBlur={() => setEditingTitel(false)}
-              className="text-2xl font-bold bg-white/5 border border-blue-500/50 rounded-lg px-3 py-1 text-white outline-none" />
+            <input autoFocus value={editTitel} onChange={e => setEditTitel(e.target.value)} onBlur={() => setEditingTitel(false)} className="text-2xl font-bold bg-white/5 border border-blue-500/50 rounded-lg px-3 py-1 text-white outline-none" />
           ) : <h2 className="text-2xl font-bold text-white">{editTitel}</h2>}
           <button onClick={() => setEditingTitel(true)} className="text-white/30 hover:text-white/70"><Pencil size={15} /></button>
           <div className="ml-auto flex items-center gap-2">
-            <button onClick={() => handleVervolgSpar(selectedOpdracht)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 text-sm rounded-lg">
+            <button onClick={() => handleVervolgSpar(selectedOpdracht)} className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 text-sm rounded-lg">
               <MessageSquarePlus size={14} /> Spar verder met AI
             </button>
             <button onClick={handleSaveChanges} disabled={saving} className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
@@ -463,25 +437,19 @@ export default function Opdrachten() {
             </button>
           </div>
         </div>
-
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 flex flex-wrap gap-6 items-start">
           <div className="flex flex-col gap-2">
             <label className="text-white/40 text-xs uppercase tracking-wider">Type</label>
             <div className="flex gap-2 flex-wrap">
               {OPDRACHT_TYPES.map(t => (
-                <button key={t} onClick={() => setEditType(t)}
-                  className={`px-3 py-1 rounded-lg text-xs border transition-all ${editType === t ? getTypeColor(t) + ' font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/30'}`}>
-                  {t}
-                </button>
+                <button key={t} onClick={() => setEditType(t)} className={`px-3 py-1 rounded-lg text-xs border transition-all ${editType === t ? getTypeColor(t) + ' font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/30'}`}>{t}</button>
               ))}
             </div>
           </div>
-
           <div className="flex flex-col gap-2" ref={klasDropdownRef}>
             <label className="text-white/40 text-xs uppercase tracking-wider">Klassen toewijzen</label>
             <div className="relative">
-              <button onClick={() => setKlasDropdownOpen(prev => !prev)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[200px]">
+              <button onClick={() => setKlasDropdownOpen(prev => !prev)} className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[200px]">
                 <span className="flex-1 text-left">{editKlasIds.length === 0 ? '— Geen klas geselecteerd —' : `${editKlasIds.length} klas${editKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}</span>
                 <ChevronDown size={14} className={`transition-transform ${klasDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -512,7 +480,6 @@ export default function Opdrachten() {
               </div>
             )}
           </div>
-
           <div className="flex flex-col gap-1">
             <label className="text-white/40 text-xs uppercase tracking-wider">Max punten</label>
             <div className="flex items-center gap-1">
@@ -522,7 +489,6 @@ export default function Opdrachten() {
             <span className="text-white/20 text-xs">Automatisch berekend</span>
           </div>
         </div>
-
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-white/40 text-xs uppercase tracking-wider">Beschrijving</label>
@@ -531,22 +497,18 @@ export default function Opdrachten() {
             </button>
           </div>
           {editingBeschrijving ? (
-            <textarea value={editBeschrijving} onChange={e => setEditBeschrijving(e.target.value)} rows={3} placeholder="Voeg een beschrijving toe..."
-              className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" />
+            <textarea value={editBeschrijving} onChange={e => setEditBeschrijving(e.target.value)} rows={3} placeholder="Voeg een beschrijving toe..." className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none" />
           ) : (
             <p className="text-white/60 text-sm">{editBeschrijving || <span className="text-white/20 italic">Geen beschrijving</span>}</p>
           )}
         </div>
-
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
-            <button onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/30'}`}>
+            <button onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }} className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/30'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
-
           {editingVragen ? (
             <DragDropContext onDragEnd={handleDragEnd}>
               <Droppable droppableId="vragen">
@@ -555,8 +517,7 @@ export default function Opdrachten() {
                     {editVragen.map((v, i) => (
                       <Draggable key={`vraag-${i}`} draggableId={`vraag-${i}`} index={i}>
                         {(provided, snapshot) => (
-                          <div ref={provided.innerRef} {...provided.draggableProps}
-                            className={`bg-white/5 border rounded-lg p-4 space-y-2 transition-all ${snapshot.isDragging ? 'border-blue-500/40 shadow-lg shadow-blue-500/10' : 'border-white/10'}`}>
+                          <div ref={provided.innerRef} {...provided.draggableProps} className={`bg-white/5 border rounded-lg p-4 space-y-2 transition-all ${snapshot.isDragging ? 'border-blue-500/40 shadow-lg shadow-blue-500/10' : 'border-white/10'}`}>
                             <div className="flex items-start gap-2">
                               <div {...provided.dragHandleProps} className="mt-2 text-white/20 hover:text-white/50 cursor-grab active:cursor-grabbing shrink-0">
                                 <GripVertical size={16} />
@@ -564,19 +525,126 @@ export default function Opdrachten() {
                               <div className="flex-1 space-y-2">
                                 <div className="flex items-center gap-2">
                                   <span className="text-white/40 text-xs shrink-0">#{v.nummer}</span>
-                                  <textarea value={v.vraag}
-                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-blue-500/50 resize-none" rows={2} placeholder="Vraag..." />
-                                  <input type="number" min={0} value={v.punten}
-                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
-                                    className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs text-center outline-none focus:border-blue-500/50" />
+                                  <textarea value={v.vraag} onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))} className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-blue-500/50 resize-none" rows={2} placeholder="Vraag..." />
+                                  <input type="number" min={0} value={v.punten} onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))} className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs text-center outline-none focus:border-blue-500/50" />
                                   <span className="text-white/40 text-xs">pt</span>
-                                  <button onClick={() => setEditVragen(prev => prev.filter((_, j) => j !== i).map((q, j) => ({ ...q, nummer: j + 1 })))} className="text-red-400/60 hover:text-red-400">
-                                    <Trash size={14} />
-                                  </button>
+                                  <button onClick={() => setEditVragen(prev => prev.filter((_, j) => j !== i).map((q, j) => ({ ...q, nummer: j + 1 })))} className="text-red-400/60 hover:text-red-400"><Trash size={14} /></button>
                                 </div>
                                 <div className="flex gap-2 items-center">
                                   <span className="text-white/30 text-xs shrink-0">Antwoord:</span>
-                                  <input value={v.antwoord}
-                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 
+                                  <input value={v.antwoord} onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))} className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-green-400/80 text-xs outline-none focus:border-blue-500/50" placeholder="Modelantwoord..." />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {v.afbeelding ? (
+                                    <div className="relative inline-block">
+                                      <img src={v.afbeelding} alt="vraag afbeelding" className="max-h-20 rounded border border-white/10" />
+                                      <button onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, afbeelding: undefined } : q))} className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white hover:text-red-400">
+                                        <X size={10} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <button onClick={() => vraagAfbeeldingRefs.current[i]?.click()} className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-dashed border-white/20 hover:border-white/40 rounded text-white/30 hover:text-white/60 text-xs">
+                                      <Image size={12} /> Afbeelding koppelen
+                                    </button>
+                                  )}
+                                  <input type="file" accept="image/*" className="hidden" ref={el => { vraagAfbeeldingRefs.current[i] = el }} onChange={e => { const f = e.target.files?.[0]; if (f) handleVraagAfbeelding(i, f) }} />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </Draggable>
+                    ))}
+                    {provided.placeholder}
+                  </div>
+                )}
+              </Droppable>
+            </DragDropContext>
+          ) : (
+            <div className="space-y-3">
+              {huidigeVragen.map((v, i) => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
+                    <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
+                  </div>
+                  {v.afbeelding && (
+                    <img src={v.afbeelding} alt="vraag" className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10" onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  )}
+                  {v.opties && v.opties.length > 0 && <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
+                  <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
+                  {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+          {editingVragen && (
+            <div className="flex items-center justify-between">
+              <button onClick={() => setEditVragen(prev => [...prev, leegVraag(prev.length + 1)])} className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-dashed border-white/20 hover:border-white/40 text-white/50 hover:text-white/80 text-sm rounded-lg transition-all">
+                <Plus size={14} /> Vraag toevoegen
+              </button>
+              <span className="text-white/40 text-sm">Totaal: <span className="text-white font-semibold">{autoMaxPunten}pt</span></span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ===== OVERZICHT =====
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
+          <p className="text-white/50 text-sm mt-1">
+            {role === 'teacher' ? 'Maak en beheer opdrachten voor jouw klassen' : role === 'school_admin' || role === 'admin' ? 'Overzicht van alle opdrachten' : 'Jouw openstaande en voltooide opdrachten'}
+          </p>
+        </div>
+        {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+          <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
+            <Plus size={16} /> Nieuwe opdracht aanmaken
+          </button>
+        )}
+      </div>
+      {opdrachten.length === 0 ? (
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
+            <FileText size={28} className="text-blue-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">Nog geen opdrachten</h3>
+          <p className="text-white/40 text-sm max-w-sm">Opdrachten worden hier weergegeven zodra ze zijn aangemaakt.</p>
+          {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+            <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }} className="mt-6 flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg">
+              <Plus size={16} /> Nieuwe opdracht aanmaken
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {opdrachten.map(opdracht => (
+            <div key={opdracht.id} onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }} className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group">
+              <div className="flex items-start justify-between mb-2">
+                <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
+                <span className="text-xs text-white/30">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
+              </div>
+              <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
+              <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
+              <p className="text-white/20 text-xs mt-2">{parseVragen(opdracht.vragen).length} vragen</p>
+              {opdracht.klas_ids && opdracht.klas_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {opdracht.klas_ids.slice(0, 3).map(kid => {
+                    const k = klassen.find(k => k.id === kid)
+                    return k ? <span key={kid} className="text-xs text-blue-400/60 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded">📚 {k.naam}</span> : null
+                  })}
+                  {opdracht.klas_ids.length > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{opdracht.klas_ids.length - 3} meer</span>}
+                </div>
+              )}
+              <div className="mt-3 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
