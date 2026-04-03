@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil, ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -39,7 +39,7 @@ interface Opdracht {
   created_at: string
 }
 interface Klas { id: string; naam: string; vak: string; schooljaar: string }
-interface SparMessage { role: 'user' | 'assistant'; content: string; isUpdate?: boolean }
+interface SparMessage { role: 'user' | 'assistant'; content: string; isUpdate?: boolean; imageUrl?: string }
 type View = 'overzicht' | 'spar' | 'detail'
 
 const parseVragen = (vragen: any): Vraag[] => {
@@ -75,12 +75,15 @@ export default function Opdrachten() {
   const [sparInput, setSparInput] = useState('')
   const [sparLoading, setSparLoading] = useState(false)
   const [sparFiles, setSparFiles] = useState<File[]>([])
+  const [sparPastedImages, setSparPastedImages] = useState<{ file: File; previewUrl: string }[]>([])
   const [gegenereerdeOpdracht, setGegenereerdeOpdracht] = useState<any | null>(null)
   const [opslaan, setOpslaan] = useState(false)
   const [sparContext, setSparContext] = useState<string>('')
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
+  const sparInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [sparMessages])
 
@@ -119,6 +122,23 @@ export default function Opdrachten() {
       setEditingBeschrijving(false)
     }
   }, [selectedOpdracht])
+
+  // ===== PASTE HANDLER (Ctrl+V afbeelding) =====
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault()
+        const file = items[i].getAsFile()
+        if (!file) continue
+        const previewUrl = URL.createObjectURL(file)
+        // Geef het bestand een naam met timestamp
+        const namedFile = new File([file], `geplakt-${Date.now()}.png`, { type: file.type })
+        setSparPastedImages(prev => [...prev, { file: namedFile, previewUrl }])
+      }
+    }
+  }, [])
 
   const toggleKlas = (id: string) => setEditKlasIds(prev => prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id])
 
@@ -166,7 +186,6 @@ export default function Opdrachten() {
     setView('spar')
   }
 
-  // ✅ Context updaten na elke AI wijziging zodat volgende aanpassing altijd de meest recente versie heeft
   const parseAIResponse = (text: string) => {
     const PREFIX = 'OPDRACHT_UPDATE:'
     if (text.startsWith(PREFIX)) {
@@ -183,21 +202,35 @@ export default function Opdrachten() {
   }
 
   const handleSparSend = async () => {
-    if (!sparInput.trim() && sparFiles.length === 0) return
+    const heeftFiles = sparFiles.length > 0 || sparPastedImages.length > 0
+    if (!sparInput.trim() && !heeftFiles) return
     setSparLoading(true)
-    const userMsg: SparMessage = { role: 'user', content: sparInput.trim() || '📎 Bestand meegestuurd' }
+
+    const userMsg: SparMessage = {
+      role: 'user',
+      content: sparInput.trim() || '📎 Afbeelding meegestuurd',
+      imageUrl: sparPastedImages.length > 0 ? sparPastedImages[0].previewUrl : undefined
+    }
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
+
     try {
       let rawResponse: string
-      if (sparFiles.length > 0) {
+      const alleFiles = [...sparFiles, ...sparPastedImages.map(p => p.file)]
+
+      if (alleFiles.length > 0) {
+        setUploadingImage(true)
         const formData = new FormData()
         formData.append('content', userMsg.content)
         formData.append('messages', JSON.stringify(newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }))))
-        sparFiles.forEach(f => formData.append('files', f))
+        formData.append('context', sparContext || '')
+        alleFiles.forEach(f => formData.append('files', f))
         const res = await fetch(`${API_URL}/api/opdrachten/spar/upload`, { method: 'POST', body: formData })
-        rawResponse = (await res.json()).message; setSparFiles([])
+        setUploadingImage(false)
+        rawResponse = (await res.json()).message
+        setSparFiles([])
+        setSparPastedImages([])
       } else {
         const res = await fetch(`${API_URL}/api/opdrachten/spar/chat`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -207,7 +240,10 @@ export default function Opdrachten() {
       }
       const parsed = parseAIResponse(rawResponse)
       setSparMessages(prev => [...prev, { role: 'assistant', content: parsed.content, isUpdate: parsed.type === 'update' }])
-    } catch { setSparMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }]) }
+    } catch {
+      setUploadingImage(false)
+      setSparMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }])
+    }
     finally { setSparLoading(false) }
   }
 
@@ -275,6 +311,9 @@ export default function Opdrachten() {
                     : msg.isUpdate ? 'bg-green-500/10 border border-green-500/20 text-green-400'
                     : 'bg-white/5 border border-white/10 text-white/80'
                   }`}>
+                    {msg.imageUrl && (
+                      <img src={msg.imageUrl} alt="geplakt" className="max-h-32 rounded-lg mb-2 border border-white/20" />
+                    )}
                     {msg.role === 'assistant' && !msg.isUpdate ? (
                       <ReactMarkdown
                         components={{
@@ -297,25 +336,55 @@ export default function Opdrachten() {
                   </div>
                 </div>
               ))}
-              {sparLoading && <div className="flex justify-start"><div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">Aan het denken...</div></div>}
+              {(sparLoading || uploadingImage) && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
+                    {uploadingImage ? '⬆️ Afbeelding uploaden...' : 'Aan het denken...'}
+                  </div>
+                </div>
+              )}
               <div ref={chatEndRef} />
             </div>
-            {sparFiles.length > 0 && (
+
+            {/* Preview van geplakte/geüploade afbeeldingen */}
+            {(sparFiles.length > 0 || sparPastedImages.length > 0) && (
               <div className="px-3 pt-2 flex flex-wrap gap-2">
                 {sparFiles.map((f, i) => (
-                  <div key={i} className="flex items-center gap-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/60">
-                    📎 {f.name}<button onClick={() => setSparFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400">×</button>
+                  <div key={`file-${i}`} className="flex items-center gap-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/60">
+                    📎 {f.name}
+                    <button onClick={() => setSparFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400">×</button>
+                  </div>
+                ))}
+                {sparPastedImages.map((p, i) => (
+                  <div key={`paste-${i}`} className="relative">
+                    <img src={p.previewUrl} alt="geplakt" className="h-16 w-auto rounded border border-white/20 object-cover" />
+                    <button
+                      onClick={() => setSparPastedImages(prev => prev.filter((_, j) => j !== i))}
+                      className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-white text-xs"
+                    >×</button>
                   </div>
                 ))}
               </div>
             )}
+
             <div className="p-3 border-t border-white/10 flex gap-2">
-              <input type="file" ref={fileInputRef} className="hidden" multiple onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70"><Paperclip size={16} /></button>
-              <input type="text" value={sparInput} onChange={e => setSparInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSparSend()}
-                placeholder={sparContext ? 'Stel een vraag of vraag een aanpassing...' : 'Beschrijf je opdracht...'}
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50" />
-              <button onClick={handleSparSend} disabled={sparLoading || (!sparInput.trim() && sparFiles.length === 0)} className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg"><Send size={16} /></button>
+              <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*" onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70" title="Bestand uploaden">
+                <Paperclip size={16} />
+              </button>
+              <input
+                ref={sparInputRef}
+                type="text"
+                value={sparInput}
+                onChange={e => setSparInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSparSend()}
+                onPaste={handlePaste}
+                placeholder={sparContext ? 'Stel een vraag, plak een afbeelding (Ctrl+V)...' : 'Beschrijf je opdracht of plak een afbeelding...'}
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50"
+              />
+              <button onClick={handleSparSend} disabled={sparLoading || (!sparInput.trim() && sparFiles.length === 0 && sparPastedImages.length === 0)} className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg">
+                <Send size={16} />
+              </button>
             </div>
           </div>
 
@@ -401,7 +470,7 @@ export default function Opdrachten() {
             <div className="flex gap-2 flex-wrap">
               {OPDRACHT_TYPES.map(t => (
                 <button key={t} onClick={() => setEditType(t)}
-                  className={`px-3 py-1 rounded-lg text-xs border transition-all ${editType === t ? getTypeColor(t) + ' font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/20'}`}>
+                  className={`px-3 py-1 rounded-lg text-xs border transition-all ${editType === t ? getTypeColor(t) + ' font-semibold' : 'text-white/30 bg-white/5 border-white/10 hover:border-white/30'}`}>
                   {t}
                 </button>
               ))}
@@ -473,7 +542,7 @@ export default function Opdrachten() {
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
             <button onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/20'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg border transition-all ${editingVragen ? 'text-orange-400 bg-orange-500/10 border-orange-500/20' : 'text-white/40 bg-white/5 border-white/10 hover:border-white/30'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
@@ -510,134 +579,4 @@ export default function Opdrachten() {
                                   <span className="text-white/30 text-xs shrink-0">Antwoord:</span>
                                   <input value={v.antwoord}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-green-400/80 text-xs outline-none focus:border-blue-500/50" placeholder="Modelantwoord..." />
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {v.afbeelding ? (
-                                    <div className="relative inline-block">
-                                      <img src={v.afbeelding} alt="vraag afbeelding" className="max-h-20 rounded border border-white/10" />
-                                      <button onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, afbeelding: undefined } : q))}
-                                        className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white hover:text-red-400">
-                                        <X size={10} />
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <button onClick={() => vraagAfbeeldingRefs.current[i]?.click()}
-                                      className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-dashed border-white/20 hover:border-white/40 rounded text-white/30 hover:text-white/60 text-xs transition-all">
-                                      <Image size={12} /> Afbeelding koppelen
-                                    </button>
-                                  )}
-                                  <input type="file" accept="image/*" className="hidden"
-                                    ref={el => { vraagAfbeeldingRefs.current[i] = el }}
-                                    onChange={e => { const f = e.target.files?.[0]; if (f) handleVraagAfbeelding(i, f) }} />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </Draggable>
-                    ))}
-                    {provided.placeholder}
-                  </div>
-                )}
-              </Droppable>
-            </DragDropContext>
-          ) : (
-            <div className="space-y-3">
-              {huidigeVragen.map((v, i) => (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
-                    <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
-                  </div>
-                  {v.afbeelding && (
-                    <img
-                      src={v.afbeelding}
-                      alt="vraag"
-                      className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  )}
-                  {v.opties && v.opties.length > 0 && <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>}
-                  <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
-                  {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {editingVragen && (
-            <div className="flex items-center justify-between">
-              <button onClick={() => setEditVragen(prev => [...prev, leegVraag(prev.length + 1)])}
-                className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-dashed border-white/20 hover:border-white/40 text-white/50 hover:text-white/80 text-sm rounded-lg transition-all">
-                <Plus size={14} /> Vraag toevoegen
-              </button>
-              <span className="text-white/40 text-sm">Totaal: <span className="text-white font-semibold">{autoMaxPunten}pt</span></span>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
-  // ===== OVERZICHT =====
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
-          <p className="text-white/50 text-sm mt-1">
-            {role === 'teacher' ? 'Maak en beheer opdrachten voor jouw klassen' : role === 'school_admin' || role === 'admin' ? 'Overzicht van alle opdrachten' : 'Jouw openstaande en voltooide opdrachten'}
-          </p>
-        </div>
-        {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
-          <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg">
-            <Plus size={16} /> Nieuwe opdracht aanmaken
-          </button>
-        )}
-      </div>
-
-      {opdrachten.length === 0 ? (
-        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
-          <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
-            <FileText size={28} className="text-blue-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-white mb-2">Nog geen opdrachten</h3>
-          <p className="text-white/40 text-sm max-w-sm">Opdrachten worden hier weergegeven zodra ze zijn aangemaakt.</p>
-          {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
-            <button onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
-              className="mt-6 flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg">
-              <Plus size={16} /> Nieuwe opdracht aanmaken
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {opdrachten.map(opdracht => (
-            <div key={opdracht.id} onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
-              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-all hover:bg-white/5 group">
-              <div className="flex items-start justify-between mb-2">
-                <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
-                <span className="text-xs text-white/30">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
-              </div>
-              <h3 className="text-white font-semibold mb-1">{opdracht.titel}</h3>
-              <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
-              <p className="text-white/20 text-xs mt-2">{parseVragen(opdracht.vragen).length} vragen</p>
-              {opdracht.klas_ids && opdracht.klas_ids.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {opdracht.klas_ids.slice(0, 3).map(kid => {
-                    const k = klassen.find(k => k.id === kid)
-                    return k ? <span key={kid} className="text-xs text-blue-400/60 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded">📚 {k.naam}</span> : null
-                  })}
-                  {opdracht.klas_ids.length > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{opdracht.klas_ids.length - 3} meer</span>}
-                </div>
-              )}
-              <div className="mt-3 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
+                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 

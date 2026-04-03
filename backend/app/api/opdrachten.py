@@ -10,12 +10,15 @@ import json
 import traceback
 import httpx
 import os
+import uuid
 
 router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+supabase_admin: Client = create_client(settings.SUPABASE_URL, os.getenv("SUPABASE_SERVICE_KEY", settings.SUPABASE_KEY))
 
 GOOGLE_SEARCH_KEY = os.getenv("GOOGLE_SEARCH_API_KEY", "")
 GOOGLE_SEARCH_CX = os.getenv("GOOGLE_SEARCH_CX", "")
+OPDRACHT_AFBEELDING_BUCKET = "opdracht-afbeeldingen"
 
 
 # ============ MODELS ============
@@ -85,6 +88,31 @@ async def zoek_educatieve_afbeelding(query: str) -> Optional[str]:
     except Exception as e:
         print(f"❌ Google Search fout: {e}")
     return None
+
+
+def upload_afbeelding_naar_supabase(file_bytes: bytes, filename: str, content_type: str) -> str:
+    """Upload een afbeelding naar Supabase Storage en geef de publieke URL terug."""
+    ext = filename.split(".")[-1] if "." in filename else "png"
+    unieke_naam = f"{uuid.uuid4()}.{ext}"
+    storage_path = f"spar/{unieke_naam}"
+    try:
+        supabase_admin.storage.from_(OPDRACHT_AFBEELDING_BUCKET).upload(
+            path=storage_path,
+            file=file_bytes,
+            file_options={"content-type": content_type}
+        )
+    except Exception as e:
+        if "Duplicate" in str(e) or "already exists" in str(e):
+            supabase_admin.storage.from_(OPDRACHT_AFBEELDING_BUCKET).update(
+                path=storage_path,
+                file=file_bytes,
+                file_options={"content-type": content_type}
+            )
+        else:
+            raise e
+    url = supabase_admin.storage.from_(OPDRACHT_AFBEELDING_BUCKET).get_public_url(storage_path)
+    print(f"✅ Afbeelding geüpload naar Supabase: {url}")
+    return url
 
 
 # ============ ENDPOINTS ============
@@ -177,10 +205,24 @@ async def zoek_afbeelding(req: AfbeeldingZoekRequest):
     return {"url": url, "query": req.query}
 
 
+@router.post("/afbeelding/upload")
+async def upload_afbeelding(file: UploadFile = File(...)):
+    """Upload een afbeelding naar Supabase Storage en geef de publieke URL terug."""
+    try:
+        file_bytes = await file.read()
+        content_type = file.content_type or "image/png"
+        url = upload_afbeelding_naar_supabase(file_bytes, file.filename or "afbeelding.png", content_type)
+        return {"url": url}
+    except Exception as e:
+        print(f"❌ Upload fout: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding_zoekterm":"optionele Engelse zoekterm voor educatieve afbeelding"}]}'
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding":"optionele URL naar afbeelding"}]}'
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
@@ -194,9 +236,9 @@ async def spar_chat(body: SparChatMessage):
             "- Als je een afbeelding toevoegt aan vraag X, kopieer dan alle andere vragen 1-op-1 zonder wijzigingen\n"
             "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n\n"
             "AFBEELDINGEN:\n"
-            "- Als een vraag een afbeelding nodig heeft (bijv. een diagram, schema, grafiek, lege invultabel), voeg dan 'afbeelding_zoekterm' toe\n"
-            "- Gebruik beschrijvende Engelse zoektermen (bijv. 'blank balance sheet template', 'empty t-account bookkeeping', 'supply demand graph economics')\n"
-            "- Voeg ALLEEN een zoekterm toe als een afbeelding echt zinvol is\n\n"
+            "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...] in de tekst), gebruik dan die URL direct in het 'afbeelding' veld van de betreffende vraag\n"
+            "- Als een vraag een afbeelding nodig heeft, voeg dan 'afbeelding_zoekterm' toe met een Engelse zoekterm\n"
+            "- Voeg ALLEEN een afbeelding toe als dat zinvol is\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
             "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om een opdracht vraagt\n"
@@ -218,7 +260,6 @@ async def spar_chat(body: SparChatMessage):
             module_prompts=[system_prompt],
         )
 
-        # Verwerk OPDRACHT_UPDATE en zoek afbeeldingen automatisch via Google
         PREFIX = "OPDRACHT_UPDATE:"
         if response.startswith(PREFIX):
             try:
@@ -250,41 +291,85 @@ async def spar_chat(body: SparChatMessage):
 async def spar_upload(
     content: str = Form(...),
     messages: Optional[str] = Form("[]"),
+    context: Optional[str] = Form(""),
     files: List[UploadFile] = File(None),
 ):
     try:
         message_history = json.loads(messages) if messages else []
         file_context = ""
         images = []
+        uploaded_image_urls = []
+
         if files:
             parts = []
             for file in files:
                 file_bytes = await file.read()
                 parsed = parse_file(file.filename, file_bytes)
                 if parsed["type"] == "image":
-                    if parsed.get("image"): images.append(parsed["image"])
-                    parts.append(f"=== AFBEELDING: {file.filename} ===")
+                    # Upload naar Supabase en krijg publieke URL
+                    try:
+                        content_type = file.content_type or "image/png"
+                        public_url = upload_afbeelding_naar_supabase(file_bytes, file.filename or "afbeelding.png", content_type)
+                        uploaded_image_urls.append(public_url)
+                        parts.append(f"=== AFBEELDING: {file.filename} (URL: {public_url}) ===")
+                    except Exception as upload_err:
+                        print(f"⚠️ Upload naar Supabase mislukt: {upload_err}")
+                        parts.append(f"=== AFBEELDING: {file.filename} ===")
+                    if parsed.get("image"):
+                        images.append(parsed["image"])
                 else:
                     parts.append(f"=== BESTAND: {file.filename} ===\n{parsed['text']}")
             file_context = "\n\n".join(parts)
 
+        # Voeg afbeelding URLs toe aan de user content zodat de AI ze kan gebruiken
+        enhanced_content = content
+        if uploaded_image_urls:
+            urls_text = " ".join([f"[AFBEELDING_URL:{url}]" for url in uploaded_image_urls])
+            enhanced_content = f"{content}\n\n{urls_text}"
+
         system_prompt = (
-            "Je bent een ervaren onderwijsassistent. Analyseer het meegestuurde materiaal en help de docent.\n"
-            "Als de docent een opdracht wil genereren op basis van het materiaal, stuur dan:\n"
-            "OPDRACHT_UPDATE:{...json...}\n"
-            "Anders antwoord je normaal."
+            "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
+            "Je kunt op twee manieren reageren:\n\n"
+            "1. NORMAAL ANTWOORD: Als de docent een vraag stelt of advies wil — reageer normaal in het Nederlands.\n\n"
+            "2. OPDRACHT AANPASSEN: Als de docent vraagt een afbeelding toe te voegen aan een vraag:\n"
+            "OPDRACHT_UPDATE:{...json...}\n\n"
+            "KRITIEKE REGELS:\n"
+            "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn\n"
+            "- Als de docent zegt 'voeg deze afbeelding toe aan vraag X', gebruik dan de [AFBEELDING_URL:...] uit de tekst als 'afbeelding' waarde voor die vraag\n"
+            "- Kopieer alle andere vragen 1-op-1 zonder wijzigingen\n"
+            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg\n"
         )
+
+        if context:
+            system_prompt += (
+                f"\n\nDe docent werkt aan deze BESTAANDE opdracht. "
+                f"Neem ALLE vragen over en pas ALLEEN aan wat gevraagd wordt:\n{context}"
+            )
+
         conversation = []
         if file_context:
             conversation.append({"role": "system", "content": f"Bronmateriaal:\n\n{file_context}"})
         conversation.extend(message_history)
-        conversation.append({"role": "user", "content": content})
+        conversation.append({"role": "user", "content": enhanced_content})
 
         response = await ai_service.generate_response(
-            messages=conversation, role="teacher", module_prompts=[system_prompt],
+            messages=conversation,
+            role="teacher",
+            module_prompts=[system_prompt],
             images=images if images else None,
         )
+
+        # Verwerk OPDRACHT_UPDATE
+        PREFIX = "OPDRACHT_UPDATE:"
+        if response.startswith(PREFIX):
+            try:
+                parsed = json.loads(response[len(PREFIX):].strip())
+                return {"message": f"{PREFIX}{json.dumps(parsed)}"}
+            except Exception as e:
+                print(f"⚠️ Kon OPDRACHT_UPDATE niet parsen: {e}")
+
         return {"message": response}
+
     except Exception as e:
         print(f"❌ SPAR UPLOAD error: {e}")
         traceback.print_exc()
