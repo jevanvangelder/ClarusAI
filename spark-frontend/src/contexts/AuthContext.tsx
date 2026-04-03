@@ -84,10 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase.auth.signUp({ email, password })
       console.log('signUp result:', { data, error })
 
-      if (error) return { error }
+      // Negeer "Error sending confirmation email" — account is WEL aangemaakt
+      if (error && !error.message?.includes('sending confirmation email')) {
+        return { error }
+      }
 
-      // Sla rol op — maar laat het signUp NIET falen als dit mislukt
-      if (data.user) {
+      // Sla rol op
+      if (data?.user) {
         const { error: profileError } = await supabase
           .from('profiles')
           .upsert({
