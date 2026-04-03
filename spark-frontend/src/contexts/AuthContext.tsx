@@ -11,6 +11,7 @@ interface Profile {
   role: UserRole
   avatar_url: string | null
   school: string | null
+  school_id: string | null  // ← nieuw: FK naar schools tabel
 }
 
 interface AuthContextType {
@@ -20,8 +21,9 @@ interface AuthContextType {
   role: UserRole | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string, role?: UserRole) => Promise<{ error: any }>
+  signUp: (email: string, password: string, role?: UserRole, fullName?: string) => Promise<{ error: any }>
   signOut: () => Promise<void>
+  refreshProfile: () => Promise<void>  // ← nieuw: handmatig profiel herladen
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -45,6 +47,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Onverwachte fout bij ophalen profiel:', err)
     }
+  }
+
+  const refreshProfile = async () => {
+    if (user) await fetchProfile(user.id)
   }
 
   useEffect(() => {
@@ -79,18 +85,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error }
   }
 
-  const signUp = async (email: string, password: string, role: UserRole = 'student') => {
+  const signUp = async (
+    email: string,
+    password: string,
+    role: UserRole = 'student',
+    fullName?: string
+  ) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { role: role } // ← rol wordt opgeslagen in raw_user_meta_data → trigger pakt dit op
+          data: {
+            role,
+            full_name: fullName ?? '',
+          }
         }
       })
       console.log('signUp result:', { data, error })
 
-      // Negeer "Error sending confirmation email" — account is WEL aangemaakt
       if (error && !error.message?.includes('sending confirmation email')) {
         return { error }
       }
@@ -106,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut()
   }
 
-  const value = { user, session, profile, role, loading, signIn, signUp, signOut }
+  const value = { user, session, profile, role, loading, signIn, signUp, signOut, refreshProfile }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
