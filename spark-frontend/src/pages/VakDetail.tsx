@@ -20,7 +20,9 @@ interface Opdracht {
   id: string
   title: string
   beschrijving: string | null
-  deadline: string | null
+  type: string | null
+  max_punten: number | null
+  deadline: string | null // deadline uit assignment_classes
   created_at: string
 }
 
@@ -49,14 +51,36 @@ export default function VakDetail() {
 
   const fetchOpdrachten = async () => {
     if (!id) return
+
+    // Haal opdrachten op via assignment_classes koppeltabel
     const { data, error } = await supabase
-      .from('assignments')
-      .select('id, title, beschrijving, deadline, created_at')
+      .from('assignment_classes')
+      .select(`
+        deadline,
+        assignments!inner(
+          id, title, beschrijving, type, max_punten, created_at, is_active
+        )
+      `)
       .eq('class_id', id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-    if (error) { console.error(error); return }
-    setOpdrachten(data || [])
+      .eq('assignments.is_active', true)
+
+    if (error) { console.error('fetchOpdrachten error:', error); return }
+
+    const mapped: Opdracht[] = (data || [])
+      .filter((row: any) => row.assignments)
+      .map((row: any) => ({
+        id: row.assignments.id,
+        title: row.assignments.title,
+        beschrijving: row.assignments.beschrijving,
+        type: row.assignments.type,
+        max_punten: row.assignments.max_punten,
+        deadline: row.deadline,
+        created_at: row.assignments.created_at,
+      }))
+      // Sorteer op aanmaakdatum nieuwste eerst
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    setOpdrachten(mapped)
   }
 
   useEffect(() => {
@@ -80,10 +104,19 @@ export default function VakDetail() {
 
   const isDeadlineNabij = (deadline: string) => {
     const diff = new Date(deadline).getTime() - Date.now()
-    return diff > 0 && diff < 1000 * 60 * 60 * 48 // binnen 48 uur
+    return diff > 0 && diff < 1000 * 60 * 60 * 48
   }
 
   const isVerlopen = (deadline: string) => new Date(deadline).getTime() < Date.now()
+
+  const TYPE_COLORS: Record<string, string> = {
+    huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
+    oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+    casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
+    opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+  }
+  const getTypeColor = (type: string | null) =>
+    TYPE_COLORS[type || ''] || 'text-blue-400 bg-blue-500/10 border-blue-500/20'
 
   const tabs: { key: Tab; label: string; icon: any }[] = [
     { key: 'opdrachten', label: 'Opdrachten', icon: FileText },
@@ -176,9 +209,19 @@ export default function VakDetail() {
                 const verlopen = opdracht.deadline ? isVerlopen(opdracht.deadline) : false
                 const nabij = opdracht.deadline ? isDeadlineNabij(opdracht.deadline) : false
                 return (
-                  <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 rounded-xl p-5">
+                  <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 transition-all">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          {opdracht.type && (
+                            <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>
+                              {opdracht.type}
+                            </span>
+                          )}
+                          {opdracht.max_punten != null && opdracht.max_punten > 0 && (
+                            <span className="text-white/30 text-xs">{opdracht.max_punten}pt</span>
+                          )}
+                        </div>
                         <h3 className="text-white font-semibold">{opdracht.title}</h3>
                         {opdracht.beschrijving && (
                           <p className="text-white/40 text-sm mt-1 line-clamp-3">{opdracht.beschrijving}</p>
@@ -191,6 +234,8 @@ export default function VakDetail() {
                             {verlopen ? 'Verlopen: ' : 'Deadline: '}
                             {new Date(opdracht.deadline).toLocaleDateString('nl-NL', {
                               day: 'numeric', month: 'long', year: 'numeric',
+                            })}{' '}
+                            {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', {
                               hour: '2-digit', minute: '2-digit'
                             })}
                             {nabij && ' ⚠️'}
