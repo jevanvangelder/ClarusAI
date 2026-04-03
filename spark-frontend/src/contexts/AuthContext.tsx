@@ -40,16 +40,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .select('*')
         .eq('id', userId)
         .single()
-
-      if (error) {
-        console.error('Fout bij ophalen profiel:', error)
-        return
-      }
-
-      if (data) {
-        setProfile(data)
-        setRole(data.role)
-      }
+      if (error) { console.error('Fout bij ophalen profiel:', error); return }
+      if (data) { setProfile(data); setRole(data.role) }
     } catch (err) {
       console.error('Onverwachte fout bij ophalen profiel:', err)
     }
@@ -57,35 +49,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      // Negeer sessie als email nog niet bevestigd is
       if (session?.user && !session.user.email_confirmed_at) {
         setLoading(false)
         return
       }
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      }
+      if (session?.user) fetchProfile(session.user.id)
       setLoading(false)
     })
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      // Negeer SIGNED_IN events voor niet-geverifieerde gebruikers
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (session?.user && !session.user.email_confirmed_at) {
         setLoading(false)
         return
       }
       setSession(session)
       setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchProfile(session.user.id)
-      } else {
-        setProfile(null)
-        setRole(null)
-      }
+      if (session?.user) fetchProfile(session.user.id)
+      else { setProfile(null); setRole(null) }
       setLoading(false)
     })
 
@@ -98,41 +80,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signUp = async (email: string, password: string, role: UserRole = 'student') => {
-    const { data, error } = await supabase.auth.signUp({ email, password })
-    if (!error && data.user) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
-        email: email,
-        role: role,
-        full_name: null,
-        school: null,
-      })
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password })
+      console.log('signUp result:', { data, error })
+
+      if (error) return { error }
+
+      // Sla rol op — maar laat het signUp NIET falen als dit mislukt
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            email: email,
+            role: role,
+            full_name: null,
+            school: null,
+          })
+        if (profileError) {
+          console.warn('Profile upsert mislukt (niet kritiek):', profileError)
+        }
+      }
+
+      return { error: null }
+    } catch (err: any) {
+      console.error('signUp crash:', err)
+      return { error: err }
     }
-    return { error }
   }
 
   const signOut = async () => {
     await supabase.auth.signOut()
   }
 
-  const value = {
-    user,
-    session,
-    profile,
-    role,
-    loading,
-    signIn,
-    signUp,
-    signOut,
-  }
+  const value = { user, session, profile, role, loading, signIn, signUp, signOut }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
   const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider')
   return context
 }
