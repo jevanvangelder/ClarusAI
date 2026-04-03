@@ -10,7 +10,9 @@ import DashboardLayout from './components/DashboardLayout'
 import Dashboard from './pages/Dashboard'
 import Instellingen from './pages/Instellingen'
 import Klassen from './pages/Klassen'
+import KlasDetail from './pages/KlasDetail'
 import Vakken from './pages/Vakken'
+import VakDetail from './pages/VakDetail'
 import Opdrachten from './pages/Opdrachten'
 import Analyse from './pages/Analyse'
 import Admin from './pages/Admin'
@@ -71,7 +73,9 @@ function AppRoutes() {
                 <Route path="/instellingen" element={<Instellingen />} />
                 <Route path="/modules" element={<Modules />} />
                 <Route path="/klassen" element={<Klassen />} />
+                <Route path="/klassen/:id" element={<KlasDetail />} />
                 <Route path="/vakken" element={<Vakken />} />
+                <Route path="/vakken/:id" element={<VakDetail />} />
                 <Route path="/opdrachten" element={<Opdrachten />} />
                 <Route path="/analyse" element={<Analyse />} />
                 <Route path="/admin" element={<Admin />} />
