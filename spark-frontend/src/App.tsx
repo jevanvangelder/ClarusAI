@@ -10,6 +10,7 @@ import DashboardLayout from './components/DashboardLayout'
 import Dashboard from './pages/Dashboard'
 import Instellingen from './pages/Instellingen'
 import Klassen from './pages/Klassen'
+import Vakken from './pages/Vakken'
 import Opdrachten from './pages/Opdrachten'
 import Analyse from './pages/Analyse'
 import Admin from './pages/Admin'
@@ -23,14 +24,12 @@ function AppRoutes() {
 
   useEffect(() => {
     const hash = window.location.hash
-
     if (hash.includes('type=recovery') || hash.includes('error=access_denied') || hash.includes('error_code=otp_expired')) {
       if (location.pathname !== '/reset-password') {
         navigate('/reset-password' + hash, { replace: true })
         return
       }
     }
-
     setChecking(false)
   }, [navigate, location.pathname])
 
@@ -72,6 +71,7 @@ function AppRoutes() {
                 <Route path="/instellingen" element={<Instellingen />} />
                 <Route path="/modules" element={<Modules />} />
                 <Route path="/klassen" element={<Klassen />} />
+                <Route path="/vakken" element={<Vakken />} />
                 <Route path="/opdrachten" element={<Opdrachten />} />
                 <Route path="/analyse" element={<Analyse />} />
                 <Route path="/admin" element={<Admin />} />
