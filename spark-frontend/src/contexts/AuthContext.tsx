@@ -57,6 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // Negeer sessie als email nog niet bevestigd is
+      if (session?.user && !session.user.email_confirmed_at) {
+        setLoading(false)
+        return
+      }
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
@@ -67,7 +72,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      // Negeer SIGNED_IN events voor niet-geverifieerde gebruikers
+      if (session?.user && !session.user.email_confirmed_at) {
+        setLoading(false)
+        return
+      }
       setSession(session)
       setUser(session?.user ?? null)
       if (session?.user) {
@@ -90,7 +100,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signUp = async (email: string, password: string, role: UserRole = 'student') => {
     const { data, error } = await supabase.auth.signUp({ email, password })
     if (!error && data.user) {
-      // Sla de rol op in de profiles tabel
       await supabase.from('profiles').upsert({
         id: data.user.id,
         email: email,
