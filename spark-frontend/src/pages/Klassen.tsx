@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { Users, Plus, X, BookOpen, Calendar, Copy, Check, LogIn } from 'lucide-react'
@@ -20,6 +21,7 @@ interface Klas {
 
 export default function Klassen() {
   const { user, role } = useAuth()
+  const navigate = useNavigate()
   const [klassen, setKlassen] = useState<Klas[]>([])
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
@@ -80,7 +82,6 @@ export default function Klassen() {
         beschrijving: beschrijving.trim() || null,
         created_by: user.id,
         is_active: true,
-        // code wordt automatisch gegenereerd door de trigger
       })
 
       if (error) throw error
@@ -128,7 +129,8 @@ export default function Klassen() {
     }
   }
 
-  const copyCode = async (code: string, id: string) => {
+  const copyCode = async (code: string, id: string, e: React.MouseEvent) => {
+    e.stopPropagation() // voorkomt dat de kaart-klik ook afgaat
     await navigator.clipboard.writeText(code)
     setCopiedId(id)
     toast.success(`Klascode ${code} gekopieerd!`)
@@ -199,7 +201,8 @@ export default function Klassen() {
           {klassen.map((klas) => (
             <div
               key={klas.id}
-              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group"
+              onClick={() => navigate(`/klassen/${klas.id}`)}
+              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer"
             >
               <div className="flex items-start gap-3 mb-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
@@ -228,7 +231,7 @@ export default function Klassen() {
                     {klas.code}
                   </code>
                   <button
-                    onClick={() => copyCode(klas.code, klas.id)}
+                    onClick={(e) => copyCode(klas.code, klas.id, e)}
                     className="text-white/30 hover:text-blue-400 transition-colors"
                     title="Kopieer klascode"
                   >
@@ -252,7 +255,7 @@ export default function Klassen() {
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-blue-400/60 ml-auto group-hover:text-blue-400 transition-colors">
+                <span className="text-xs text-blue-400/60 ml-auto group-hover:text-blue-400 transition-colors select-none">
                   Bekijken →
                 </span>
               </div>
@@ -336,7 +339,7 @@ export default function Klassen() {
                   type="text"
                   value={joinCode}
                   onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="bijv. AB3X9K"
+                  placeholder="bijv. AB3X9KPQ"
                   maxLength={8}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm font-mono tracking-widest placeholder:text-white/20 focus:outline-none focus:border-green-500/50 uppercase"
                 />
