@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { Users, Plus, X, BookOpen, Calendar, Copy, Check, LogIn } from 'lucide-react'
+import { Users, Plus, X, BookOpen, Calendar, Copy, Check, LogIn, Search, MoreVertical, Trash2, Tag } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Klas {
@@ -12,11 +12,13 @@ interface Klas {
   schooljaar: string | null
   beschrijving: string | null
   code: string
+  tags: string[]
   is_active: boolean
   created_by: string
   created_at: string
   school_name: string | null
   leerling_count: number
+  student_names: string[]
 }
 
 export default function Klassen() {
@@ -26,21 +28,47 @@ export default function Klassen() {
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [joinModalOpen, setJoinModalOpen] = useState(false)
+  const [tagsModalOpen, setTagsModalOpen] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [joining, setJoining] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [selectedKlasForTags, setSelectedKlasForTags] = useState<Klas | null>(null)
+
+  // Zoeken & filteren
+  const [zoekterm, setZoekterm] = useState('')
+  const [actieveTag, setActieveTag] = useState<string | null>(null)
 
   // Formulier: nieuwe klas
   const [naam, setNaam] = useState('')
   const [vak, setVak] = useState('')
   const [schooljaar, setSchooljaar] = useState('')
   const [beschrijving, setBeschrijving] = useState('')
+  const [nieuweTags, setNieuweTags] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
+
+  // Formulier: tags bewerken
+  const [bewerkTags, setBewerkTags] = useState<string[]>([])
+  const [bewerkTagInput, setBewerkTagInput] = useState('')
 
   // Formulier: join via code
   const [joinCode, setJoinCode] = useState('')
 
-  // Klassen ophalen via de mijn_klassen view
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  // Klik buiten menu → sluit menu
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const fetchKlassen = async () => {
     if (!user) return
     setLoading(true)
@@ -65,7 +93,30 @@ export default function Klassen() {
     if (user) fetchKlassen()
   }, [user])
 
-  // Nieuwe klas aanmaken (teacher/school_admin/admin)
+  // Alle unieke tags uit alle klassen (voor filter chips)
+  const alleTagsUniek = Array.from(
+    new Set(klassen.flatMap((k) => k.tags || []))
+  ).sort()
+
+  // Gefilterde klassen op basis van zoekterm + actieve tag
+  const gefilterdeKlassen = klassen.filter((klas) => {
+    const term = zoekterm.toLowerCase().trim()
+
+    const matchesTag = actieveTag ? (klas.tags || []).includes(actieveTag) : true
+
+    if (!term) return matchesTag
+
+    const matchesNaam = klas.name.toLowerCase().includes(term)
+    const matchesVak = klas.vak?.toLowerCase().includes(term) ?? false
+    const matchesTags = (klas.tags || []).some((t) => t.toLowerCase().includes(term))
+    const matchesStudent = (klas.student_names || []).some((n) =>
+      n.toLowerCase().includes(term)
+    )
+
+    return matchesTag && (matchesNaam || matchesVak || matchesTags || matchesStudent)
+  })
+
+  // Nieuwe klas aanmaken
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!user) return
@@ -80,6 +131,7 @@ export default function Klassen() {
         vak: vak.trim() || null,
         schooljaar: schooljaar.trim() || null,
         beschrijving: beschrijving.trim() || null,
+        tags: nieuweTags,
         created_by: user.id,
         is_active: true,
       })
@@ -97,7 +149,7 @@ export default function Klassen() {
     }
   }
 
-  // Student: deelnemen via klascode
+  // Student join via klascode
   const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!joinCode.trim()) { setError('Voer een klascode in'); return }
@@ -129,8 +181,67 @@ export default function Klassen() {
     }
   }
 
+  // Klas verwijderen (soft delete)
+  const handleDelete = async (klasId: string) => {
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ is_active: false })
+        .eq('id', klasId)
+
+      if (error) throw error
+
+      toast.success('Klas verwijderd')
+      setDeleteConfirmId(null)
+      fetchKlassen()
+    } catch (err: any) {
+      toast.error(err.message || 'Fout bij verwijderen klas')
+    }
+  }
+
+  // Tags opslaan voor een klas
+  const handleSaveTags = async () => {
+    if (!selectedKlasForTags) return
+    setSaving(true)
+    try {
+      const { error } = await supabase
+        .from('classes')
+        .update({ tags: bewerkTags })
+        .eq('id', selectedKlasForTags.id)
+
+      if (error) throw error
+
+      toast.success('Labels opgeslagen!')
+      setTagsModalOpen(false)
+      setSelectedKlasForTags(null)
+      fetchKlassen()
+    } catch (err: any) {
+      toast.error(err.message || 'Fout bij opslaan labels')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // Tag toevoegen aan invoerveld (Enter of komma)
+  const handleTagKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    input: string,
+    setInput: (v: string) => void,
+    tags: string[],
+    setTags: (v: string[]) => void
+  ) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      const tag = input.trim().replace(/,$/, '')
+      if (tag && !tags.includes(tag)) {
+        setTags([...tags, tag])
+      }
+      setInput('')
+    }
+  }
+
   const copyCode = async (code: string, id: string, e: React.MouseEvent) => {
-    e.stopPropagation() // voorkomt dat de kaart-klik ook afgaat
+    e.stopPropagation()
     await navigator.clipboard.writeText(code)
     setCopiedId(id)
     toast.success(`Klascode ${code} gekopieerd!`)
@@ -138,7 +249,8 @@ export default function Klassen() {
   }
 
   const resetForm = () => {
-    setNaam(''); setVak(''); setSchooljaar(''); setBeschrijving(''); setError(null)
+    setNaam(''); setVak(''); setSchooljaar(''); setBeschrijving('')
+    setNieuweTags([]); setTagInput(''); setError(null)
   }
 
   const isStaff = role === 'teacher' || role === 'school_admin' || role === 'admin'
@@ -147,7 +259,7 @@ export default function Klassen() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-white">Klassen</h2>
           <p className="text-white/50 text-sm mt-1">
@@ -157,7 +269,7 @@ export default function Klassen() {
               : 'Jouw klassen'}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {isStudent && (
             <button
               onClick={() => { setJoinModalOpen(true); setError(null) }}
@@ -179,32 +291,135 @@ export default function Klassen() {
         </div>
       </div>
 
+      {/* Zoekbalk + tag-filters */}
+      <div className="space-y-3">
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+          <input
+            type="text"
+            value={zoekterm}
+            onChange={(e) => setZoekterm(e.target.value)}
+            placeholder={isStaff ? 'Zoek op klasnaam, vak, label of leerlingnaam...' : 'Zoek op klasnaam of vak...'}
+            className="w-full bg-white/5 border border-white/10 rounded-lg pl-9 pr-4 py-2.5 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-blue-500/50"
+          />
+          {zoekterm && (
+            <button
+              onClick={() => setZoekterm('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* Tag filter chips */}
+        {alleTagsUniek.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setActieveTag(null)}
+              className={`px-3 py-1 rounded-full text-xs border transition-all ${
+                actieveTag === null
+                  ? 'bg-blue-500/30 border-blue-500/50 text-blue-300'
+                  : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'
+              }`}
+            >
+              Alle klassen
+            </button>
+            {alleTagsUniek.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => setActieveTag(actieveTag === tag ? null : tag)}
+                className={`px-3 py-1 rounded-full text-xs border transition-all ${
+                  actieveTag === tag
+                    ? 'bg-blue-500/30 border-blue-500/50 text-blue-300'
+                    : 'bg-white/5 border-white/10 text-white/40 hover:text-white/70'
+                }`}
+              >
+                {tag}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Klassenlijst */}
       {loading ? (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex items-center justify-center">
           <p className="text-white/40 text-sm">Klassen laden...</p>
         </div>
-      ) : klassen.length === 0 ? (
+      ) : gefilterdeKlassen.length === 0 ? (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
           <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
             <Users size={28} className="text-blue-400" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-2">Nog geen klassen</h3>
+          <h3 className="text-lg font-semibold text-white mb-2">
+            {zoekterm || actieveTag ? 'Geen klassen gevonden' : 'Nog geen klassen'}
+          </h3>
           <p className="text-white/40 text-sm max-w-sm">
-            {isStudent
+            {zoekterm || actieveTag
+              ? 'Probeer een andere zoekterm of filter.'
+              : isStudent
               ? 'Vraag je docent om een klascode en klik op "Deelnemen via code".'
               : 'Klik op "Nieuwe klas" om jouw eerste klas aan te maken.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {klassen.map((klas) => (
+          {gefilterdeKlassen.map((klas) => (
             <div
               key={klas.id}
               onClick={() => navigate(`/klassen/${klas.id}`)}
-              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer"
+              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer relative"
             >
-              <div className="flex items-start gap-3 mb-3">
+              {/* Three-dots menu — alleen voor staff */}
+              {isStaff && (
+                <div
+                  className="absolute top-3 right-3"
+                  ref={openMenuId === klas.id ? menuRef : undefined}
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMenuId(openMenuId === klas.id ? null : klas.id)
+                    }}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-white/60 hover:bg-white/5 transition-all"
+                  >
+                    <MoreVertical size={15} />
+                  </button>
+
+                  {openMenuId === klas.id && (
+                    <div className="absolute right-0 top-8 w-44 bg-[#1a1d3a] border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedKlasForTags(klas)
+                          setBewerkTags(klas.tags || [])
+                          setBewerkTagInput('')
+                          setTagsModalOpen(true)
+                          setOpenMenuId(null)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition-all text-left"
+                      >
+                        <Tag size={14} />
+                        Labels bewerken
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setDeleteConfirmId(klas.id)
+                          setOpenMenuId(null)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-500/5 transition-all text-left"
+                      >
+                        <Trash2 size={14} />
+                        Klas verwijderen
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-start gap-3 mb-3 pr-7">
                 <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                   <Users size={18} className="text-blue-400" />
                 </div>
@@ -223,7 +438,21 @@ export default function Klassen() {
                 <p className="text-white/40 text-sm mb-3 line-clamp-2">{klas.beschrijving}</p>
               )}
 
-              {/* Klascode — alleen zichtbaar voor staff */}
+              {/* Tags */}
+              {(klas.tags || []).length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  {klas.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300/70 text-xs"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* Klascode — alleen voor staff */}
               {isStaff && (
                 <div className="flex items-center gap-2 mb-3">
                   <span className="text-xs text-white/30">Klascode:</span>
@@ -264,7 +493,7 @@ export default function Klassen() {
         </div>
       )}
 
-      {/* Modal: Nieuwe klas aanmaken (staff) */}
+      {/* Modal: Nieuwe klas aanmaken */}
       {modalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-md shadow-2xl">
@@ -302,6 +531,29 @@ export default function Klassen() {
                   placeholder="Optionele beschrijving" rows={3}
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-blue-500/50 resize-none" />
               </div>
+              {/* Tags invoer */}
+              <div>
+                <label className="block text-sm text-white/60 mb-1.5">Labels</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {nieuweTags.map((tag) => (
+                    <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300/70 text-xs">
+                      {tag}
+                      <button type="button" onClick={() => setNieuweTags(nieuweTags.filter(t => t !== tag))} className="hover:text-red-400 transition-colors">
+                        <X size={10} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={tagInput}
+                  onChange={(e) => setTagInput(e.target.value)}
+                  onKeyDown={(e) => handleTagKeyDown(e, tagInput, setTagInput, nieuweTags, setNieuweTags)}
+                  placeholder="Typ een label en druk Enter (bijv. HAVO, Leerjaar 3)"
+                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+                />
+                <p className="text-white/25 text-xs mt-1">Druk op Enter of komma om een label toe te voegen.</p>
+              </div>
               <p className="text-white/30 text-xs">✓ De klascode wordt automatisch gegenereerd.</p>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={() => { setModalOpen(false); resetForm() }}
@@ -314,6 +566,83 @@ export default function Klassen() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Labels bewerken */}
+      {tagsModalOpen && selectedKlasForTags && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h3 className="text-lg font-semibold text-white">Labels bewerken</h3>
+              <button onClick={() => { setTagsModalOpen(false); setSelectedKlasForTags(null) }}
+                className="text-white/40 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-white/40 text-sm">Labels voor <span className="text-white font-medium">{selectedKlasForTags.name}</span></p>
+              <div className="flex flex-wrap gap-1.5">
+                {bewerkTags.map((tag) => (
+                  <span key={tag} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300/70 text-xs">
+                    {tag}
+                    <button type="button" onClick={() => setBewerkTags(bewerkTags.filter(t => t !== tag))} className="hover:text-red-400 transition-colors">
+                      <X size={10} />
+                    </button>
+                  </span>
+                ))}
+                {bewerkTags.length === 0 && (
+                  <p className="text-white/25 text-xs">Nog geen labels.</p>
+                )}
+              </div>
+              <input
+                type="text"
+                value={bewerkTagInput}
+                onChange={(e) => setBewerkTagInput(e.target.value)}
+                onKeyDown={(e) => handleTagKeyDown(e, bewerkTagInput, setBewerkTagInput, bewerkTags, setBewerkTags)}
+                placeholder="Typ een label en druk Enter"
+                className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-purple-500/50"
+              />
+              <p className="text-white/25 text-xs">Druk op Enter of komma om een label toe te voegen.</p>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => { setTagsModalOpen(false); setSelectedKlasForTags(null) }}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-sm transition-all">
+                  Annuleren
+                </button>
+                <button onClick={handleSaveTags} disabled={saving}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-300 text-sm transition-all disabled:opacity-50">
+                  {saving ? 'Opslaan...' : 'Opslaan'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Verwijder bevestiging */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                <Trash2 size={18} className="text-red-400" />
+              </div>
+              <div>
+                <h3 className="text-white font-semibold">Klas verwijderen?</h3>
+                <p className="text-white/40 text-sm mt-0.5">Deze actie kan niet ongedaan gemaakt worden.</p>
+              </div>
+            </div>
+            <div className="flex gap-3 pt-2">
+              <button onClick={() => setDeleteConfirmId(null)}
+                className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-sm transition-all">
+                Annuleren
+              </button>
+              <button onClick={() => handleDelete(deleteConfirmId)}
+                className="flex-1 px-4 py-2.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 border border-red-500/30 text-red-400 text-sm transition-all">
+                Ja, verwijderen
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -346,8 +675,7 @@ export default function Klassen() {
                 <p className="text-white/30 text-xs mt-1.5">Vraag de code aan je docent.</p>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button"
-                  onClick={() => { setJoinModalOpen(false); setJoinCode(''); setError(null) }}
+                <button type="button" onClick={() => { setJoinModalOpen(false); setJoinCode(''); setError(null) }}
                   className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-sm transition-all">
                   Annuleren
                 </button>
