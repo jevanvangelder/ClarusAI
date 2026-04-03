@@ -22,7 +22,7 @@ interface Opdracht {
   beschrijving: string | null
   type: string | null
   max_punten: number | null
-  deadline: string | null // deadline uit assignment_classes
+  deadline: string | null
   created_at: string
 }
 
@@ -52,33 +52,39 @@ export default function VakDetail() {
   const fetchOpdrachten = async () => {
     if (!id) return
 
-    // Haal opdrachten op via assignment_classes koppeltabel
-    const { data, error } = await supabase
+    // Stap 1: haal assignment_ids + deadlines op voor deze klas
+    const { data: acData, error: acError } = await supabase
       .from('assignment_classes')
-      .select(`
-        deadline,
-        assignments!inner(
-          id, title, beschrijving, type, max_punten, created_at, is_active
-        )
-      `)
+      .select('assignment_id, deadline')
       .eq('class_id', id)
-      .eq('assignments.is_active', true)
 
-    if (error) { console.error('fetchOpdrachten error:', error); return }
+    if (acError) { console.error('assignment_classes error:', acError); return }
+    if (!acData || acData.length === 0) { setOpdrachten([]); return }
 
-    const mapped: Opdracht[] = (data || [])
-      .filter((row: any) => row.assignments)
-      .map((row: any) => ({
-        id: row.assignments.id,
-        title: row.assignments.title,
-        beschrijving: row.assignments.beschrijving,
-        type: row.assignments.type,
-        max_punten: row.assignments.max_punten,
-        deadline: row.deadline,
-        created_at: row.assignments.created_at,
-      }))
-      // Sorteer op aanmaakdatum nieuwste eerst
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    const assignmentIds = acData.map((row: any) => row.assignment_id)
+
+    // Stap 2: haal de assignments op
+    const { data: aData, error: aError } = await supabase
+      .from('assignments')
+      .select('id, title, beschrijving, type, max_punten, created_at')
+      .in('id', assignmentIds)
+      .eq('is_active', true)
+
+    if (aError) { console.error('assignments error:', aError); return }
+
+    // Stap 3: combineer met deadline
+    const deadlineMap: Record<string, string | null> = {}
+    acData.forEach((row: any) => { deadlineMap[row.assignment_id] = row.deadline })
+
+    const mapped: Opdracht[] = (aData || []).map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      beschrijving: a.beschrijving,
+      type: a.type,
+      max_punten: a.max_punten,
+      deadline: deadlineMap[a.id] || null,
+      created_at: a.created_at,
+    })).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
     setOpdrachten(mapped)
   }
@@ -106,7 +112,6 @@ export default function VakDetail() {
     const diff = new Date(deadline).getTime() - Date.now()
     return diff > 0 && diff < 1000 * 60 * 60 * 48
   }
-
   const isVerlopen = (deadline: string) => new Date(deadline).getTime() < Date.now()
 
   const TYPE_COLORS: Record<string, string> = {
@@ -127,30 +132,23 @@ export default function VakDetail() {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-start gap-4">
-        <button
-          onClick={() => navigate('/vakken')}
-          className="mt-1 text-white/50 hover:text-white transition-colors"
-        >
+        <button onClick={() => navigate('/vakken')} className="mt-1 text-white/50 hover:text-white transition-colors">
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold text-white">
-            {vak.eigen_titel || vak.name}
-          </h2>
+          <h2 className="text-2xl font-bold text-white">{vak.eigen_titel || vak.name}</h2>
           {vak.eigen_titel && vak.eigen_titel !== vak.name && (
             <p className="text-white/30 text-sm">{vak.name}</p>
           )}
           <div className="flex items-center gap-3 flex-wrap mt-1">
             {vak.vak && (
               <span className="flex items-center gap-1 text-blue-400/70 text-sm">
-                <BookOpen size={13} />
-                {vak.vak}
+                <BookOpen size={13} />{vak.vak}
               </span>
             )}
             {vak.schooljaar && (
               <span className="flex items-center gap-1 text-white/40 text-sm">
-                <Calendar size={13} />
-                {vak.schooljaar}
+                <Calendar size={13} />{vak.schooljaar}
               </span>
             )}
             {vak.docent_naam && (
@@ -236,7 +234,7 @@ export default function VakDetail() {
                               day: 'numeric', month: 'long', year: 'numeric',
                             })}{' '}
                             {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', {
-                              hour: '2-digit', minute: '2-digit'
+                              hour: '2-digit', minute: '2-digit',
                             })}
                             {nabij && ' ⚠️'}
                           </p>
@@ -245,7 +243,6 @@ export default function VakDetail() {
                           Geplaatst op {new Date(opdracht.created_at).toLocaleDateString('nl-NL')}
                         </p>
                       </div>
-                      {/* Status badge */}
                       <div className={`shrink-0 px-2 py-0.5 rounded-full text-xs border ${
                         verlopen
                           ? 'bg-red-500/10 border-red-500/20 text-red-400/70'
