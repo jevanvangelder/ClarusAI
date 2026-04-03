@@ -20,7 +20,7 @@ interface AuthContextType {
   role: UserRole | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<{ error: any }>
-  signUp: (email: string, password: string) => Promise<{ error: any }>
+  signUp: (email: string, password: string, role?: UserRole) => Promise<{ error: any }>
   signOut: () => Promise<void>
 }
 
@@ -33,7 +33,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null)
   const [loading, setLoading] = useState(true)
 
-  // Profiel ophalen uit de profiles tabel
   const fetchProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
@@ -57,7 +56,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
@@ -67,7 +65,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(false)
     })
 
-    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -86,18 +83,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     return { error }
   }
 
-  const signUp = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
+  const signUp = async (email: string, password: string, role: UserRole = 'student') => {
+    const { data, error } = await supabase.auth.signUp({ email, password })
+    if (!error && data.user) {
+      // Sla de rol op in de profiles tabel
+      await supabase.from('profiles').upsert({
+        id: data.user.id,
+        email: email,
+        role: role,
+        full_name: null,
+        school: null,
+      })
+    }
     return { error }
   }
 

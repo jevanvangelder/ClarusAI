@@ -1,11 +1,33 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { useAuth } from '@/contexts/AuthContext'
+import { useAuth, UserRole } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import logoImg from '@/assets/logo.png'
+import { GraduationCap, BookOpen, School } from 'lucide-react'
+
+const ROL_OPTIES: { value: UserRole; label: string; omschrijving: string; icon: any }[] = [
+  {
+    value: 'student',
+    label: 'Student',
+    omschrijving: 'Ik leer en maak opdrachten',
+    icon: GraduationCap,
+  },
+  {
+    value: 'teacher',
+    label: 'Docent',
+    omschrijving: 'Ik geef les en maak opdrachten',
+    icon: BookOpen,
+  },
+  {
+    value: 'school_admin',
+    label: 'Schoolleiding',
+    omschrijving: 'Ik beheer de school',
+    icon: School,
+  },
+]
 
 export default function Register() {
   const navigate = useNavigate()
@@ -13,6 +35,7 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [selectedRole, setSelectedRole] = useState<UserRole>('student')
   const [loading, setLoading] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -31,8 +54,8 @@ export default function Register() {
     setLoading(true)
 
     try {
-      const { error } = await signUp(email, password)
-      
+      const { error } = await signUp(email, password, selectedRole)
+
       if (error) {
         if (error.message.includes('already registered')) {
           toast.error('Dit email adres is al in gebruik')
@@ -55,15 +78,10 @@ export default function Register() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
-        {/* ✅ p-6 op kleine schermen, p-8 vanaf sm (640px) */}
         <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-6 sm:p-8 space-y-6">
           {/* Logo */}
           <div className="flex justify-center">
-            <img 
-              src={logoImg} 
-              alt="ClarusAI Logo" 
-              className="w-20 h-20 object-contain"
-            />
+            <img src={logoImg} alt="ClarusAI Logo" className="w-20 h-20 object-contain" />
           </div>
 
           {/* Header */}
@@ -73,22 +91,40 @@ export default function Register() {
             </h1>
             <p className="text-sm text-muted-foreground">
               Of{' '}
-              <Link 
-                to="/login" 
-                className="font-medium text-primary hover:text-primary/80 transition-colors underline"
-              >
+              <Link to="/login" className="font-medium text-primary hover:text-primary/80 transition-colors underline">
                 log in met je bestaande account
               </Link>
             </p>
+          </div>
+
+          {/* Rolkeuze */}
+          <div className="space-y-2">
+            <Label className="text-foreground">Ik ben een...</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {ROL_OPTIES.map(({ value, label, omschrijving, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedRole(value)}
+                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all text-center ${
+                    selectedRole === value
+                      ? 'border-primary bg-primary/10 text-primary'
+                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                  }`}
+                >
+                  <Icon size={22} />
+                  <span className="text-xs font-semibold leading-tight">{label}</span>
+                  <span className="text-[10px] leading-tight opacity-70">{omschrijving}</span>
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-4">
               <div>
-                <Label htmlFor="email" className="text-foreground">
-                  E-mailadres
-                </Label>
+                <Label htmlFor="email" className="text-foreground">E-mailadres</Label>
                 <Input
                   id="email"
                   type="email"
@@ -100,11 +136,8 @@ export default function Register() {
                   placeholder="jouw@email.nl"
                 />
               </div>
-
               <div>
-                <Label htmlFor="password" className="text-foreground">
-                  Wachtwoord
-                </Label>
+                <Label htmlFor="password" className="text-foreground">Wachtwoord</Label>
                 <Input
                   id="password"
                   type="password"
@@ -116,11 +149,8 @@ export default function Register() {
                   placeholder="Minimaal 6 karakters"
                 />
               </div>
-
               <div>
-                <Label htmlFor="confirmPassword" className="text-foreground">
-                  Bevestig wachtwoord
-                </Label>
+                <Label htmlFor="confirmPassword" className="text-foreground">Bevestig wachtwoord</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
@@ -134,12 +164,8 @@ export default function Register() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full"
-            >
-              {loading ? 'Bezig met aanmaken...' : 'Account aanmaken'}
+            <Button type="submit" disabled={loading} className="w-full">
+              {loading ? 'Bezig met aanmaken...' : `Account aanmaken als ${ROL_OPTIES.find(r => r.value === selectedRole)?.label}`}
             </Button>
           </form>
         </div>
