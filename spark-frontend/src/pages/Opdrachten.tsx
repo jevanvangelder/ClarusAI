@@ -32,7 +32,7 @@ interface Vraag {
 
 interface KlasDeadline {
   class_id: string
-  deadline: string // datetime-local string
+  deadline: string
 }
 
 interface Opdracht {
@@ -72,7 +72,6 @@ const parseVragen = (vragen: any): Vraag[] => {
 const berekenMaxPunten = (vragen: Vraag[]) => vragen.reduce((acc, v) => acc + (Number(v.punten) || 0), 0)
 const leegVraag = (nummer: number): Vraag => ({ nummer, vraag: '', type: 'open', punten: 1, opties: [], antwoord: '', toelichting: '' })
 
-// Formateer ISO naar datetime-local input waarde
 const toDatetimeLocal = (iso: string | null): string => {
   if (!iso) return ''
   try {
@@ -89,7 +88,6 @@ export default function Opdrachten() {
   const [selectedOpdracht, setSelectedOpdracht] = useState<Opdracht | null>(null)
   const [klassen, setKlassen] = useState<Klas[]>([])
 
-  // Edit state
   const [editTitel, setEditTitel] = useState('')
   const [editBeschrijving, setEditBeschrijving] = useState('')
   const [editType, setEditType] = useState('')
@@ -103,7 +101,6 @@ export default function Opdrachten() {
   const klasDropdownRef = useRef<HTMLDivElement>(null)
   const vraagAfbeeldingRefs = useRef<(HTMLInputElement | null)[]>([])
 
-  // Spar state
   const [sparMessages, setSparMessages] = useState<SparMessage[]>([])
   const [sparInput, setSparInput] = useState('')
   const [sparLoading, setSparLoading] = useState(false)
@@ -129,20 +126,19 @@ export default function Opdrachten() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // ── Fetch opdrachten via Supabase ──
   const fetchOpdrachten = async () => {
     if (!user) return
+    console.log('fetchOpdrachten voor user:', user.id)
     const { data, error } = await supabase
       .from('assignments')
-      .select(`
-        id, title, beschrijving, type, max_punten, vragen, is_active, created_at,
-        assignment_classes(class_id, deadline)
-      `)
+      .select(`id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)`)
       .eq('created_by', user.id)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
 
-    if (error) { console.error(error); return }
+    console.log('fetchOpdrachten result:', { data, error })
+
+    if (error) { console.error('fetchOpdrachten error:', error); return }
 
     setOpdrachten((data || []).map((o: any) => ({
       id: o.id,
@@ -160,7 +156,6 @@ export default function Opdrachten() {
     })))
   }
 
-  // ── Fetch klassen via Supabase (correcte tabel + kolommen) ──
   const fetchKlassen = async () => {
     if (!user) return
     const { data, error } = await supabase
@@ -169,7 +164,7 @@ export default function Opdrachten() {
       .eq('created_by', user.id)
       .eq('is_active', true)
       .order('name', { ascending: true })
-    if (error) { console.error(error); return }
+    if (error) { console.error('fetchKlassen error:', error); return }
     setKlassen(data || [])
   }
 
@@ -204,7 +199,6 @@ export default function Opdrachten() {
     }
   }, [])
 
-  // ── Klas toggling ──
   const toggleKlas = (id: string) => {
     setEditKlasDeadlines(prev => {
       const exists = prev.find(kd => kd.class_id === id)
@@ -236,7 +230,6 @@ export default function Opdrachten() {
     reader.readAsDataURL(file)
   }
 
-  // ── Opslaan wijzigingen ──
   const handleSaveChanges = async () => {
     if (!selectedOpdracht) return
     setSaving(true)
@@ -244,20 +237,12 @@ export default function Opdrachten() {
       const vragenToSave = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
       const autoMaxPunten = berekenMaxPunten(vragenToSave)
 
-      // Update assignments tabel
       const { error: assignErr } = await supabase
         .from('assignments')
-        .update({
-          title: editTitel,
-          beschrijving: editBeschrijving,
-          type: editType,
-          max_punten: autoMaxPunten,
-          vragen: vragenToSave,
-        })
+        .update({ title: editTitel, beschrijving: editBeschrijving, type: editType, max_punten: autoMaxPunten, vragen: vragenToSave })
         .eq('id', selectedOpdracht.id)
       if (assignErr) throw assignErr
 
-      // Verwijder oude assignment_classes en voeg nieuwe in
       await supabase.from('assignment_classes').delete().eq('assignment_id', selectedOpdracht.id)
       if (editKlasDeadlines.length > 0) {
         const { error: acErr } = await supabase.from('assignment_classes').insert(
@@ -273,10 +258,8 @@ export default function Opdrachten() {
       toast.success('Opdracht opgeslagen!')
       setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false)
       await fetchOpdrachten()
-      // Update selectedOpdracht
-      const updated = opdrachten.find(o => o.id === selectedOpdracht.id)
-      if (updated) setSelectedOpdracht({ ...updated, titel: editTitel, beschrijving: editBeschrijving, type: editType, vragen: vragenToSave, max_punten: autoMaxPunten, klas_deadlines: editKlasDeadlines })
     } catch (err: any) {
+      console.error('handleSaveChanges error:', err)
       toast.error(err.message || 'Opslaan mislukt')
     } finally {
       setSaving(false)
@@ -348,36 +331,78 @@ export default function Opdrachten() {
     } finally { setSparLoading(false) }
   }
 
-  // ── Opslaan vanuit Spar ──
+  // ── OPSLAAN VANUIT SPAR ──
   const handleOpslaanOpdracht = async () => {
-    if (!gegenereerdeOpdracht || !user) return
+    if (!gegenereerdeOpdracht || !user) {
+      console.warn('handleOpslaanOpdracht: geen gegenereerdeOpdracht of user', { gegenereerdeOpdracht, user })
+      return
+    }
     setOpslaan(true)
     try {
       const vragen = parseVragen(gegenereerdeOpdracht.vragen)
       const autoMaxPunten = berekenMaxPunten(vragen)
 
+      console.log('=== OPSLAAN START ===')
+      console.log('user.id:', user.id)
+      console.log('titel:', gegenereerdeOpdracht.titel)
+      console.log('type:', gegenereerdeOpdracht.type)
+      console.log('vragen count:', vragen.length)
+      console.log('autoMaxPunten:', autoMaxPunten)
+      console.log('selectedOpdracht:', selectedOpdracht?.id)
+      console.log('sparContext aanwezig:', !!sparContext)
+
       if (selectedOpdracht && sparContext) {
-        // Update bestaande opdracht
-        const { error } = await supabase
+        console.log('→ UPDATE bestaande opdracht:', selectedOpdracht.id)
+        const { data, error } = await supabase
           .from('assignments')
-          .update({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving, type: gegenereerdeOpdracht.type, max_punten: autoMaxPunten, vragen })
+          .update({
+            title: gegenereerdeOpdracht.titel,
+            beschrijving: gegenereerdeOpdracht.beschrijving,
+            type: gegenereerdeOpdracht.type || 'opdracht',
+            max_punten: autoMaxPunten,
+            vragen,
+          })
           .eq('id', selectedOpdracht.id)
+          .select()
+        console.log('UPDATE result:', { data, error })
         if (error) throw error
       } else {
-        // Nieuwe opdracht aanmaken
-        const { error } = await supabase
+        console.log('→ INSERT nieuwe opdracht')
+        const insertPayload = {
+          title: gegenereerdeOpdracht.titel,
+          beschrijving: gegenereerdeOpdracht.beschrijving || '',
+          type: gegenereerdeOpdracht.type || 'opdracht',
+          max_punten: autoMaxPunten,
+          vragen,
+          created_by: user.id,
+          is_active: true,
+        }
+        console.log('insertPayload:', JSON.stringify(insertPayload, null, 2))
+        const { data, error } = await supabase
           .from('assignments')
-          .insert({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving, type: gegenereerdeOpdracht.type || 'opdracht', max_punten: autoMaxPunten, vragen, created_by: user.id, is_active: true })
+          .insert(insertPayload)
+          .select()
+        console.log('INSERT result:', { data, error })
         if (error) throw error
       }
 
       toast.success('Opdracht opgeslagen!')
-      setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext('')
+      setSparMessages([])
+      setGegenereerdeOpdracht(null)
+      setSparContext('')
       await fetchOpdrachten()
       setView(selectedOpdracht && sparContext ? 'detail' : 'overzicht')
     } catch (err: any) {
-      toast.error(err.message || 'Opslaan mislukt')
-    } finally { setOpslaan(false) }
+      console.error('=== OPSLAAN FOUT ===')
+      console.error('message:', err?.message)
+      console.error('code:', err?.code)
+      console.error('details:', err?.details)
+      console.error('hint:', err?.hint)
+      console.error('full error:', err)
+      toast.error('Fout: ' + (err?.message || JSON.stringify(err)))
+    } finally {
+      setOpslaan(false)
+    }
   }
 
   const handleDelete = async (opdracht: Opdracht) => {
@@ -389,7 +414,6 @@ export default function Opdrachten() {
     setView('overzicht')
   }
 
-  // Helper: eerstvolgende deadline voor deze opdracht
   const eerstvolgendeDeadline = (kd: KlasDeadline[]) => {
     const toekomstig = kd.filter(d => d.deadline).map(d => new Date(d.deadline)).filter(d => d > new Date())
     if (toekomstig.length === 0) return null
@@ -513,8 +537,11 @@ export default function Opdrachten() {
                 📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}
               </span>
               {gegenereerdeOpdracht && (
-                <button onClick={handleOpslaanOpdracht} disabled={opslaan}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all">
+                <button
+                  onClick={handleOpslaanOpdracht}
+                  disabled={opslaan}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all"
+                >
                   {opslaan ? '⏳ Opslaan...' : sparContext ? '💾 Wijzigingen opslaan' : '💾 Opdracht opslaan'}
                 </button>
               )}
@@ -541,7 +568,8 @@ export default function Opdrachten() {
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
                       {v.afbeelding && (
-                        <img src={v.afbeelding} alt={`Afbeelding bij vraag ${v.nummer}`} className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
+                        <img src={v.afbeelding} alt={`Afbeelding bij vraag ${v.nummer}`}
+                          className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
                           onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
                       )}
                       {v.opties && v.opties.length > 0 && (
@@ -569,7 +597,6 @@ export default function Opdrachten() {
 
     return (
       <div className="space-y-4">
-        {/* Topbar */}
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white">
             <ArrowLeft size={20} />
@@ -598,10 +625,8 @@ export default function Opdrachten() {
           </div>
         </div>
 
-        {/* Type + Klassen + Punten */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 space-y-4">
           <div className="flex flex-wrap gap-6 items-start">
-            {/* Type */}
             <div className="flex flex-col gap-2">
               <label className="text-white/40 text-xs uppercase tracking-wider">Type</label>
               <div className="flex gap-2 flex-wrap">
@@ -613,8 +638,6 @@ export default function Opdrachten() {
                 ))}
               </div>
             </div>
-
-            {/* Max punten */}
             <div className="flex flex-col gap-1">
               <label className="text-white/40 text-xs uppercase tracking-wider">Max punten</label>
               <div className="flex items-center gap-1">
@@ -625,15 +648,13 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Klassen toewijzen met deadline per klas */}
           <div ref={klasDropdownRef}>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
               <button onClick={() => setKlasDropdownOpen(prev => !prev)}
                 className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all">
                 <span className="flex-1 text-left">
-                  {geselecteerdeKlasIds.length === 0
-                    ? '— Selecteer klassen —'
+                  {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen —'
                     : `${geselecteerdeKlasIds.length} klas${geselecteerdeKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}
                 </span>
                 <ChevronDown size={14} className={`transition-transform ${klasDropdownOpen ? 'rotate-180' : ''}`} />
@@ -657,8 +678,6 @@ export default function Opdrachten() {
                 </div>
               )}
             </div>
-
-            {/* Deadline per geselecteerde klas */}
             {editKlasDeadlines.length > 0 && (
               <div className="mt-3 space-y-2">
                 <p className="text-white/30 text-xs">Stel per klas een deadline in (optioneel):</p>
@@ -691,7 +710,6 @@ export default function Opdrachten() {
           </div>
         </div>
 
-        {/* Beschrijving */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-white/40 text-xs uppercase tracking-wider">Beschrijving</label>
@@ -709,7 +727,6 @@ export default function Opdrachten() {
           )}
         </div>
 
-        {/* Vragen */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
@@ -875,8 +892,6 @@ export default function Opdrachten() {
                 <h3 className="text-white font-semibold">{opdracht.titel}</h3>
                 <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
                 <p className="text-white/20 text-xs">{parseVragen(opdracht.vragen).length} vragen</p>
-
-                {/* Klassen badges */}
                 {aantalKlassen > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     {opdracht.klas_deadlines.slice(0, 3).map(kd => {
@@ -890,15 +905,12 @@ export default function Opdrachten() {
                     {aantalKlassen > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{aantalKlassen - 3} meer</span>}
                   </div>
                 )}
-
-                {/* Eerstvolgende deadline */}
                 {deadline && (
                   <p className="text-amber-400/70 text-xs flex items-center gap-1">
                     <Calendar size={11} />
                     {deadline.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {deadline.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 )}
-
                 <div className="pt-1 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
               </div>
             )
