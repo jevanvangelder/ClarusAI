@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
-  ArrowLeft, Send, CheckCircle, Clock, AlertCircle,
+  ArrowLeft, Send, CheckCircle, Clock,
   MessageCircle, FileText, ChevronRight, Loader2
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -18,7 +18,6 @@ interface Vraag {
   punten: number
   opties?: string[]
   afbeelding?: string
-  // antwoord en toelichting NIET doorgeven aan frontend!
 }
 
 interface Opdracht {
@@ -37,7 +36,7 @@ interface Antwoord {
   student_antwoord: string
   type: string
   max_punten: number
-  correct_antwoord?: string // alleen na inleveren voor nakijken
+  correct_antwoord?: string
   nakijk?: { punten_behaald: number; feedback: string }
 }
 
@@ -49,7 +48,8 @@ interface TutorMessage {
 type Status = 'bezig' | 'ingeleverd' | 'nagekeken'
 
 export default function StudentOpdrachtDetail() {
-  const { assignmentId, classId } = useParams<{ assignmentId: string; classId: string }>()
+  // :id is de klas-ID, :assignmentId is de opdracht-ID
+  const { id: classId, assignmentId } = useParams<{ id: string; assignmentId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
 
@@ -62,7 +62,6 @@ export default function StudentOpdrachtDetail() {
   const [inleveren, setInleveren] = useState(false)
   const [activeVraag, setActiveVraag] = useState(1)
 
-  // Tutor chat
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
   const [tutorInput, setTutorInput] = useState('')
   const [tutorLoading, setTutorLoading] = useState(false)
@@ -71,10 +70,9 @@ export default function StudentOpdrachtDetail() {
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [tutorMessages])
 
-  // Laad opdracht details
   useEffect(() => {
     const load = async () => {
-      if (!assignmentId || !user) return
+      if (!assignmentId || !user || !classId) return
       setLoading(true)
 
       // Haal opdracht op
@@ -86,15 +84,15 @@ export default function StudentOpdrachtDetail() {
 
       if (error || !a) { toast.error('Opdracht niet gevonden'); navigate(-1); return }
 
-      // Haal deadline op uit assignment_classes
+      // Haal deadline op — gebruik maybeSingle() zodat 0 resultaten geen error geeft
       const { data: ac } = await supabase
         .from('assignment_classes')
         .select('deadline')
         .eq('assignment_id', assignmentId)
         .eq('class_id', classId)
-        .single()
+        .maybeSingle()
 
-      // Verwijder antwoorden uit vragen (student mag deze niet zien)
+      // Strip antwoorden uit vragen (student mag ze niet zien)
       const vragen: Vraag[] = (Array.isArray(a.vragen) ? a.vragen : JSON.parse(a.vragen || '[]'))
         .map((v: any) => ({
           nummer: v.nummer,
@@ -103,36 +101,32 @@ export default function StudentOpdrachtDetail() {
           punten: v.punten,
           opties: v.opties,
           afbeelding: v.afbeelding,
-          // antwoord en toelichting worden hier BEWUST weggelaten
         }))
 
       setOpdracht({ ...a, vragen, deadline: ac?.deadline || null })
 
-      // Haal bestaande inzending op
-      const { data: sub } = await supabase
+      // Haal bestaande inzending op — gebruik maybeSingle() ipv single()
+      const { data: subData } = await supabase
         .from('assignment_submissions')
         .select('*')
         .eq('assignment_id', assignmentId)
         .eq('student_id', user.id)
-        .single()
+        .maybeSingle()
 
-      if (sub) {
-        setSubmissionId(sub.id)
-        if (sub.ingeleverd_op) {
-          setStatus(sub.ai_nakijk_status === 'done' ? 'nagekeken' : 'ingeleverd')
-          // Herstel antwoorden
-          const antwoordMap: Record<number, string> = {}
-          ;(sub.antwoorden || []).forEach((a: any) => { antwoordMap[a.vraag_nummer] = a.student_antwoord })
-          setAntwoorden(antwoordMap)
-          if (sub.ai_nakijk_status === 'done') setNakijkResultaat(sub)
-        } else {
-          // Draft herstel
-          const antwoordMap: Record<number, string> = {}
-          ;(sub.antwoorden || []).forEach((a: any) => { antwoordMap[a.vraag_nummer] = a.student_antwoord })
-          setAntwoorden(antwoordMap)
+      if (subData) {
+        setSubmissionId(subData.id)
+        const antwoordMap: Record<number, string> = {}
+        ;(subData.antwoorden || []).forEach((a: any) => { antwoordMap[a.vraag_nummer] = a.student_antwoord })
+        setAntwoorden(antwoordMap)
+        setTutorMessages(subData.chat_log || [])
+        if (subData.ingeleverd_op) {
+          if (subData.ai_nakijk_status === 'done') {
+            setNakijkResultaat(subData)
+            setStatus('nagekeken')
+          } else {
+            setStatus('ingeleverd')
+          }
         }
-        // Herstel chat log
-        setTutorMessages(sub.chat_log || [])
       }
 
       setLoading(false)
@@ -140,33 +134,12 @@ export default function StudentOpdrachtDetail() {
     load()
   }, [assignmentId, user, classId])
 
-  // Auto-save draft elke 30 seconden
+  // Auto-save elke 30 seconden
   useEffect(() => {
     if (status !== 'bezig' || !opdracht) return
     const interval = setInterval(() => saveDraft(false), 30000)
     return () => clearInterval(interval)
   }, [antwoorden, tutorMessages, status, opdracht])
-
-  const saveDraft = async (showToast = true) => {
-    if (!opdracht || !user || !classId || status !== 'bezig') return
-    const antwoordenArray = buildAntwoordenArray()
-    try {
-      const res = await fetch(`${API_URL}/api/submissions/draft`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignment_id: opdracht.id,
-          student_id: user.id,
-          class_id: classId,
-          antwoorden: antwoordenArray,
-          chat_log: tutorMessages,
-        }),
-      })
-      const data = await res.json()
-      if (data.id) setSubmissionId(data.id)
-      if (showToast) toast.success('Voortgang opgeslagen')
-    } catch { if (showToast) toast.error('Opslaan mislukt') }
-  }
 
   const buildAntwoordenArray = (): Antwoord[] => {
     if (!opdracht) return []
@@ -179,28 +152,41 @@ export default function StudentOpdrachtDetail() {
     }))
   }
 
+  const saveDraft = async (showToast = true) => {
+    if (!opdracht || !user || !classId || status !== 'bezig') return
+    try {
+      const res = await fetch(`${API_URL}/api/submissions/draft`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignment_id: opdracht.id,
+          student_id: user.id,
+          class_id: classId,
+          antwoorden: buildAntwoordenArray(),
+          chat_log: tutorMessages,
+        }),
+      })
+      const data = await res.json()
+      if (data.id) setSubmissionId(data.id)
+      if (showToast) toast.success('Voortgang opgeslagen')
+    } catch { if (showToast) toast.error('Opslaan mislukt') }
+  }
+
   const handleInleveren = async () => {
     if (!opdracht || !user || !classId) return
-
-    // Check of alle vragen beantwoord zijn
     const onbeantwoord = opdracht.vragen.filter(v => !antwoorden[v.nummer]?.trim())
     if (onbeantwoord.length > 0) {
       toast.error(`Je hebt nog ${onbeantwoord.length} vraag/vragen niet beantwoord`)
       setActiveVraag(onbeantwoord[0].nummer)
       return
     }
-
     if (!confirm('Weet je zeker dat je de opdracht wilt inleveren? Je kunt daarna niet meer wijzigen.')) return
 
     setInleveren(true)
     try {
-      // Haal volledige vragen op inclusief antwoorden voor nakijken (via backend)
+      // Haal volledige vragen op (met correcte antwoorden) voor nakijken
       const { data: volledigeOpdracht } = await supabase
-        .from('assignments')
-        .select('vragen')
-        .eq('id', opdracht.id)
-        .single()
-
+        .from('assignments').select('vragen').eq('id', opdracht.id).single()
       const volledigeVragen = Array.isArray(volledigeOpdracht?.vragen)
         ? volledigeOpdracht.vragen
         : JSON.parse(volledigeOpdracht?.vragen || '[]')
@@ -217,7 +203,6 @@ export default function StudentOpdrachtDetail() {
         }
       })
 
-      // Lever in
       const res = await fetch(`${API_URL}/api/submissions/inleveren`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -235,14 +220,10 @@ export default function StudentOpdrachtDetail() {
       setStatus('ingeleverd')
       toast.success('Opdracht ingeleverd! AI is aan het nakijken...')
 
-      // Start nakijken
       const nakijkRes = await fetch(`${API_URL}/api/submissions/nakijken`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          submission_id: sub.id,
-          antwoorden: antwoordenMetCorrect,
-        }),
+        body: JSON.stringify({ submission_id: sub.id, antwoorden: antwoordenMetCorrect }),
       })
       const nakijkData = await nakijkRes.json()
       setNakijkResultaat({ ...sub, ...nakijkData, antwoorden: antwoordenMetCorrect })
@@ -264,7 +245,6 @@ export default function StudentOpdrachtDetail() {
     setTutorInput('')
     setTutorLoading(true)
 
-    // Bouw opdracht context ZONDER antwoorden
     const opdrachtContext = JSON.stringify({
       titel: opdracht.title,
       beschrijving: opdracht.beschrijving,
@@ -288,10 +268,15 @@ export default function StudentOpdrachtDetail() {
           opdracht_context: opdrachtContext,
         }),
       })
+      if (!res.ok) {
+        const errText = await res.text()
+        console.error('Tutor API error:', res.status, errText)
+        throw new Error(`API ${res.status}`)
+      }
       const data = await res.json()
-      const assistantMsg: TutorMessage = { role: 'assistant', content: data.message }
-      setTutorMessages(prev => [...prev, assistantMsg])
-    } catch {
+      setTutorMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+    } catch (err) {
+      console.error('Tutor fout:', err)
       setTutorMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }])
     } finally {
       setTutorLoading(false)
@@ -327,7 +312,7 @@ export default function StudentOpdrachtDetail() {
   // ═══════════════════════════════
   if (status === 'nagekeken' && nakijkResultaat) {
     const resultaten = nakijkResultaat.resultaten || []
-    const totaal = nakijkResultaat.totaal_punten ?? nakijkResultaat.totaal_punten
+    const totaal = nakijkResultaat.totaal_punten ?? 0
     const max = opdracht.max_punten
     const pct = max > 0 ? Math.round((totaal / max) * 100) : 0
     const cijfer = Math.max(1, Math.min(10, Math.round(1 + (totaal / max) * 9)))
@@ -340,8 +325,6 @@ export default function StudentOpdrachtDetail() {
           </button>
           <h2 className="text-2xl font-bold text-white">{opdracht.title}</h2>
         </div>
-
-        {/* Score header */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 text-center">
           <div className={`text-6xl font-bold mb-2 ${pct >= 55 ? 'text-green-400' : 'text-red-400'}`}>
             {cijfer}
@@ -351,8 +334,6 @@ export default function StudentOpdrachtDetail() {
             <p className="text-white/50 text-sm mt-3 italic">"{nakijkResultaat.algemene_feedback}"</p>
           )}
         </div>
-
-        {/* Per vraag resultaat */}
         <div className="space-y-3">
           {opdracht.vragen.map(v => {
             const r = resultaten.find((res: any) => res.vraag_nummer === v.nummer)
@@ -366,20 +347,17 @@ export default function StudentOpdrachtDetail() {
                     {r?.punten_behaald ?? '?'}/{v.punten}pt
                   </span>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-white/50 text-xs">
-                    <span className="text-white/30">Jouw antwoord: </span>
-                    {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
-                  </p>
-                  {r?.feedback && (
-                    <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
-                  )}
-                </div>
+                <p className="text-white/50 text-xs">
+                  <span className="text-white/30">Jouw antwoord: </span>
+                  {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
+                </p>
+                {r?.feedback && (
+                  <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
+                )}
               </div>
             )
           })}
         </div>
-
         <button onClick={() => navigate(-1)}
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-all">
           Terug naar de klas
@@ -389,7 +367,7 @@ export default function StudentOpdrachtDetail() {
   }
 
   // ═══════════════════════════════
-  // INGELEVERD VIEW (nakijken bezig)
+  // INGELEVERD VIEW
   // ═══════════════════════════════
   if (status === 'ingeleverd') {
     return (
@@ -401,11 +379,10 @@ export default function StudentOpdrachtDetail() {
   }
 
   // ═══════════════════════════════
-  // BEZIG VIEW — split screen
+  // BEZIG VIEW
   // ═══════════════════════════════
   return (
     <div className="flex flex-col h-full space-y-3">
-      {/* Header */}
       <div className="flex items-center gap-3 flex-wrap">
         <button onClick={() => { saveDraft(false); navigate(-1) }} className="text-white/50 hover:text-white">
           <ArrowLeft size={20} />
@@ -418,7 +395,9 @@ export default function StudentOpdrachtDetail() {
             {opdracht.deadline && (
               <span className={`text-xs flex items-center gap-1 ${isVerlopen ? 'text-red-400' : 'text-amber-400/80'}`}>
                 <Clock size={11} />
-                {isVerlopen ? 'Verlopen' : 'Deadline'}: {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                {isVerlopen ? 'Verlopen' : 'Deadline'}:{' '}
+                {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{' '}
+                {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
               </span>
             )}
           </div>
@@ -436,13 +415,11 @@ export default function StudentOpdrachtDetail() {
         </div>
       </div>
 
-      {/* Voortgangsbalk */}
       <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
         <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${voortgang}%` }} />
       </div>
       <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
 
-      {/* Split view */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1" style={{ minHeight: 'calc(100vh - 220px)' }}>
 
         {/* Links: vragen */}
@@ -451,30 +428,21 @@ export default function StudentOpdrachtDetail() {
             <FileText size={14} className="text-white/40" />
             <span className="text-white/50 text-xs uppercase tracking-wider">Vragen</span>
           </div>
-
-          {/* Vraag navigatie tabs */}
           <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
             {opdracht.vragen.map(v => {
               const beantwoord = !!antwoorden[v.nummer]?.trim()
               return (
-                <button
-                  key={v.nummer}
-                  onClick={() => setActiveVraag(v.nummer)}
+                <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
                   className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
-                    activeVraag === v.nummer
-                      ? 'bg-blue-600 text-white'
-                      : beantwoord
-                      ? 'bg-green-500/20 text-green-400 border border-green-500/20'
-                      : 'bg-white/5 text-white/40 hover:bg-white/10'
-                  }`}
-                >
+                    activeVraag === v.nummer ? 'bg-blue-600 text-white'
+                    : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
+                    : 'bg-white/5 text-white/40 hover:bg-white/10'
+                  }`}>
                   {v.nummer}
                 </button>
               )
             })}
           </div>
-
-          {/* Actieve vraag */}
           {huidigeVraag && (
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               <div>
@@ -488,20 +456,16 @@ export default function StudentOpdrachtDetail() {
                     className="mt-3 w-full max-h-48 object-contain rounded-lg border border-white/10" />
                 )}
               </div>
-
-              {/* Antwoord input */}
               {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
                 <div className="space-y-2">
                   {huidigeVraag.opties.map((opt, i) => (
-                    <button
-                      key={i}
+                    <button key={i}
                       onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
                       className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
                         antwoorden[huidigeVraag.nummer] === opt
                           ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20 hover:bg-white/8'
-                      }`}
-                    >
+                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                      }`}>
                       {opt}
                     </button>
                   ))}
@@ -509,15 +473,13 @@ export default function StudentOpdrachtDetail() {
               ) : huidigeVraag.type === 'waar-onwaar' ? (
                 <div className="flex gap-3">
                   {['Waar', 'Onwaar'].map(opt => (
-                    <button
-                      key={opt}
+                    <button key={opt}
                       onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
                       className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
                         antwoorden[huidigeVraag.nummer] === opt
                           ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
                           : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                      }`}
-                    >
+                      }`}>
                       {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
                     </button>
                   ))}
@@ -531,8 +493,6 @@ export default function StudentOpdrachtDetail() {
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
                 />
               )}
-
-              {/* Vorige / Volgende */}
               <div className="flex gap-2 pt-2">
                 {activeVraag > 1 && (
                   <button onClick={() => setActiveVraag(prev => prev - 1)}
@@ -560,7 +520,6 @@ export default function StudentOpdrachtDetail() {
             </div>
             <p className="text-white/25 text-xs mt-0.5">Stel vragen over de stof — ik help je begrijpen, niet afschrijven 😊</p>
           </div>
-
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
             {tutorMessages.length === 0 && (
               <div className="text-center mt-8 space-y-3">
@@ -572,7 +531,7 @@ export default function StudentOpdrachtDetail() {
                     'Ik snap vraag 3 niet goed',
                   ].map((s, i) => (
                     <button key={i} onClick={() => { setTutorInput(s); tutorInputRef.current?.focus() }}
-                      className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/8 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
+                      className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
                       "{s}"
                     </button>
                   ))}
@@ -582,9 +541,7 @@ export default function StudentOpdrachtDetail() {
             {tutorMessages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white/5 border border-white/10 text-white/80'
+                  msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
                 }`}>
                   {msg.role === 'assistant' ? (
                     <ReactMarkdown components={{
@@ -606,7 +563,6 @@ export default function StudentOpdrachtDetail() {
             )}
             <div ref={chatEndRef} />
           </div>
-
           <div className="p-3 border-t border-white/10 flex gap-2">
             <input
               ref={tutorInputRef}
