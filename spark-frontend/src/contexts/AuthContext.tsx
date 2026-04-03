@@ -81,28 +81,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, role: UserRole = 'student') => {
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { role: role } // ← rol wordt opgeslagen in raw_user_meta_data → trigger pakt dit op
+        }
+      })
       console.log('signUp result:', { data, error })
 
       // Negeer "Error sending confirmation email" — account is WEL aangemaakt
       if (error && !error.message?.includes('sending confirmation email')) {
         return { error }
-      }
-
-      // Sla rol op
-      if (data?.user) {
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: data.user.id,
-            email: email,
-            role: role,
-            full_name: null,
-            school: null,
-          })
-        if (profileError) {
-          console.warn('Profile upsert mislukt (niet kritiek):', profileError)
-        }
       }
 
       return { error: null }
