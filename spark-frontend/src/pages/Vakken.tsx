@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { GraduationCap, Search, X, LogIn, MoreVertical, Pencil, BookOpen } from 'lucide-react'
 import { toast } from 'sonner'
@@ -15,6 +16,7 @@ interface Vak {
 
 export default function Vakken() {
   const { user } = useAuth()
+  const navigate = useNavigate()
   const [vakken, setVakken] = useState<Vak[]>([])
   const [loading, setLoading] = useState(true)
   const [zoekterm, setZoekterm] = useState('')
@@ -218,7 +220,7 @@ export default function Vakken() {
             <div
               key={vak.id}
               className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer relative"
-              onClick={() => toast.info('Vak detail pagina komt binnenkort!')}
+              onClick={() => navigate(`/vakken/${vak.id}`)}
             >
               {/* Three-dots menu */}
               <div
