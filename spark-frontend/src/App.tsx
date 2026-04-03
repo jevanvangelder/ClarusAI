@@ -13,6 +13,7 @@ import Klassen from './pages/Klassen'
 import KlasDetail from './pages/KlasDetail'
 import Vakken from './pages/Vakken'
 import VakDetail from './pages/VakDetail'
+import StudentOpdrachtDetail from './pages/StudentOpdrachtDetail'
 import Opdrachten from './pages/Opdrachten'
 import Analyse from './pages/Analyse'
 import Admin from './pages/Admin'
@@ -45,14 +46,12 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* Publieke routes */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/register/bevestig" element={<RegisterBevestig />} />
       <Route path="/confirm-email" element={<ConfirmEmail />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Chat — fullscreen, ZONDER DashboardLayout */}
       <Route
         path="/chat"
         element={
@@ -62,7 +61,6 @@ function AppRoutes() {
         }
       />
 
-      {/* Alle andere beschermde routes MET DashboardLayout */}
       <Route
         path="/*"
         element={
@@ -76,6 +74,7 @@ function AppRoutes() {
                 <Route path="/klassen/:id" element={<KlasDetail />} />
                 <Route path="/vakken" element={<Vakken />} />
                 <Route path="/vakken/:id" element={<VakDetail />} />
+                <Route path="/vakken/:id/opdracht/:assignmentId" element={<StudentOpdrachtDetail />} />
                 <Route path="/opdrachten" element={<Opdrachten />} />
                 <Route path="/analyse" element={<Analyse />} />
                 <Route path="/admin" element={<Admin />} />

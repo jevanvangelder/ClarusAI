@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
-import { ArrowLeft, BookOpen, Calendar, Users, FileText, Info } from 'lucide-react'
+import { ArrowLeft, BookOpen, Calendar, Users, FileText, Info, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface VakInfo {
@@ -51,28 +51,21 @@ export default function VakDetail() {
 
   const fetchOpdrachten = async () => {
     if (!id) return
-
-    // Stap 1: haal assignment_ids + deadlines op voor deze klas
     const { data: acData, error: acError } = await supabase
       .from('assignment_classes')
       .select('assignment_id, deadline')
       .eq('class_id', id)
-
     if (acError) { console.error('assignment_classes error:', acError); return }
     if (!acData || acData.length === 0) { setOpdrachten([]); return }
 
     const assignmentIds = acData.map((row: any) => row.assignment_id)
-
-    // Stap 2: haal de assignments op
     const { data: aData, error: aError } = await supabase
       .from('assignments')
       .select('id, title, beschrijving, type, max_punten, created_at')
       .in('id', assignmentIds)
       .eq('is_active', true)
-
     if (aError) { console.error('assignments error:', aError); return }
 
-    // Stap 3: combineer met deadline
     const deadlineMap: Record<string, string | null> = {}
     acData.forEach((row: any) => { deadlineMap[row.assignment_id] = row.deadline })
 
@@ -130,7 +123,6 @@ export default function VakDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div className="flex items-start gap-4">
         <button onClick={() => navigate('/vakken')} className="mt-1 text-white/50 hover:text-white transition-colors">
           <ArrowLeft size={20} />
@@ -158,7 +150,6 @@ export default function VakDetail() {
         </div>
       </div>
 
-      {/* Stat pills */}
       <div className="flex gap-3 flex-wrap">
         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
           <Users size={14} className="text-blue-400" />
@@ -170,7 +161,6 @@ export default function VakDetail() {
         </div>
       </div>
 
-      {/* Tabbladen */}
       <div className="border-b border-white/10">
         <div className="flex gap-1">
           {tabs.map(tab => (
@@ -190,7 +180,6 @@ export default function VakDetail() {
         </div>
       </div>
 
-      {/* ── TAB: Opdrachten ── */}
       {activeTab === 'opdrachten' && (
         <div className="space-y-3">
           {opdrachten.length === 0 ? (
@@ -207,7 +196,11 @@ export default function VakDetail() {
                 const verlopen = opdracht.deadline ? isVerlopen(opdracht.deadline) : false
                 const nabij = opdracht.deadline ? isDeadlineNabij(opdracht.deadline) : false
                 return (
-                  <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 transition-all">
+                  <button
+                    key={opdracht.id}
+                    onClick={() => navigate(`/vakken/${id}/opdracht/${opdracht.id}`)}
+                    className="w-full text-left bg-[#0f1029] border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/5 rounded-xl p-5 transition-all group"
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -222,38 +215,38 @@ export default function VakDetail() {
                         </div>
                         <h3 className="text-white font-semibold">{opdracht.title}</h3>
                         {opdracht.beschrijving && (
-                          <p className="text-white/40 text-sm mt-1 line-clamp-3">{opdracht.beschrijving}</p>
+                          <p className="text-white/40 text-sm mt-1 line-clamp-2">{opdracht.beschrijving}</p>
                         )}
                         {opdracht.deadline && (
                           <p className={`text-xs mt-2 flex items-center gap-1 ${
-                            verlopen ? 'text-red-400/70' : nabij ? 'text-amber-400' : 'text-white/40'
+                            verlopen ? 'text-red-400/70' : nabij ? 'text-amber-400' : 'text-blue-400/60'
                           }`}>
                             <Calendar size={11} />
-                            {verlopen ? 'Verlopen: ' : 'Deadline: '}
-                            {new Date(opdracht.deadline).toLocaleDateString('nl-NL', {
-                              day: 'numeric', month: 'long', year: 'numeric',
-                            })}{' '}
-                            {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', {
-                              hour: '2-digit', minute: '2-digit',
-                            })}
+                            {verlopen
+                              ? `Verlopen op ${new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })} om ${new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
+                              : `Inleveren voor ${new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })} om ${new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
+                            }
                             {nabij && ' ⚠️'}
                           </p>
                         )}
-                        <p className="text-white/25 text-xs mt-1">
+                        <p className="text-white/20 text-xs mt-1">
                           Geplaatst op {new Date(opdracht.created_at).toLocaleDateString('nl-NL')}
                         </p>
                       </div>
-                      <div className={`shrink-0 px-2 py-0.5 rounded-full text-xs border ${
-                        verlopen
-                          ? 'bg-red-500/10 border-red-500/20 text-red-400/70'
-                          : nabij
-                          ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                          : 'bg-green-500/10 border-green-500/20 text-green-400/70'
-                      }`}>
-                        {verlopen ? 'Verlopen' : nabij ? 'Bijna verlopen' : 'Actief'}
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div className={`px-2 py-0.5 rounded-full text-xs border ${
+                          verlopen
+                            ? 'bg-red-500/10 border-red-500/20 text-red-400/70'
+                            : nabij
+                            ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                            : 'bg-green-500/10 border-green-500/20 text-green-400/70'
+                        }`}>
+                          {verlopen ? 'Verlopen' : nabij ? '⚠️ Bijna verlopen' : 'Actief'}
+                        </div>
+                        <ChevronRight size={16} className="text-white/20 group-hover:text-blue-400 transition-colors" />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>
@@ -261,7 +254,6 @@ export default function VakDetail() {
         </div>
       )}
 
-      {/* ── TAB: Info ── */}
       {activeTab === 'info' && (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4 max-w-lg">
           <h3 className="text-white font-semibold">Over dit vak</h3>

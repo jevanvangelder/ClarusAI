@@ -6,18 +6,17 @@ from app.api.chat_history import router as chat_history_router
 from app.api.modules import router as modules_router
 from app.api.ebooks import router as ebooks_router
 from app.api.opdrachten import router as opdrachten_router
+from app.api.submissions import router as submissions_router
 
-# Initialize FastAPI app
 app = FastAPI(
     title=settings.APP_NAME,
     debug=settings.DEBUG
 )
 
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5000", 
+        "http://localhost:5000",
         "http://localhost:5173",
         "https://clarusai-frontend.onrender.com",
         "https://www.clarusai.nl",
@@ -28,21 +27,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(chat_router)
 app.include_router(chat_history_router)
 app.include_router(modules_router)
 app.include_router(ebooks_router)
 app.include_router(opdrachten_router)
+app.include_router(submissions_router)
 
-# Health check endpoint
 @app.get("/")
 async def root():
-    return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "status": "running",
-        "version": "0.1.0"
-    }
+    return {"message": f"Welcome to {settings.APP_NAME}", "status": "running", "version": "0.1.0"}
 
 @app.get("/health")
 async def health_check():
