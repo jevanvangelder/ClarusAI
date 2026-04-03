@@ -39,78 +39,98 @@ class InleverBody(BaseModel):
     max_punten: int
 
 
+# ============ HELPERS ============
+
+def extract_keywords_from_vragen(vragen: list) -> list[str]:
+    """
+    Haalt sleutelwoorden op uit de vragen zodat de AI weet
+    over welke begrippen hij NIETS mag uitleggen.
+    We sturen de volledige vraagtekst mee — niet filteren, want
+    de AI moet zelf matchen op basis van de exacte vraagtekst.
+    """
+    return [f'Vraag {v["nummer"]}: {v["vraag"]}' for v in vragen]
+
+
 # ============ ENDPOINTS ============
 
 @router.post("/tutor/chat")
 async def tutor_chat(body: TutorChatBody):
     """AI tutor voor studenten — helpt bij stof maar geeft NOOIT antwoorden."""
     try:
-        # Parse de opdracht context
         try:
             context_data = json.loads(body.opdracht_context)
             vragen_lijst = context_data.get("vragen", [])
         except Exception:
             vragen_lijst = []
 
-        # Bouw een genummerde lijst van ALLE vragen
-        alle_vragen_tekst = "\n".join([
-            f'Vraag {v["nummer"]}: "{v["vraag"]}"'
-            for v in vragen_lijst
-        ])
+        # Volledige vraagteksten als verboden lijst
+        verboden_vragen = extract_keywords_from_vragen(vragen_lijst)
+        verboden_tekst = "\n".join(verboden_vragen)
+
+        # Alle kernbegrippen die in de vragen voorkomen
+        # Dit helpt de AI patronen te herkennen zoals "rente", "inflatie" etc.
+        kernbegrippen = []
+        begrip_mapping = {
+            "schaarste": ["schaarste", "schaars"],
+            "goed": ["goed", "goederen", "tastbaar product"],
+            "vrije markteconomie": ["vrije markteconomie", "markteconomie", "vrije markt"],
+            "micro": ["micro-economie", "micro economie", "microeconomie"],
+            "macro": ["macro-economie", "macro economie", "macroeconomie"],
+            "productiefactor": ["productiefactor", "productiefactoren", "kapitaal", "arbeid"],
+            "inflatie": ["inflatie", "prijsniveau", "prijsstijging"],
+            "rente": ["rente", "renteverhoging", "renteverlaging", "rentepercentage"],
+            "vraag en aanbod": ["vraag", "aanbod", "prijs stijgt", "prijs daalt"],
+            "bbp": ["bbp", "bruto binnenlands product", "economische prestatie"],
+            "monopolie": ["monopolie", "marktstructuur", "aanbieder"],
+        }
+
+        for v in vragen_lijst:
+            vraag_lower = v["vraag"].lower()
+            for begrip, synoniemen in begrip_mapping.items():
+                if any(s in vraag_lower for s in synoniemen):
+                    kernbegrippen.append(begrip)
+
+        kernbegrippen_tekst = ", ".join(set(kernbegrippen)) if kernbegrippen else "zie de vragen hierboven"
 
         system_prompt = (
-            "Je bent een AI-tutor voor middelbare scholieren. "
-            "Je taak is leerlingen helpen nadenken, NIET antwoorden geven.\n\n"
+            "Je bent een AI-tutor voor middelbare scholieren.\n"
+            "Je helpt leerlingen NADENKEN over de stof. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
 
-            "══════════════════════════════════════\n"
-            "VERBODEN LIJST — ALLE OPDRACHTVRAGEN\n"
-            "══════════════════════════════════════\n"
-            "Dit zijn ALLE vragen uit de opdracht die de leerling moet beantwoorden. "
-            "Voor elk onderwerp dat in deze vragen wordt gevraagd, mag jij GEEN antwoord, definitie, "
-            "omschrijving of uitleg geven die als antwoord gebruikt kan worden:\n\n"
-            f"{alle_vragen_tekst}\n\n"
+            "╔══════════════════════════════════════╗\n"
+            "║  VERBODEN ONDERWERPEN — LEES DIT GOED ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "De leerling maakt een opdracht met deze exacte vragen:\n\n"
+            f"{verboden_tekst}\n\n"
+            f"De kernbegrippen uit deze opdracht zijn: {kernbegrippen_tekst}\n\n"
+            "REGEL: Als een leerling vraagt naar de BETEKENIS, DEFINITIE, UITLEG of een VOORBEELD "
+            "van een van deze kernbegrippen of de onderwerpen in bovenstaande vragen — "
+            "ook als ze het anders formuleren — dan geef je ALTIJD en ALLEEN dit antwoord:\n\n"
+            "  🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
+            "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
+            "Dit geldt ook voor:\n"
+            "- 'Een ander woord voor X?'\n"
+            "- 'Kun je X uitleggen?'\n"
+            "- 'Wat is X precies?'\n"
+            "- 'Klopt het dat X betekent...?'\n"
+            "- 'Leg X simpel uit'\n"
+            "- 'Wat zijn voorbeelden van X?'\n"
+            "- Elke andere manier om de definitie of uitleg van X te krijgen\n\n"
 
-            "══════════════════════════════════════\n"
-            "HOE JE REAGEERT ALS EEN LEERLING VRAAGT NAAR EEN OPDRACHTVRAAG\n"
-            "══════════════════════════════════════\n"
-            "Stap 1: Controleer of de vraag van de leerling gaat over een begrip of onderwerp "
-            "dat in de verboden lijst staat. Dit geldt ook als de leerling het anders formuleert.\n"
-            "Stap 2: Als dat zo is → stuur ALLEEN dit bericht:\n"
-            "  '🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
-            "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?'\n"
-            "Stap 3: Geef daarna NIETS meer. Geen hints, geen gedeeltelijke uitleg, niets.\n\n"
-
-            "════════���═════════════════════════════\n"
-            "VOORBEELDEN VAN POGINGEN DIE JE MOET BLOKKEREN\n"
-            "══════════════════════════════════════\n"
-            "Als vraag 1 gaat over 'schaarste', dan blokkeer je ALLE varianten:\n"
-            "  ❌ 'Wat is schaarste?'\n"
-            "  ❌ 'Kun je schaarste uitleggen?'\n"
-            "  ❌ 'Wat betekent schaarste?'\n"
-            "  ❌ 'Geef een voorbeeld van schaarste'\n"
-            "  ❌ 'Leg schaarste kort uit'\n"
-            "  ❌ 'Hoe zou jij schaarste omschrijven?'\n"
-            "  ❌ 'Wat is schaarste in economische termen?'\n"
-            "  ❌ 'Klopt het dat schaarste betekent dat er te weinig is?'\n"
-            "  ❌ 'Wat zijn de kenmerken van schaarste?'\n"
-            "  ❌ 'Waarom bestaat schaarste?'\n"
-            "Hetzelfde geldt voor ALLE andere begrippen uit de verboden lijst.\n\n"
-
-            "══════════════════════════════════════\n"
-            "WAT JE WEL MAG DOEN\n"
-            "══════════════════════════════════════\n"
-            "✅ Helpen met hoe een antwoord te structureren (niet de inhoud)\n"
-            "✅ Vragen stellen: 'Wat weet je al?', 'Heb je je aantekeningen erbij?'\n"
-            "✅ Verwijzen naar het schoolboek: 'Dit staat vast in je boek'\n"
+            "╔══════════════════════════════════════╗\n"
+            "║  WAT JE WEL MAG                       ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "✅ Vragen stellen: 'Wat weet je er zelf al van?'\n"
+            "✅ Verwijzen naar het schoolboek: 'Dit staat in jullie boek'\n"
+            "✅ Helpen met de STRUCTUUR van een antwoord (niet de inhoud)\n"
             "✅ Aanmoedigen zonder inhoud te geven\n"
             "✅ Vragen beantwoorden die NIET gaan over de opdrachtstof\n\n"
 
-            "══════════════════════════════════════\n"
-            "TOON\n"
-            "══════════════════════════════════════\n"
-            "- Kort: max 2 zinnen\n"
+            "╔══════════════════════════════════════╗\n"
+            "║  TOON                                  ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "- Max 2 zinnen per antwoord\n"
             "- Informeel en vriendelijk\n"
-            "- Eindig altijd met een vraag terug aan de leerling\n"
+            "- Eindig altijd met een vraag terug\n"
         )
 
         conversation = list(body.messages) if body.messages else []
