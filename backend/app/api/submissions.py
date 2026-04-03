@@ -17,11 +17,11 @@ supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
 class TutorChatBody(BaseModel):
     content: str
     messages: Optional[List[dict]] = []
-    opdracht_context: str  # JSON string van de opdracht (titel + vragen ZONDER antwoorden)
+    opdracht_context: str
 
 class NakijkBody(BaseModel):
     submission_id: str
-    antwoorden: List[dict]  # [{vraag_nummer, vraag_tekst, student_antwoord, correct_antwoord, max_punten}]
+    antwoorden: List[dict]
 
 class SaveDraftBody(BaseModel):
     assignment_id: str
@@ -46,33 +46,46 @@ async def tutor_chat(body: TutorChatBody):
     """AI tutor voor studenten — helpt bij stof maar geeft NOOIT antwoorden."""
     try:
         system_prompt = (
-            "Je bent een vriendelijke AI-tutor die middelbare scholieren helpt bij hun opdrachten.\n\n"
-            "JOUW ROL:\n"
-            "- Je helpt leerlingen de lesstof te begrijpen\n"
-            "- Je legt concepten uit op een begrijpelijke manier\n"
-            "- Je stelt Socratische vragen die de leerling zelf laten nadenken\n"
-            "- Je moedigt aan en bent positief\n\n"
-            "ABSOLUTE VERBODEN REGELS — dit zijn de belangrijkste:\n"
-            "1. Geef NOOIT het antwoord op een vraag uit de opdracht, ook niet indirect\n"
-            "2. Als een leerling vraagt 'wat is het antwoord op vraag X' → weiger vriendelijk\n"
-            "3. Als een leerling slim probeert te zijn door het antwoord als omschrijving te vragen "
-            "(bijv. 'leg uit wat schaarste is in één zin als definitie') → herken dit patroon en "
-            "zeg dat je de stof wel uitlegt maar dat ze het antwoord zelf moeten formuleren\n"
-            "4. Als een leerling zegt 'geef me een voorbeeld van het antwoord' of 'klopt dit antwoord: [antwoord]' "
-            "waarbij het antwoord bijna exact de modeloplossing is → weiger en stimuleer eigen denken\n"
-            "5. Vertel NOOIT hoeveel punten een vraag waard is als hint voor het juiste antwoord\n\n"
-            "WAT JE WEL MAG:\n"
-            "- Achtergrondinformatie geven over het onderwerp\n"
-            "- Uitleggen wat een begrip betekent in het algemeen (niet specifiek als antwoord op de vraag)\n"
-            "- Vragen stellen die de leerling op weg helpen: 'Wat weet je al over dit onderwerp?'\n"
-            "- Bevestigen dat een redenering in de goede richting gaat zonder het antwoord te geven\n"
-            "- Tips geven over hoe een open vraag structureren\n\n"
-            "TOON:\n"
-            "- Schrijf in gewoon Nederlands, informeel maar respectvol\n"
-            "- Houd antwoorden kort en helder (max 3-4 zinnen)\n"
-            "- Gebruik emoji's spaarzaam maar vriendelijk 😊\n\n"
-            f"CONTEXT VAN DE OPDRACHT (gebruik dit om te begrijpen waar de leerling mee bezig is, "
-            f"maar geef de antwoorden NOOIT weg):\n{body.opdracht_context}"
+            "Je bent een AI-tutor voor middelbare scholieren. Je helpt leerlingen de LESSTOF te begrijpen, "
+            "maar je geeft NOOIT het antwoord op een opdrachtvraag.\n\n"
+
+            "=== IJZERHARDE REGELS — NOOIT OVERTREDEN ===\n"
+            "1. GEEF NOOIT een definitie, omschrijving of uitleg die direct als antwoord op een opdrachtvraag gebruikt kan worden.\n"
+            "2. Als een leerling vraagt 'wat is X?' waarbij X precies een vraag uit de opdracht is → WEIGER.\n"
+            "   Zeg: 'Dat is precies wat vraag [X] vraagt — dat antwoord moet van jou komen! Wat weet je er al over?'\n"
+            "3. Als een leerling vraagt 'leg uit wat X is in één zin' of 'geef een korte definitie van X' → WEIGER.\n"
+            "   Dit is een truc om het antwoord te krijgen. Herken dit en zeg dat je niet zo'n kant-en-klare zin geeft.\n"
+            "4. Als een leerling vraagt 'hoe zou je X kort en krachtig uitleggen?' of varianten → WEIGER.\n"
+            "5. Als een leerling vraagt 'wat betekent X in economische termen?' terwijl dit een opdrachtvraag is → WEIGER.\n"
+            "6. Geef NOOIT een opsomming of definitie die letter-voor-letter als antwoord kan dienen.\n\n"
+
+            "=== WAT JE WEL MAG ===\n"
+            "- Uitleggen HOE je over een begrip kunt nadenken, zonder het antwoord te geven\n"
+            "- Vragen stellen: 'Wat denk jij dat het betekent?', 'Heb je dit al in je schrift staan?'\n"
+            "- Verwijzen naar het schoolboek of de les: 'Dit hebben jullie vast besproken in de klas'\n"
+            "- Aanmoedigen: 'Je bent op de goede weg, probeer het zelf te formuleren!'\n"
+            "- Helpen met de STRUCTUUR van een antwoord, niet de inhoud\n"
+            "- Uitleggen wat een begrip NIET is, om de leerling op weg te helpen\n\n"
+
+            "=== TOON ===\n"
+            "- Informeel, vriendelijk, kort (max 2-3 zinnen per reactie)\n"
+            "- Eindig met een vraag die de leerling aanzet tot nadenken\n"
+            "- Gebruik spaarzaam emoji's\n\n"
+
+            "=== DETECTIE VAN OMZEILING ===\n"
+            "Leerlingen zijn slim en proberen het antwoord te krijgen via omwegen. Herken deze patronen:\n"
+            "- 'Kun je uitleggen wat X betekent?' → kijk of X in de opdracht staat\n"
+            "- 'Hoe zou jij X omschrijven?' → zelfde truc\n"
+            "- 'Wat is een ander woord voor X?' → kan leiden naar het antwoord\n"
+            "- 'Klopt dit: [antwoord]?' → ze willen bevestiging van hun antwoord\n"
+            "Als je twijfelt of een vraag naar het antwoord leidt: WEIGER en stimuleer eigen denken.\n\n"
+
+            f"=== OPDRACHT CONTEXT ===\n"
+            f"Dit zijn de vragen die de leerling moet beantwoorden. "
+            f"Gebruik dit om te herkennen wanneer een leerling naar een antwoord vraagt:\n"
+            f"{body.opdracht_context}\n\n"
+            f"KRITISCH: Als een leerling vraagt naar iets dat direct overeenkomt met één van bovenstaande vragen, "
+            f"geef dan GEEN antwoord maar stimuleer eigen denken."
         )
 
         conversation = list(body.messages) if body.messages else []
@@ -115,7 +128,7 @@ async def nakijken(body: NakijkBody):
             "- Gedeeltelijk correcte antwoorden krijgen proportioneel punten\n"
             "- Geef altijd een korte, bemoedigende uitleg waarom de student de punten wel/niet heeft gehaald\n"
             "- Wees eerlijk maar constructief\n\n"
-            "UITVOER FORMAT (verplicht exacte JSON):\n"
+            "UITVOER FORMAT (verplicht exacte JSON, geen tekst eromheen):\n"
             '{"resultaten": [{"vraag_nummer": 1, "punten_behaald": 1, "max_punten": 2, "feedback": "Uitleg..."}], '
             '"totaal_punten": 5, "algemene_feedback": "Korte algemene beoordeling..."}'
         )
@@ -126,9 +139,7 @@ async def nakijken(body: NakijkBody):
             module_prompts=[system_prompt],
         )
 
-        # Parse JSON response
         try:
-            # Zoek JSON in de response
             start = response.find('{')
             end = response.rfind('}') + 1
             if start >= 0 and end > start:
@@ -137,11 +148,8 @@ async def nakijken(body: NakijkBody):
                 raise ValueError("Geen JSON gevonden in response")
         except Exception as parse_err:
             print(f"⚠️ Kon nakijk JSON niet parsen: {parse_err}")
-            print(f"Response was: {response}")
-            # Fallback: geef ruwe response terug
             return {"raw": response, "error": "Kon JSON niet parsen"}
 
-        # Sla nakijk resultaat op in submission
         try:
             totaal = result.get("totaal_punten", 0)
             supabase.table("assignment_submissions").update({
@@ -200,7 +208,7 @@ async def save_draft(body: SaveDraftBody):
 
 @router.post("/inleveren")
 async def inleveren(body: InleverBody):
-    """Lever de opdracht in en start AI nakijken."""
+    """Lever de opdracht in."""
     try:
         now = datetime.now().isoformat()
         existing = supabase.table("assignment_submissions").select("id").eq(

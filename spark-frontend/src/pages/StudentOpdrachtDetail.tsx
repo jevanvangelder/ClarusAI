@@ -420,7 +420,7 @@ export default function StudentOpdrachtDetail() {
       </div>
       <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 flex-1" style={{ minHeight: 'calc(100vh - 220px)' }}>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
         {/* Links: vragen */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
