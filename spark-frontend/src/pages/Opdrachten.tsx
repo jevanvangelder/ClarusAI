@@ -276,7 +276,8 @@ export default function Opdrachten() {
     setOpdrachten(prev => prev.filter(o => o.id !== opdracht.id))
     setView('overzicht')
   }
-    // ===== SPAR VIEW =====
+
+  // ===== SPAR VIEW =====
   if (view === 'spar') {
     return (
       <div className="flex flex-col h-full space-y-4">
@@ -287,6 +288,8 @@ export default function Opdrachten() {
           <h2 className="text-2xl font-bold text-white">{sparContext ? `Opdracht aanpassen: ${gegenereerdeOpdracht?.titel || ''}` : 'Nieuwe opdracht maken'}</h2>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>
+
+          {/* Chat links */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
@@ -307,19 +310,17 @@ export default function Opdrachten() {
                       <img src={msg.imageUrl} alt="geplakt" className="max-h-32 rounded-lg mb-2 border border-white/20" />
                     )}
                     {msg.role === 'assistant' && !msg.isUpdate ? (
-                      <ReactMarkdown
-                        components={{
-                          p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
-                          strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
-                          ul: ({children}) => <ul className="list-disc pl-4 space-y-0.5 my-1">{children}</ul>,
-                          ol: ({children}) => <ol className="list-decimal pl-4 space-y-0.5 my-1">{children}</ol>,
-                          li: ({children}) => <li>{children}</li>,
-                          h1: ({children}) => <h1 className="font-bold text-white text-base mb-1">{children}</h1>,
-                          h2: ({children}) => <h2 className="font-semibold text-white mb-1">{children}</h2>,
-                          h3: ({children}) => <h3 className="font-semibold text-white/90 mb-1">{children}</h3>,
-                          code: ({children}) => <code className="bg-white/10 px-1 rounded text-xs">{children}</code>,
-                        }}
-                      >
+                      <ReactMarkdown components={{
+                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                        strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
+                        ul: ({children}) => <ul className="list-disc pl-4 space-y-0.5 my-1">{children}</ul>,
+                        ol: ({children}) => <ol className="list-decimal pl-4 space-y-0.5 my-1">{children}</ol>,
+                        li: ({children}) => <li>{children}</li>,
+                        h1: ({children}) => <h1 className="font-bold text-white text-base mb-1">{children}</h1>,
+                        h2: ({children}) => <h2 className="font-semibold text-white mb-1">{children}</h2>,
+                        h3: ({children}) => <h3 className="font-semibold text-white/90 mb-1">{children}</h3>,
+                        code: ({children}) => <code className="bg-white/10 px-1 rounded text-xs">{children}</code>,
+                      }}>
                         {msg.content}
                       </ReactMarkdown>
                     ) : (
@@ -371,9 +372,17 @@ export default function Opdrachten() {
               </button>
             </div>
           </div>
+
+          {/* Preview rechts */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/10">
+            {/* Header met opslaan knop rechtsboven */}
+            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               <span className="text-white/50 text-xs uppercase tracking-wider">📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}</span>
+              {gegenereerdeOpdracht && (
+                <button onClick={handleOpslaanOpdracht} disabled={opslaan} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all">
+                  {opslaan ? '⏳ Opslaan...' : sparContext ? '💾 Wijzigingen opslaan' : '💾 Opdracht opslaan'}
+                </button>
+              )}
             </div>
             {!gegenereerdeOpdracht ? (
               <div className="flex-1 flex items-center justify-center text-white/20 text-sm text-center p-8">De opdracht verschijnt hier zodra de AI hem heeft gegenereerd.</div>
@@ -402,9 +411,6 @@ export default function Opdrachten() {
                     </div>
                   ))}
                 </div>
-                <button onClick={handleOpslaanOpdracht} disabled={opslaan} className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg">
-                  {opslaan ? 'Opslaan...' : sparContext ? '💾 Wijzigingen opslaan' : '💾 Opdracht opslaan'}
-                </button>
               </div>
             )}
           </div>
