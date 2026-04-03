@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import logoImg from '@/assets/logo.png'
-import { GraduationCap, BookOpen, School } from 'lucide-react'
+import { GraduationCap, BookOpen, School, Mail } from 'lucide-react'
 
 const ROL_OPTIES: { value: UserRole; label: string; omschrijving: string; icon: any }[] = [
   { value: 'student', label: 'Student', omschrijving: 'Ik leer en maak opdrachten', icon: GraduationCap },
@@ -22,6 +22,8 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [selectedRole, setSelectedRole] = useState<UserRole>('student')
   const [loading, setLoading] = useState(false)
+  // Lokale fallback state — als navigate faalt tonen we dit
+  const [toonBevestig, setToonBevestig] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,15 +52,55 @@ export default function Register() {
         return
       }
 
-      // Navigeer naar aparte bevestigingspagina met email als parameter
-      navigate(`/register/bevestig?email=${encodeURIComponent(email)}`)
+      // Probeer te navigeren, toon anders lokaal het bevestigscherm
+      try {
+        navigate(`/register/bevestig?email=${encodeURIComponent(email)}`)
+      } catch {
+        setToonBevestig(true)
+      }
+
     } catch (error: any) {
       toast.error('Er is een fout opgetreden')
       console.error('Register error:', error)
+    } finally {
       setLoading(false)
     }
   }
 
+  // ===== FALLBACK BEVESTIGSCHERM (als navigate niet werkt) =====
+  if (toonBevestig) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="w-full max-w-md">
+          <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-6 sm:p-8 space-y-6 text-center">
+            <div className="flex justify-center">
+              <img src={logoImg} alt="ClarusAI Logo" className="w-20 h-20 object-contain" />
+            </div>
+            <div className="flex justify-center">
+              <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
+                <Mail size={30} className="text-blue-400" />
+              </div>
+            </div>
+            <div className="space-y-3">
+              <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-foreground">Controleer je e-mail! 📬</h1>
+              <p className="text-muted-foreground text-sm leading-relaxed">Je account is aangemaakt! We hebben een verificatie-e-mail gestuurd naar:</p>
+              <p className="text-primary font-semibold">{email}</p>
+              <p className="text-muted-foreground text-sm leading-relaxed">Klik op de link in die e-mail om je account te activeren. Daarna kun je inloggen bij ClarusAI.</p>
+            </div>
+            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg px-4 py-3 text-xs text-blue-300/80 text-left space-y-1">
+              <p>📁 Geen e-mail ontvangen?</p>
+              <p>Controleer je spam of ongewenste e-mail map. De e-mail kan soms een paar minuten onderweg zijn.</p>
+            </div>
+            <Link to="/login" className="block w-full py-2.5 px-4 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-all text-center">
+              Terug naar inloggen
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ===== REGISTRATIE FORMULIER =====
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
@@ -67,9 +109,7 @@ export default function Register() {
             <img src={logoImg} alt="ClarusAI Logo" className="w-20 h-20 object-contain" />
           </div>
           <div className="text-center space-y-2">
-            <h1 className="font-['Space_Grotesk'] text-3xl font-bold tracking-tight text-foreground">
-              Account aanmaken
-            </h1>
+            <h1 className="font-['Space_Grotesk'] text-3xl font-bold tracking-tight text-foreground">Account aanmaken</h1>
             <p className="text-sm text-muted-foreground">
               Of{' '}
               <Link to="/login" className="font-medium text-primary hover:text-primary/80 transition-colors underline">
