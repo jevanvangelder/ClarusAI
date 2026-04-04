@@ -129,6 +129,9 @@ export default function StudentOpdrachtDetail() {
   const [toonOpenVragenModal, setToonOpenVragenModal] = useState(false)
   const [aantalOpenVragen, setAantalOpenVragen] = useState(0)
 
+  // ✅ Houdt bij of de leerling bewust opnieuw is begonnen — overleeft tab-switch NIET (dat is precies wat we willen)
+  const [opnieuwBezig, setOpnieuwBezig] = useState(false)
+
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
   const [tutorInput, setTutorInput] = useState('')
   const [tutorLoading, setTutorLoading] = useState(false)
@@ -184,7 +187,6 @@ export default function StudentOpdrachtDetail() {
 
       if (subData) {
         setSubmissionId(subData.id)
-        // ✅ Altijd antwoorden laden uit opgeslagen data
         const antwoordMap: Record<number, string> = {}
         ;(subData.antwoorden || []).forEach((a: any) => {
           antwoordMap[a.vraag_nummer] = a.student_antwoord
@@ -192,9 +194,8 @@ export default function StudentOpdrachtDetail() {
         setAntwoorden(antwoordMap)
         setTutorMessages(subData.chat_log || [])
 
-        // ✅ Status bepalen — voor testen: ingeleverd_op check behouden maar opnieuw inleveren toegestaan
-        if (subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
-          // Bouw resultaten op uit opgeslagen antwoorden (die bevatten nakijk data)
+        // ✅ Alleen nagekeken view tonen als NIET bewust opnieuw begonnen
+        if (!opnieuwBezig && subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
           const resultaten = (subData.antwoorden || [])
             .filter((a: any) => a.nakijk)
             .map((a: any) => ({
@@ -213,13 +214,13 @@ export default function StudentOpdrachtDetail() {
           })
           setStatus('nagekeken')
         }
-        // ✅ Als al ingeleverd maar nog niet nagekeken: gewoon 'bezig' laten (voor testen)
+        // Als opnieuwBezig=true: gewoon status 'bezig' laten, antwoorden wél laden (voortgang)
       }
 
       setLoading(false)
     }
     load()
-  }, [assignmentId, user, classId])
+  }, [assignmentId, user, classId, opnieuwBezig])
 
   // Auto-save elke 30 seconden
   useEffect(() => {
@@ -273,7 +274,6 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
-  // ✅ Gebruik live antwoorden state (niet ref) voor de check — ref is alleen nodig in async functies
   const handleInleverKlik = () => {
     if (!opdracht) return
     const onbeantwoord = opdracht.vragen.filter(v => !antwoorden[v.nummer]?.trim())
@@ -336,6 +336,8 @@ export default function StudentOpdrachtDetail() {
       })
       const nakijkData = await nakijkRes.json()
       setNakijkResultaat({ ...sub, ...nakijkData, antwoorden: antwoordenMetCorrect })
+      // ✅ Na inleveren: niet meer opnieuw bezig
+      setOpnieuwBezig(false)
       setStatus('nagekeken')
       toast.success('Nakijken klaar! Bekijk je resultaten.')
     } catch (err) {
@@ -400,7 +402,6 @@ export default function StudentOpdrachtDetail() {
   if (!opdracht) return null
 
   const huidigeVraag = opdracht.vragen.find(v => v.nummer === activeVraag)
-  // ✅ Gebruik live antwoorden state voor voortgangsbalk — altijd actueel zonder opslaan
   const aantalBeantwoord = opdracht.vragen.filter(v => antwoorden[v.nummer]?.trim()).length
   const voortgang = Math.round((aantalBeantwoord / opdracht.vragen.length) * 100)
   const isLaatsteVraag = activeVraag === opdracht.vragen.length
@@ -447,7 +448,6 @@ export default function StudentOpdrachtDetail() {
         <div className="space-y-3">
           {opdracht.vragen.map(v => {
             const r = resultaten.find((res: any) => res.vraag_nummer === v.nummer)
-            // ✅ Antwoord ophalen uit nakijkResultaat.antwoorden
             const ant = (nakijkResultaat.antwoorden || []).find((a: any) => a.vraag_nummer === v.nummer)
             const behaald = r?.punten_behaald ?? 0
             const goed = r ? behaald === v.punten : false
@@ -465,16 +465,13 @@ export default function StudentOpdrachtDetail() {
                     {r?.punten_behaald ?? '?'}/{v.punten}pt
                   </span>
                 </div>
-
                 <p className="text-white/50 text-xs mb-1">
                   <span className="text-white/30">Jouw antwoord: </span>
                   {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
                 </p>
-
                 {r?.feedback && (
                   <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
                 )}
-
                 {isOpen && r?.beredenering && (
                   <div className="mt-2 px-3 py-2 bg-white/[0.03] border border-white/[0.08] rounded-lg">
                     <p className="text-white/30 text-xs font-medium mb-0.5">📝 Beredenering AI:</p>
@@ -486,13 +483,21 @@ export default function StudentOpdrachtDetail() {
           })}
         </div>
 
-        {/* ✅ Voor testen: opnieuw maken knop */}
         <div className="flex gap-3">
           <button onClick={() => navigate(-1)}
             className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-all">
             Terug naar de klas
           </button>
-          <button onClick={() => setStatus('bezig')}
+          <button
+            onClick={() => {
+              // ✅ Zet opnieuwBezig aan → herlaad useEffect → laadt data maar toont NIET nagekeken view
+              setAntwoorden({})
+              setTutorMessages([])
+              setNakijkResultaat(null)
+              setActiveVraag(1)
+              setStatus('bezig')
+              setOpnieuwBezig(true)
+            }}
             className="py-3 px-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white rounded-xl text-sm transition-all">
             🔄 Opnieuw maken
           </button>
@@ -572,7 +577,6 @@ export default function StudentOpdrachtDetail() {
           </div>
         </div>
 
-        {/* ✅ Voortgangsbalk — live bijgewerkt zonder opslaan */}
         <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
           <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${voortgang}%` }} />
         </div>
