@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Send, CheckCircle, Clock,
-  MessageCircle, FileText, ChevronRight, Loader2
+  MessageCircle, FileText, ChevronRight, Loader2, AlertTriangle
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { toast } from 'sonner'
@@ -47,6 +47,42 @@ interface TutorMessage {
 
 type Status = 'bezig' | 'ingeleverd' | 'nagekeken'
 
+// ═══════════════════════════════
+// BEVESTIGING MODAL COMPONENT
+// ═══════════════════════════════
+function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAnnuleer: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#0f1029] border border-white/15 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-500/30 flex items-center justify-center shrink-0">
+            <AlertTriangle size={18} className="text-amber-400" />
+          </div>
+          <h3 className="text-white font-semibold text-base">Opdracht inleveren?</h3>
+        </div>
+        <p className="text-white/55 text-sm leading-relaxed mb-6">
+          Weet je zeker dat je de opdracht wilt inleveren? Je kunt daarna <span className="text-white/80 font-medium">niet meer wijzigen</span>.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onAnnuleer}
+            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all"
+          >
+            Nee, terug
+          </button>
+          <button
+            onClick={onBevestig}
+            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
+          >
+            <CheckCircle size={14} />
+            Ja, inleveren
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function StudentOpdrachtDetail() {
   const { id: classId, assignmentId } = useParams<{ id: string; assignmentId: string }>()
   const navigate = useNavigate()
@@ -61,6 +97,7 @@ export default function StudentOpdrachtDetail() {
   const [inleveren, setInleveren] = useState(false)
   const [opslaan, setOpslaan] = useState(false)
   const [activeVraag, setActiveVraag] = useState(1)
+  const [toonInleverModal, setToonInleverModal] = useState(false)
 
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
   const [tutorInput, setTutorInput] = useState('')
@@ -181,16 +218,22 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
-  const handleInleveren = async () => {
-    if (!opdracht || !user || !classId) return
+  // Stap 1: knop → check onbeantwoorde vragen → toon modal
+  const handleInleverKlik = () => {
+    if (!opdracht) return
     const onbeantwoord = opdracht.vragen.filter(v => !antwoorden[v.nummer]?.trim())
     if (onbeantwoord.length > 0) {
       toast.error(`Je hebt nog ${onbeantwoord.length} vraag/vragen niet beantwoord`)
       setActiveVraag(onbeantwoord[0].nummer)
       return
     }
-    if (!confirm('Weet je zeker dat je de opdracht wilt inleveren? Je kunt daarna niet meer wijzigen.')) return
+    setToonInleverModal(true)
+  }
 
+  // Stap 2: na bevestiging in modal → echt inleveren
+  const handleInleverBevestigd = async () => {
+    setToonInleverModal(false)
+    if (!opdracht || !user || !classId) return
     setInleveren(true)
     try {
       const { data: volledigeOpdracht } = await supabase
@@ -306,6 +349,7 @@ export default function StudentOpdrachtDetail() {
   const huidigeVraag = opdracht.vragen.find(v => v.nummer === activeVraag)
   const aantalBeantwoord = opdracht.vragen.filter(v => antwoorden[v.nummer]?.trim()).length
   const voortgang = Math.round((aantalBeantwoord / opdracht.vragen.length) * 100)
+  const isLaatsteVraag = activeVraag === opdracht.vragen.length
 
   const TYPE_COLORS: Record<string, string> = {
     huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
@@ -376,7 +420,7 @@ export default function StudentOpdrachtDetail() {
 
   // ═══════════════════════════════
   // INGELEVERD VIEW
-  // ════════���══════════════════════
+  // ═══════════════════════════════
   if (status === 'ingeleverd') {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
@@ -390,211 +434,232 @@ export default function StudentOpdrachtDetail() {
   // BEZIG VIEW
   // ═══════════════════════════════
   return (
-    <div className="flex flex-col h-full space-y-3">
-      <div className="flex items-center gap-3 flex-wrap">
-        <button onClick={() => { saveDraft(false); navigate(-1) }} className="text-white/50 hover:text-white">
-          <ArrowLeft size={20} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-bold text-white truncate">{opdracht.title}</h2>
-          <div className="flex items-center gap-3 flex-wrap mt-0.5">
-            <span className={`text-xs px-2 py-0.5 rounded border ${typeColor}`}>{opdracht.type}</span>
-            <span className="text-white/40 text-xs">{opdracht.max_punten}pt totaal</span>
-            {opdracht.deadline && (
-              <span className={`text-xs flex items-center gap-1 ${isVerlopen ? 'text-red-400' : 'text-amber-400/80'}`}>
-                <Clock size={11} />
-                {isVerlopen ? 'Verlopen' : 'Deadline'}:{' '}
-                {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{' '}
-                {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => saveDraft(true)}
-            disabled={opslaan}
-            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1.5"
-          >
-            {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
-            {opslaan ? 'Opslaan...' : 'Opslaan'}
+    <>
+      {/* Bevestiging modal */}
+      {toonInleverModal && (
+        <InleverModal
+          onBevestig={handleInleverBevestigd}
+          onAnnuleer={() => setToonInleverModal(false)}
+        />
+      )}
+
+      <div className="flex flex-col h-full space-y-3">
+        <div className="flex items-center gap-3 flex-wrap">
+          <button onClick={() => { saveDraft(false); navigate(-1) }} className="text-white/50 hover:text-white">
+            <ArrowLeft size={20} />
           </button>
-          <button onClick={handleInleveren} disabled={inleveren}
-            className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all">
-            {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-            {inleveren ? 'Inleveren...' : 'Inleveren'}
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
-        <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${voortgang}%` }} />
-      </div>
-      <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
-
-        {/* Links: vragen */}
-        <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
-            <FileText size={14} className="text-white/40" />
-            <span className="text-white/50 text-xs uppercase tracking-wider">Vragen</span>
-          </div>
-          <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
-            {opdracht.vragen.map(v => {
-              const beantwoord = !!antwoorden[v.nummer]?.trim()
-              return (
-                <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
-                  className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
-                    activeVraag === v.nummer ? 'bg-blue-600 text-white'
-                    : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
-                    : 'bg-white/5 text-white/40 hover:bg-white/10'
-                  }`}>
-                  {v.nummer}
-                </button>
-              )
-            })}
-          </div>
-          {huidigeVraag && (
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-white/30 text-xs">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
-                  <span className="text-white/30 text-xs">{huidigeVraag.punten}pt</span>
-                </div>
-                <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
-                {huidigeVraag.afbeelding && (
-                  <img src={huidigeVraag.afbeelding} alt={`Afbeelding vraag ${huidigeVraag.nummer}`}
-                    className="mt-3 w-full max-h-48 object-contain rounded-lg border border-white/10" />
-                )}
-              </div>
-              {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
-                <div className="space-y-2">
-                  {huidigeVraag.opties.map((opt, i) => (
-                    <button key={i}
-                      onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
-                      className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                        antwoorden[huidigeVraag.nummer] === opt
-                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                      }`}>
-                      {opt}
-                    </button>
-                  ))}
-                </div>
-              ) : huidigeVraag.type === 'waar-onwaar' ? (
-                <div className="flex gap-3">
-                  {['Waar', 'Onwaar'].map(opt => (
-                    <button key={opt}
-                      onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
-                      className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
-                        antwoorden[huidigeVraag.nummer] === opt
-                          ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                          : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                      }`}>
-                      {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <textarea
-                  value={antwoorden[huidigeVraag.nummer] || ''}
-                  onChange={e => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: e.target.value }))}
-                  placeholder="Schrijf hier je antwoord..."
-                  rows={5}
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
-                />
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl font-bold text-white truncate">{opdracht.title}</h2>
+            <div className="flex items-center gap-3 flex-wrap mt-0.5">
+              <span className={`text-xs px-2 py-0.5 rounded border ${typeColor}`}>{opdracht.type}</span>
+              <span className="text-white/40 text-xs">{opdracht.max_punten}pt totaal</span>
+              {opdracht.deadline && (
+                <span className={`text-xs flex items-center gap-1 ${isVerlopen ? 'text-red-400' : 'text-amber-400/80'}`}>
+                  <Clock size={11} />
+                  {isVerlopen ? 'Verlopen' : 'Deadline'}:{' '}
+                  {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}{' '}
+                  {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               )}
-              <div className="flex gap-2 pt-2">
-                {activeVraag > 1 && (
-                  <button onClick={() => setActiveVraag(prev => prev - 1)}
-                    className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-sm rounded-lg transition-all">
-                    ← Vorige
-                  </button>
-                )}
-                {activeVraag < opdracht.vragen.length && (
-                  <button onClick={() => setActiveVraag(prev => prev + 1)}
-                    className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg flex items-center justify-center gap-1 transition-all">
-                    Volgende <ChevronRight size={14} />
-                  </button>
-                )}
-              </div>
             </div>
-          )}
-        </div>
-
-        {/* Rechts: AI tutor */}
-        <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-          <div className="px-4 py-3 border-b border-white/10">
-            <div className="flex items-center gap-2">
-              <MessageCircle size={14} className="text-purple-400" />
-              <span className="text-white/50 text-xs uppercase tracking-wider">AI Tutor</span>
-            </div>
-            <p className="text-white/25 text-xs mt-0.5">Stel vragen over de stof — ik help je begrijpen, niet afschrijven 😊</p>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {tutorMessages.length === 0 && (
-              <div className="text-center mt-8 space-y-3">
-                <p className="text-white/20 text-sm">Heb je een vraag over de stof?</p>
-                <div className="space-y-2">
-                  {[
-                    'Kun je uitleggen wat schaarste betekent?',
-                    'Hoe werkt vraag en aanbod?',
-                    'Ik snap vraag 3 niet goed',
-                  ].map((s, i) => (
-                    <button key={i} onClick={() => { setTutorInput(s); tutorInputRef.current?.focus() }}
-                      className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
-                      "{s}"
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {tutorMessages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
-                  msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
-                }`}>
-                  {msg.role === 'assistant' ? (
-                    <ReactMarkdown components={{
-                      p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
-                      strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
-                    }}>
-                      {msg.content}
-                    </ReactMarkdown>
-                  ) : <span>{msg.content}</span>}
-                </div>
-              </div>
-            ))}
-            {tutorLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
-                  Aan het denken...
-                </div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-          <div className="p-3 border-t border-white/10 flex gap-2">
-            <input
-              ref={tutorInputRef}
-              type="text"
-              value={tutorInput}
-              onChange={e => setTutorInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTutorSend()}
-              placeholder="Stel een vraag over de stof..."
-              className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/25 outline-none focus:border-purple-500/50"
-            />
+          <div className="flex items-center gap-2">
             <button
-              onClick={handleTutorSend}
-              disabled={tutorLoading || !tutorInput.trim()}
-              className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg transition-all"
+              onClick={() => saveDraft(true)}
+              disabled={opslaan}
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1"
             >
-              <Send size={16} />
+              {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
+              {opslaan ? 'Opslaan...' : 'Opslaan'}
+            </button>
+            <button onClick={handleInleverKlik} disabled={inleveren}
+              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all">
+              {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+              {inleveren ? 'Inleveren...' : 'Inleveren'}
             </button>
           </div>
         </div>
+
+        <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
+          <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${voortgang}%` }} />
+        </div>
+        <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
+
+          {/* Links: vragen */}
+          <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
+              <FileText size={14} className="text-white/40" />
+              <span className="text-white/50 text-xs uppercase tracking-wider">Vragen</span>
+            </div>
+            <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
+              {opdracht.vragen.map(v => {
+                const beantwoord = !!antwoorden[v.nummer]?.trim()
+                return (
+                  <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
+                    className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+                      activeVraag === v.nummer ? 'bg-blue-600 text-white'
+                      : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
+                      : 'bg-white/5 text-white/40 hover:bg-white/10'
+                    }`}>
+                    {v.nummer}
+                  </button>
+                )
+              })}
+            </div>
+            {huidigeVraag && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-white/30 text-xs">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
+                    <span className="text-white/30 text-xs">{huidigeVraag.punten}pt</span>
+                  </div>
+                  <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
+                  {huidigeVraag.afbeelding && (
+                    <img src={huidigeVraag.afbeelding} alt={`Afbeelding vraag ${huidigeVraag.nummer}`}
+                      className="mt-3 w-full max-h-48 object-contain rounded-lg border border-white/10" />
+                  )}
+                </div>
+                {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
+                  <div className="space-y-2">
+                    {huidigeVraag.opties.map((opt, i) => (
+                      <button key={i}
+                        onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                        className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
+                          antwoorden[huidigeVraag.nummer] === opt
+                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                            : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                        }`}>
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                ) : huidigeVraag.type === 'waar-onwaar' ? (
+                  <div className="flex gap-3">
+                    {['Waar', 'Onwaar'].map(opt => (
+                      <button key={opt}
+                        onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                        className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
+                          antwoorden[huidigeVraag.nummer] === opt
+                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                            : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                        }`}>
+                        {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <textarea
+                    value={antwoorden[huidigeVraag.nummer] || ''}
+                    onChange={e => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: e.target.value }))}
+                    placeholder="Schrijf hier je antwoord..."
+                    rows={5}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
+                  />
+                )}
+
+                {/* Navigatieknoppen onderaan de vraag */}
+                <div className="flex gap-2 pt-2">
+                  {activeVraag > 1 && (
+                    <button onClick={() => setActiveVraag(prev => prev - 1)}
+                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-sm rounded-lg transition-all">
+                      ← Vorige
+                    </button>
+                  )}
+                  {!isLaatsteVraag ? (
+                    <button onClick={() => setActiveVraag(prev => prev + 1)}
+                      className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg flex items-center justify-center gap-1 transition-all">
+                      Volgende <ChevronRight size={14} />
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleInleverKlik}
+                      disabled={inleveren}
+                      className="flex-1 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all"
+                    >
+                      {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                      {inleveren ? 'Inleveren...' : 'Inleveren'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Rechts: AI tutor */}
+          <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <MessageCircle size={14} className="text-purple-400" />
+                <span className="text-white/50 text-xs uppercase tracking-wider">AI Tutor</span>
+              </div>
+              <p className="text-white/25 text-xs mt-0.5">Stel vragen over de stof — ik help je begrijpen, niet afschrijven 😊</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              {tutorMessages.length === 0 && (
+                <div className="text-center mt-8 space-y-3">
+                  <p className="text-white/20 text-sm">Heb je een vraag over de stof?</p>
+                  <div className="space-y-2">
+                    {[
+                      'Kun je uitleggen wat schaarste betekent?',
+                      'Hoe werkt vraag en aanbod?',
+                      'Ik snap vraag 3 niet goed',
+                    ].map((s, i) => (
+                      <button key={i} onClick={() => { setTutorInput(s); tutorInputRef.current?.focus() }}
+                        className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
+                        "{s}"
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {tutorMessages.map((msg, i) => (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
+                    msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
+                  }`}>
+                    {msg.role === 'assistant' ? (
+                      <ReactMarkdown components={{
+                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                        strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
+                      }}>
+                        {msg.content}
+                      </ReactMarkdown>
+                    ) : <span>{msg.content}</span>}
+                  </div>
+                </div>
+              ))}
+              {tutorLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
+                    Aan het denken...
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <div className="p-3 border-t border-white/10 flex gap-2">
+              <input
+                ref={tutorInputRef}
+                type="text"
+                value={tutorInput}
+                onChange={e => setTutorInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTutorSend()}
+                placeholder="Stel een vraag over de stof..."
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/25 outline-none focus:border-purple-500/50"
+              />
+              <button
+                onClick={handleTutorSend}
+                disabled={tutorLoading || !tutorInput.trim()}
+                className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg transition-all"
+              >
+                <Send size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
