@@ -4,7 +4,6 @@ import { ModulesSidebar } from '@/components/ModulesSidebar'
 import { EbookModal } from '@/components/EbookModal'
 import { SettingsModal } from '@/components/SettingsModal'
 import { ChatMessage } from '@/components/ChatMessage'
-import { Button } from '@/components/ui/button'
 import { PaperPlaneRight, CaretLeft, CaretRight, X } from '@phosphor-icons/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { API_URL } from './config'
@@ -25,50 +24,28 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const {
-    chats,
-    setChats,
-    activeChat,
-    setActiveChat,
-    handleRenameChat,
-    handleMoveToFavorites,
-    handleMoveToNotes,
-    handleMoveToTrash,
-    handleRestoreFromTrash,
-    handlePermanentDelete,
+    chats, setChats, activeChat, setActiveChat,
+    handleRenameChat, handleMoveToFavorites, handleMoveToNotes,
+    handleMoveToTrash, handleRestoreFromTrash, handlePermanentDelete,
   } = useChatActions()
 
   const {
-    inputValue,
-    setInputValue,
-    isLoading,
-    uploadedFiles,
-    fileInputRef,
-    textareaRef,
-    handleFileUpload,
-    handleRemoveFile,
-    handleFileButtonClick,
-    handleSend,
+    inputValue, setInputValue, isLoading, uploadedFiles,
+    fileInputRef, textareaRef, handleFileUpload, handleRemoveFile,
+    handleFileButtonClick, handleSend,
   } = useChatMessages({
-    chats,
-    setChats,
-    activeChat,
-    setActiveChat,
-    activeEbookId,
-    isMobile,
-    setShowLeftSidebar,
-    setShowRightSidebar,
+    chats, setChats, activeChat, setActiveChat,
+    activeEbookId, isMobile, setShowLeftSidebar, setShowRightSidebar,
   })
 
   const currentChat = chats?.find(c => c.id === activeChat)
 
-  // ✅ Resize listener
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
     window.addEventListener('resize', handleResize)
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  // ✅ Dynamic viewport height
   useEffect(() => {
     const setVh = () => {
       const vh = window.innerHeight * 0.01
@@ -79,15 +56,12 @@ function App() {
     return () => window.removeEventListener('resize', setVh)
   }, [])
 
-  // ✅ Auto-scroll
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [currentChat?.messages])
 
-  // ✅ Textarea hoogte automatisch aanpassen bij elke inputValue wijziging
-  // Dit zorgt dat de hoogte ook klopt als de analyse-prompt automatisch wordt ingevuld
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -95,7 +69,6 @@ function App() {
     }
   }, [inputValue])
 
-  // ✅ Load active ebook info
   useEffect(() => {
     const savedActiveEbook = localStorage.getItem('clarus-active-ebook')
     if (savedActiveEbook) setActiveEbookId(savedActiveEbook)
@@ -124,7 +97,6 @@ function App() {
     }
   }, [activeEbookId])
 
-  // ✅ Analyse-prompt oppakken vanuit Analyse-pagina
   useEffect(() => {
     const analysePrompt = localStorage.getItem('clarus-analyse-prompt')
     if (analysePrompt) {
@@ -132,7 +104,6 @@ function App() {
       setTimeout(() => {
         setActiveChat(null)
         setInputValue(analysePrompt)
-        // Hoogte update na het invullen (textarea hoogte effect loopt via inputValue useEffect)
       }, 400)
     }
   }, [])
@@ -148,12 +119,13 @@ function App() {
   }) || []
 
   return (
+    // ✅ Dashboard-stijl achtergrond: diepe donkerblauwe tint
     <div
-      className="flex overflow-hidden bg-background text-foreground font-['Inter']"
-      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
+      className="flex overflow-hidden font-['Inter'] text-white"
+      style={{ height: 'calc(var(--vh, 1vh) * 100)', backgroundColor: '#080d1f' }}
     >
       {isMobile && showLeftSidebar && (
-        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowLeftSidebar(false)} />
+        <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowLeftSidebar(false)} />
       )}
 
       <AnimatePresence>
@@ -188,11 +160,14 @@ function App() {
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Top Bar */}
-        <div className="h-14 border-b border-border flex items-center px-4 gap-4 flex-shrink-0">
+        {/* ✅ Top Bar — dashboard stijl */}
+        <div
+          className="h-14 flex items-center px-4 gap-4 flex-shrink-0 border-b border-white/10"
+          style={{ backgroundColor: '#0f1029' }}
+        >
           <a
             href="/"
-            className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium mr-1"
+            className="flex items-center gap-1.5 text-white/50 hover:text-white transition-colors text-sm font-medium mr-1"
             title="Terug naar Dashboard"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -202,46 +177,60 @@ function App() {
             <span className="hidden md:inline">Dashboard</span>
           </a>
 
-          <button onClick={() => setShowLeftSidebar(!showLeftSidebar)} className="text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => setShowLeftSidebar(!showLeftSidebar)} className="text-white/50 hover:text-white transition-colors">
             {showLeftSidebar ? <CaretLeft size={20} /> : <CaretRight size={20} />}
           </button>
 
           <div className="flex items-center gap-3">
-            <Button variant="default" size="sm" onClick={() => { setActiveChat(null); setInputValue('') }} className="gap-2">
-              <span className="text-lg">+</span>
+            {/* ✅ Nieuwe chat knop — blauwe dashboard stijl */}
+            <button
+              onClick={() => { setActiveChat(null); setInputValue('') }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all"
+            >
+              <span className="text-base">+</span>
               <span className="hidden md:inline">Nieuwe chat</span>
-            </Button>
-            {currentChat && <h2 className="text-sm font-medium hidden md:block">{currentChat.title}</h2>}
+            </button>
+            {currentChat && (
+              <h2 className="text-sm font-medium text-white/70 hidden md:block truncate max-w-[200px]">
+                {currentChat.title}
+              </h2>
+            )}
           </div>
 
           <div className="ml-auto flex items-center gap-2">
             {activeEbookId && activeEbookTitle ? (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium">
                 <span>{activeEbookEmoji || '📚'}</span>
                 <span className="max-w-[150px] truncate hidden md:inline">{activeEbookTitle}</span>
-                <button onClick={() => setActiveEbookId(null)} className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors">
+                <button
+                  onClick={() => setActiveEbookId(null)}
+                  className="ml-1 hover:bg-white/20 rounded-full w-4 h-4 flex items-center justify-center transition-colors"
+                >
                   <X size={12} weight="bold" />
                 </button>
               </div>
             ) : (
-              <Button variant="outline" size="sm" onClick={() => setIsEbookModalOpen(true)} className="gap-2">
+              <button
+                onClick={() => setIsEbookModalOpen(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/70 hover:text-white text-sm rounded-lg transition-all"
+              >
                 <span>📚</span>
                 <span className="hidden md:inline">Schoolboek kiezen</span>
-              </Button>
+              </button>
             )}
           </div>
 
-          <button onClick={() => setShowRightSidebar(!showRightSidebar)} className="text-muted-foreground hover:text-foreground transition-colors">
+          <button onClick={() => setShowRightSidebar(!showRightSidebar)} className="text-white/50 hover:text-white transition-colors">
             {showRightSidebar ? <CaretRight size={20} /> : <CaretLeft size={20} />}
           </button>
         </div>
 
-        {/* Messages */}
+        {/* ✅ Messages area */}
         <div className="flex-1 overflow-y-auto" ref={scrollRef}>
           <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
             {!currentChat?.messages.length && (
-              <div className="text-center text-muted-foreground py-12">
-                <p className="text-lg">Start een nieuw gesprek</p>
+              <div className="text-center text-white/30 py-16">
+                <p className="text-lg font-medium text-white/50">Start een nieuw gesprek</p>
                 <p className="text-sm mt-2">Stel een vraag om te beginnen</p>
               </div>
             )}
@@ -250,11 +239,11 @@ function App() {
             ))}
             {isLoading && (
               <div className="flex justify-start">
-                <div className="bg-card border border-border rounded-lg px-4 py-3">
+                <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-3">
                   <div className="flex gap-2">
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 </div>
               </div>
@@ -262,13 +251,13 @@ function App() {
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="border-t border-border p-4 flex-shrink-0 bg-background">
+        {/* ✅ Input Area — dashboard stijl */}
+        <div className="p-4 flex-shrink-0 border-t border-white/10" style={{ backgroundColor: '#0f1029' }}>
           <div className="max-w-4xl mx-auto space-y-3">
             {uploadedFiles.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {uploadedFiles.map((file, index) => (
-                  <div key={index} className="flex items-center gap-2 bg-card border border-border rounded-lg px-3 py-2 text-sm">
+                  <div key={index} className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm text-white/70">
                     <span className="text-lg">
                       {file.name.endsWith('.pdf') && '📄'}
                       {file.name.endsWith('.docx') && '📝'}
@@ -277,20 +266,23 @@ function App() {
                       {(file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg')) && '🖼️'}
                     </span>
                     <span className="max-w-[200px] truncate">{file.name}</span>
-                    <span className="text-muted-foreground text-xs">({(file.size / 1024).toFixed(1)} KB)</span>
-                    <button onClick={() => handleRemoveFile(index)} className="ml-2 text-red-500 hover:text-red-700 transition-colors">✕</button>
+                    <span className="text-white/30 text-xs">({(file.size / 1024).toFixed(1)} KB)</span>
+                    <button onClick={() => handleRemoveFile(index)} className="ml-2 text-red-400 hover:text-red-300 transition-colors">✕</button>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-end gap-3">
               <input ref={fileInputRef} type="file" multiple accept=".pdf,.docx,.pptx,.txt,.png,.jpg,.jpeg" onChange={handleFileUpload} className="hidden" />
-              <Button variant="outline" className="flex-shrink-0" onClick={handleFileButtonClick} aria-label="Bestanden">
+              <button
+                onClick={handleFileButtonClick}
+                className="flex-shrink-0 px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/60 hover:text-white text-sm rounded-lg transition-all mb-0.5"
+              >
                 <span className="md:hidden">📎</span>
                 <span className="hidden md:inline">Bestanden</span>
-              </Button>
-              <div className="flex-1 flex gap-2">
+              </button>
+              <div className="flex-1 flex gap-2 items-end">
                 <textarea
                   ref={textareaRef}
                   id="chat-input"
@@ -300,16 +292,16 @@ function App() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend() } }}
                   rows={1}
                   disabled={isLoading}
-                  className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed"
-                  style={{ height: 'auto', scrollbarWidth: 'thin' }}
+                  className="flex-1 bg-white/5 border border-white/10 hover:border-white/20 focus:border-blue-500/50 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 resize-none overflow-y-auto outline-none disabled:cursor-not-allowed transition-colors"
+                  style={{ height: 'auto', scrollbarWidth: 'thin', lineHeight: '24px' }}
                 />
-                <Button
+                <button
                   onClick={handleSend}
                   disabled={(!inputValue.trim() && uploadedFiles.length === 0) || isLoading}
-                  className="flex-shrink-0"
+                  className="flex-shrink-0 p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-all mb-0.5"
                 >
                   <PaperPlaneRight size={18} weight="fill" />
-                </Button>
+                </button>
               </div>
             </div>
           </div>
@@ -317,7 +309,7 @@ function App() {
       </div>
 
       {isMobile && showRightSidebar && (
-        <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setShowRightSidebar(false)} />
+        <div className="fixed inset-0 bg-black/60 z-40" onClick={() => setShowRightSidebar(false)} />
       )}
 
       <AnimatePresence>
