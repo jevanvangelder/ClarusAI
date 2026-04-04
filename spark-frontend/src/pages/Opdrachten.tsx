@@ -119,6 +119,7 @@ export default function Opdrachten() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
+      // ✅ Sluit dropdown als er buiten de hele klas-sectie (dropdown + deadline-lijst) geklikt wordt
       if (klasDropdownRef.current && !klasDropdownRef.current.contains(e.target as Node))
         setKlasDropdownOpen(false)
     }
@@ -128,18 +129,13 @@ export default function Opdrachten() {
 
   const fetchOpdrachten = async () => {
     if (!user) return
-    console.log('fetchOpdrachten voor user:', user.id)
     const { data, error } = await supabase
       .from('assignments')
       .select(`id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)`)
       .eq('created_by', user.id)
       .eq('is_active', true)
       .order('created_at', { ascending: false })
-
-    console.log('fetchOpdrachten result:', { data, error })
-
     if (error) { console.error('fetchOpdrachten error:', error); return }
-
     setOpdrachten((data || []).map((o: any) => ({
       id: o.id,
       titel: o.title,
@@ -205,6 +201,13 @@ export default function Opdrachten() {
       if (exists) return prev.filter(kd => kd.class_id !== id)
       return [...prev, { class_id: id, deadline: '' }]
     })
+  }
+
+  // ✅ NIEUW: alleen de deadline wissen, klas blijft geselecteerd
+  const clearDeadlineForKlas = (class_id: string) => {
+    setEditKlasDeadlines(prev =>
+      prev.map(kd => kd.class_id === class_id ? { ...kd, deadline: '' } : kd)
+    )
   }
 
   const setDeadlineForKlas = (class_id: string, deadline: string) => {
@@ -331,58 +334,25 @@ export default function Opdrachten() {
     } finally { setSparLoading(false) }
   }
 
-  // ── OPSLAAN VANUIT SPAR ──
   const handleOpslaanOpdracht = async () => {
-    if (!gegenereerdeOpdracht || !user) {
-      console.warn('handleOpslaanOpdracht: geen gegenereerdeOpdracht of user', { gegenereerdeOpdracht, user })
-      return
-    }
+    if (!gegenereerdeOpdracht || !user) return
     setOpslaan(true)
     try {
       const vragen = parseVragen(gegenereerdeOpdracht.vragen)
       const autoMaxPunten = berekenMaxPunten(vragen)
 
-      console.log('=== OPSLAAN START ===')
-      console.log('user.id:', user.id)
-      console.log('titel:', gegenereerdeOpdracht.titel)
-      console.log('type:', gegenereerdeOpdracht.type)
-      console.log('vragen count:', vragen.length)
-      console.log('autoMaxPunten:', autoMaxPunten)
-      console.log('selectedOpdracht:', selectedOpdracht?.id)
-      console.log('sparContext aanwezig:', !!sparContext)
-
       if (selectedOpdracht && sparContext) {
-        console.log('→ UPDATE bestaande opdracht:', selectedOpdracht.id)
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('assignments')
-          .update({
-            title: gegenereerdeOpdracht.titel,
-            beschrijving: gegenereerdeOpdracht.beschrijving,
-            type: gegenereerdeOpdracht.type || 'opdracht',
-            max_punten: autoMaxPunten,
-            vragen,
-          })
+          .update({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving, type: gegenereerdeOpdracht.type || 'opdracht', max_punten: autoMaxPunten, vragen })
           .eq('id', selectedOpdracht.id)
           .select()
-        console.log('UPDATE result:', { data, error })
         if (error) throw error
       } else {
-        console.log('→ INSERT nieuwe opdracht')
-        const insertPayload = {
-          title: gegenereerdeOpdracht.titel,
-          beschrijving: gegenereerdeOpdracht.beschrijving || '',
-          type: gegenereerdeOpdracht.type || 'opdracht',
-          max_punten: autoMaxPunten,
-          vragen,
-          created_by: user.id,
-          is_active: true,
-        }
-        console.log('insertPayload:', JSON.stringify(insertPayload, null, 2))
-        const { data, error } = await supabase
+        const { error } = await supabase
           .from('assignments')
-          .insert(insertPayload)
+          .insert({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving || '', type: gegenereerdeOpdracht.type || 'opdracht', max_punten: autoMaxPunten, vragen, created_by: user.id, is_active: true })
           .select()
-        console.log('INSERT result:', { data, error })
         if (error) throw error
       }
 
@@ -393,12 +363,6 @@ export default function Opdrachten() {
       await fetchOpdrachten()
       setView(selectedOpdracht && sparContext ? 'detail' : 'overzicht')
     } catch (err: any) {
-      console.error('=== OPSLAAN FOUT ===')
-      console.error('message:', err?.message)
-      console.error('code:', err?.code)
-      console.error('details:', err?.details)
-      console.error('hint:', err?.hint)
-      console.error('full error:', err)
       toast.error('Fout: ' + (err?.message || JSON.stringify(err)))
     } finally {
       setOpslaan(false)
@@ -648,6 +612,7 @@ export default function Opdrachten() {
             </div>
           </div>
 
+          {/* ✅ klasDropdownRef omvat nu ZOWEL de dropdown-knop ALS de deadline-lijst */}
           <div ref={klasDropdownRef}>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
@@ -678,6 +643,8 @@ export default function Opdrachten() {
                 </div>
               )}
             </div>
+
+            {/* ✅ Deadline-lijst: nu met aparte knoppen voor deadline wissen vs klas verwijderen */}
             {editKlasDeadlines.length > 0 && (
               <div className="mt-3 space-y-2">
                 <p className="text-white/30 text-xs">Stel per klas een deadline in (optioneel):</p>
@@ -698,8 +665,23 @@ export default function Opdrachten() {
                           onChange={e => setDeadlineForKlas(kd.class_id, e.target.value)}
                           className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500/50"
                         />
-                        <button onClick={() => toggleKlas(kd.class_id)} className="text-red-400/50 hover:text-red-400 transition-colors">
-                          <X size={14} />
+                        {/* ✅ Wis alleen de deadline, klas blijft geselecteerd */}
+                        {kd.deadline && (
+                          <button
+                            onClick={() => clearDeadlineForKlas(kd.class_id)}
+                            title="Deadline wissen"
+                            className="text-white/30 hover:text-white/60 transition-colors"
+                          >
+                            <X size={13} />
+                          </button>
+                        )}
+                        {/* ✅ Verwijder de klas uit de selectie */}
+                        <button
+                          onClick={() => toggleKlas(kd.class_id)}
+                          title="Klas verwijderen uit selectie"
+                          className="text-red-400/50 hover:text-red-400 transition-colors ml-1"
+                        >
+                          <Trash size={13} />
                         </button>
                       </div>
                     </div>
