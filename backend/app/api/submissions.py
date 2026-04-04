@@ -6,6 +6,7 @@ from app.services.ai_service import ai_service
 from supabase import create_client, Client
 import json
 import traceback
+import re
 from datetime import datetime
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
@@ -39,6 +40,75 @@ class InleverBody(BaseModel):
     max_punten: int
 
 
+# ============ HELPERS ============
+
+BLOKKEER_ANTWOORD = (
+    "🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
+    "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?"
+)
+
+def extract_kernwoorden(vragen: list) -> list[str]:
+    """
+    Haalt alle betekenisvolle woorden uit de vraagteksten.
+    Dit zijn de woorden waar de AI niets over mag uitleggen.
+    Stopwoorden worden gefilterd zodat alleen vakinhoudelijke termen overblijven.
+    """
+    stopwoorden = {
+        "de", "het", "een", "is", "wat", "welke", "van", "in", "op", "aan",
+        "voor", "met", "zijn", "heeft", "worden", "wordt", "of", "en", "dat",
+        "die", "dit", "er", "als", "naar", "niet", "ook", "bij", "door",
+        "over", "uit", "te", "ze", "je", "we", "hij", "zij", "ik", "u",
+        "hoe", "waarom", "wanneer", "wie", "welk", "stel", "stelling",
+        "volgende", "leg", "uit", "geef", "noem", "beschrijf", "verklaar",
+        "waar", "onwaar", "true", "false", "juist", "onjuist",
+    }
+
+    kernwoorden = set()
+    for v in vragen:
+        tekst = v.get("vraag", "").lower()
+        # Verwijder leestekens
+        tekst = re.sub(r"[^\w\s]", " ", tekst)
+        woorden = tekst.split()
+        for woord in woorden:
+            if len(woord) > 3 and woord not in stopwoorden:
+                kernwoorden.add(woord)
+
+    return list(kernwoorden)
+
+
+def vraag_bevat_verboden_woord(user_input: str, kernwoorden: list[str]) -> bool:
+    """
+    Controleert of de input van de leerling een kernwoord bevat
+    dat uit de opdrachtvragen komt.
+    """
+    invoer = user_input.lower()
+    invoer = re.sub(r"[^\w\s]", " ", invoer)
+    invoer_woorden = set(invoer.split())
+
+    for kern in kernwoorden:
+        # Exacte match
+        if kern in invoer_woorden:
+            return True
+        # Gedeeltelijke match voor samengestelde woorden
+        # bijv. "markteconomie" matcht op "markt" en "economie"
+        if kern in invoer:
+            return True
+
+    return False
+
+
+def antwoord_bevat_verboden_woord(ai_antwoord: str, kernwoorden: list[str]) -> bool:
+    """
+    Controleert of het AI-antwoord kernwoorden uit de opdracht uitlegt.
+    Als de AI een definitie geeft van een verboden begrip, blokkeren we het.
+    """
+    antwoord = ai_antwoord.lower()
+    for kern in kernwoorden:
+        if kern in antwoord:
+            return True
+    return False
+
+
 # ============ ENDPOINTS ============
 
 @router.post("/tutor/chat")
@@ -51,7 +121,32 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        # Volledige vraagteksten als verboden lijst
+        kernwoorden = extract_kernwoorden(vragen_lijst)
+
+        # ══════════════════════════════════════
+        # HARDE CHECK 1: Bevat de vraag van de leerling een verboden kernwoord?
+        # ══════════════════════════════════════
+        if vraag_bevat_verboden_woord(body.content, kernwoorden):
+            return {"message": BLOKKEER_ANTWOORD}
+
+        # ══════════════════════════════════════
+        # HARDE CHECK 2: Bevat de gesprekshistorie recent een verboden onderwerp?
+        # Als de laatste 2 berichten van de leerling over verboden stof gingen,
+        # dan is de kans groot dat dit bericht een doorvraag is.
+        # ══════════════════════════════════════
+        recente_user_berichten = [
+            m["content"] for m in (body.messages or [])
+            if m.get("role") == "user"
+        ][-2:]  # laatste 2 berichten
+
+        for recent in recente_user_berichten:
+            if vraag_bevat_verboden_woord(recent, kernwoorden):
+                # Doorvraag op verboden onderwerp — blokkeer ook
+                return {"message": BLOKKEER_ANTWOORD}
+
+        # ══════════════════════════════════════
+        # AI mag antwoorden — maar met strikte prompt
+        # ══════════════════════════════════════
         verboden_tekst = "\n".join([
             f'Vraag {v["nummer"]}: {v["vraag"]}'
             for v in vragen_lijst
@@ -60,57 +155,14 @@ async def tutor_chat(body: TutorChatBody):
         system_prompt = (
             "Je bent een AI-tutor voor middelbare scholieren.\n"
             "Je helpt leerlingen NADENKEN. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
-
-            "╔══════════════════════════════════════╗\n"
-            "║  DIT ZIJN ALLE VRAGEN UIT DE OPDRACHT ║\n"
-            "╚══════════════════════════════════════╝\n"
+            "De leerling maakt een opdracht met deze vragen — geef hierover NOOIT uitleg:\n"
             f"{verboden_tekst}\n\n"
-
-            "╔══════════════════════════════════════╗\n"
-            "║  ABSOLUTE BLOKKEERREGELS              ║\n"
-            "╚══════════════════════════════════════╝\n"
-            "REGEL 1 — DIRECTE VRAGEN:\n"
-            "Als de leerling vraagt naar de betekenis, definitie, uitleg of voorbeelden van een begrip "
-            "dat in de opdrachtvragen staat → BLOKKEER ALTIJD.\n\n"
-
-            "REGEL 2 — INDIRECTE VRAGEN VIA TEGENSTELLING:\n"
-            "Als de leerling vraagt naar het 'tegenovergestelde', 'het andere', 'de tegenhanger' "
-            "van iets, en dat antwoord leidt naar een opdrachtvraag → BLOKKEER.\n"
-            "Voorbeeld: 'wat is het tegenovergestelde van deflatie?' → antwoord is inflatie → "
-            "inflatie zit in vraag 6 → BLOKKEER.\n\n"
-
-            "REGEL 3 — INDIRECTE VRAGEN VIA CONTEXT:\n"
-            "Als de leerling doorvraagt op een eerder onderwerp en het antwoord raakt aan "
-            "een opdrachtvraag → BLOKKEER.\n"
-            "Voorbeeld: 'wat zijn de andere twee?' na een gesprek over meso-economie → "
-            "leidt naar micro en macro → dat zit in vraag 4 → BLOKKEER.\n\n"
-
-            "REGEL 4 — CREATIEVE OMZEILINGEN:\n"
-            "Blokkeer ook:\n"
-            "- 'Waarom heet het bordspel Monopoly zo?' → leidt naar uitleg monopolie → vraag 10 → BLOKKEER\n"
-            "- 'Een ander woord voor X?' → als X in de opdracht staat → BLOKKEER\n"
-            "- 'Klopt het dat X betekent...?' → BLOKKEER\n"
-            "- 'Geef een voorbeeld van X' → als X in de opdracht staat → BLOKKEER\n\n"
-
-            "BIJ BLOKKERING stuur je ALTIJD en ALLEEN:\n"
-            "🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
-            "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
-
-            "╔══════════════════════════════════════╗\n"
-            "║  WAT JE WEL MAG                       ║\n"
-            "╚══════════════════════════════════════╝\n"
+            "WAT JE WEL MAG:\n"
             "✅ Vragen stellen: 'Wat weet je er zelf al van?'\n"
             "✅ Verwijzen naar het schoolboek\n"
-            "✅ Helpen met structuur van een antwoord (NIET de inhoud)\n"
-            "✅ Aanmoedigen\n"
-            "✅ Begrippen uitleggen die NIET in de opdracht voorkomen én ook niet leiden naar een opdrachtvraag\n\n"
-
-            "╔══════════════════════════════════════╗\n"
-            "║  TOON                                  ║\n"
-            "╚══════════════════════════════════════╝\n"
-            "- Max 2 zinnen\n"
-            "- Informeel en vriendelijk\n"
-            "- Eindig altijd met een vraag terug aan de leerling\n"
+            "✅ Aanmoedigen zonder inhoud te geven\n"
+            "✅ Helpen met onderwerpen die NIET in de opdracht staan\n\n"
+            "TOON: Max 2 zinnen, informeel, eindig met een vraag terug.\n"
         )
 
         conversation = list(body.messages) if body.messages else []
@@ -122,6 +174,13 @@ async def tutor_chat(body: TutorChatBody):
             module_prompts=[system_prompt],
         )
 
+        # ══════════════════════════════════════
+        # HARDE CHECK 3: Bevat het AI-antwoord toch een verboden begrip?
+        # Laatste vangnet.
+        # ══════════════════════════════════════
+        if antwoord_bevat_verboden_woord(response, kernwoorden):
+            return {"message": BLOKKEER_ANTWOORD}
+
         return {"message": response}
 
     except Exception as e:
@@ -132,7 +191,6 @@ async def tutor_chat(body: TutorChatBody):
 
 @router.post("/nakijken")
 async def nakijken(body: NakijkBody):
-    """AI kijkt de antwoorden na en geeft punten + onderbouwing per vraag."""
     try:
         vragen_tekst = ""
         for v in body.antwoorden:
@@ -146,12 +204,11 @@ async def nakijken(body: NakijkBody):
 
         system_prompt = (
             "Je bent een eerlijke maar empathische nakijkassistent voor middelbare scholieren.\n\n"
-            "Je krijgt per vraag: de vraag, het modelantwoord, het studentantwoord en het max aantal punten.\n\n"
             "NAKIJK REGELS:\n"
             "- Meerkeuze/waar-onwaar: exact goed = volle punten, anders 0\n"
             "- Open vragen: beoordeel op inhoudelijke juistheid, niet op exacte woordkeuze\n"
             "- Gedeeltelijk correcte antwoorden krijgen proportioneel punten\n"
-            "- Geef altijd een korte, bemoedigende uitleg waarom de student de punten wel/niet heeft gehaald\n"
+            "- Geef altijd een korte, bemoedigende uitleg\n"
             "- Wees eerlijk maar constructief\n\n"
             "UITVOER FORMAT (verplicht exacte JSON, geen tekst eromheen):\n"
             '{"resultaten": [{"vraag_nummer": 1, "punten_behaald": 1, "max_punten": 2, "feedback": "Uitleg..."}], '
@@ -170,7 +227,7 @@ async def nakijken(body: NakijkBody):
             if start >= 0 and end > start:
                 result = json.loads(response[start:end])
             else:
-                raise ValueError("Geen JSON gevonden in response")
+                raise ValueError("Geen JSON gevonden")
         except Exception as parse_err:
             print(f"⚠️ Kon nakijk JSON niet parsen: {parse_err}")
             return {"raw": response, "error": "Kon JSON niet parsen"}
@@ -202,7 +259,6 @@ async def nakijken(body: NakijkBody):
 
 @router.post("/draft")
 async def save_draft(body: SaveDraftBody):
-    """Sla tussentijdse voortgang op."""
     try:
         existing = supabase.table("assignment_submissions").select("id").eq(
             "assignment_id", body.assignment_id
@@ -233,7 +289,6 @@ async def save_draft(body: SaveDraftBody):
 
 @router.post("/inleveren")
 async def inleveren(body: InleverBody):
-    """Lever de opdracht in."""
     try:
         now = datetime.now().isoformat()
         existing = supabase.table("assignment_submissions").select("id").eq(
@@ -270,7 +325,6 @@ async def inleveren(body: InleverBody):
 
 @router.get("/student/{student_id}/assignment/{assignment_id}")
 async def get_submission(student_id: str, assignment_id: str):
-    """Haal bestaande inzending op voor een student."""
     try:
         result = supabase.table("assignment_submissions").select("*").eq(
             "assignment_id", assignment_id
