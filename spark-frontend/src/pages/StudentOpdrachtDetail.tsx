@@ -48,7 +48,6 @@ interface TutorMessage {
 type Status = 'bezig' | 'ingeleverd' | 'nagekeken'
 
 export default function StudentOpdrachtDetail() {
-  // :id is de klas-ID, :assignmentId is de opdracht-ID
   const { id: classId, assignmentId } = useParams<{ id: string; assignmentId: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
@@ -60,6 +59,7 @@ export default function StudentOpdrachtDetail() {
   const [submissionId, setSubmissionId] = useState<string | null>(null)
   const [nakijkResultaat, setNakijkResultaat] = useState<any | null>(null)
   const [inleveren, setInleveren] = useState(false)
+  const [opslaan, setOpslaan] = useState(false)
   const [activeVraag, setActiveVraag] = useState(1)
 
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
@@ -75,7 +75,6 @@ export default function StudentOpdrachtDetail() {
       if (!assignmentId || !user || !classId) return
       setLoading(true)
 
-      // Haal opdracht op
       const { data: a, error } = await supabase
         .from('assignments')
         .select('id, title, beschrijving, type, max_punten, vragen')
@@ -84,7 +83,6 @@ export default function StudentOpdrachtDetail() {
 
       if (error || !a) { toast.error('Opdracht niet gevonden'); navigate(-1); return }
 
-      // Haal deadline op — gebruik maybeSingle() zodat 0 resultaten geen error geeft
       const { data: ac } = await supabase
         .from('assignment_classes')
         .select('deadline')
@@ -92,7 +90,6 @@ export default function StudentOpdrachtDetail() {
         .eq('class_id', classId)
         .maybeSingle()
 
-      // Strip antwoorden uit vragen (student mag ze niet zien)
       const vragen: Vraag[] = (Array.isArray(a.vragen) ? a.vragen : JSON.parse(a.vragen || '[]'))
         .map((v: any) => ({
           nummer: v.nummer,
@@ -105,7 +102,6 @@ export default function StudentOpdrachtDetail() {
 
       setOpdracht({ ...a, vragen, deadline: ac?.deadline || null })
 
-      // Haal bestaande inzending op — gebruik maybeSingle() ipv single()
       const { data: subData } = await supabase
         .from('assignment_submissions')
         .select('*')
@@ -154,7 +150,10 @@ export default function StudentOpdrachtDetail() {
 
   const saveDraft = async (showToast = true) => {
     if (!opdracht || !user || !classId || status !== 'bezig') return
+    if (showToast) setOpslaan(true)
     try {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 10000)
       const res = await fetch(`${API_URL}/api/submissions/draft`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -165,11 +164,21 @@ export default function StudentOpdrachtDetail() {
           antwoorden: buildAntwoordenArray(),
           chat_log: tutorMessages,
         }),
+        signal: controller.signal,
       })
+      clearTimeout(timeout)
       const data = await res.json()
       if (data.id) setSubmissionId(data.id)
-      if (showToast) toast.success('Voortgang opgeslagen')
-    } catch { if (showToast) toast.error('Opslaan mislukt') }
+      if (showToast) toast.success('✅ Voortgang opgeslagen!')
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        if (showToast) toast.error('⏱️ Opslaan duurde te lang, probeer opnieuw')
+      } else {
+        if (showToast) toast.error('❌ Opslaan mislukt')
+      }
+    } finally {
+      if (showToast) setOpslaan(false)
+    }
   }
 
   const handleInleveren = async () => {
@@ -184,7 +193,6 @@ export default function StudentOpdrachtDetail() {
 
     setInleveren(true)
     try {
-      // Haal volledige vragen op (met correcte antwoorden) voor nakijken
       const { data: volledigeOpdracht } = await supabase
         .from('assignments').select('vragen').eq('id', opdracht.id).single()
       const volledigeVragen = Array.isArray(volledigeOpdracht?.vragen)
@@ -368,7 +376,7 @@ export default function StudentOpdrachtDetail() {
 
   // ═══════════════════════════════
   // INGELEVERD VIEW
-  // ═══════════════════════════════
+  // ════════���══════════════════════
   if (status === 'ingeleverd') {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
@@ -403,9 +411,13 @@ export default function StudentOpdrachtDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => saveDraft(true)}
-            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all">
-            💾 Opslaan
+          <button
+            onClick={() => saveDraft(true)}
+            disabled={opslaan}
+            className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1.5"
+          >
+            {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
+            {opslaan ? 'Opslaan...' : 'Opslaan'}
           </button>
           <button onClick={handleInleveren} disabled={inleveren}
             className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all">
