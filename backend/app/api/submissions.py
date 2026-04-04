@@ -47,66 +47,99 @@ BLOKKEER_ANTWOORD = (
     "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?"
 )
 
-def extract_kernwoorden(vragen: list) -> list[str]:
+# Zinnen/patronen die aangeven dat de leerling naar een definitie/uitleg vraagt
+VRAAG_PATRONEN = [
+    r"wat is\b",
+    r"wat zijn\b",
+    r"wat betekent\b",
+    r"wat betekenen\b",
+    r"kun je .* uitleggen",
+    r"kan je .* uitleggen",
+    r"leg .* uit",
+    r"uitleg(gen)? over",
+    r"uitleggen wat",
+    r"definitie van",
+    r"omschrijf",
+    r"beschrijf",
+    r"hoe werkt\b",
+    r"hoe heet\b",
+    r"ander woord voor",
+    r"synoniem",
+    r"voorbeeld van\b",
+    r"voorbeelden van\b",
+    r"verklaar\b",
+    r"klopt het dat",
+    r"is het waar dat",
+    r"bedoel je",
+    r"wat houdt .* in",
+    r"wat versta je onder",
+]
+
+def is_definitie_vraag(tekst: str) -> bool:
+    """Controleert of de leerling een definitie/uitleg vraagt."""
+    tekst_lower = tekst.lower()
+    for patroon in VRAAG_PATRONEN:
+        if re.search(patroon, tekst_lower):
+            return True
+    return False
+
+
+def extract_vakbegrippen_uit_vragen(vragen: list) -> list[str]:
     """
-    Haalt alle betekenisvolle woorden uit de vraagteksten.
-    Dit zijn de woorden waar de AI niets over mag uitleggen.
-    Stopwoorden worden gefilterd zodat alleen vakinhoudelijke termen overblijven.
+    Haalt alleen de echte vakbegrippen op uit de vraagteksten.
+    Dit doet de AI zelf via een aparte prompt-aanroep — maar we
+    doen het hier slim door de antwoord/toelichting velden te gebruiken
+    als die beschikbaar zijn, anders de vraagtekst zelf.
+
+    We filteren op woorden die:
+    - Langer zijn dan 5 tekens (echte vakbegrippen zijn zelden kort)
+    - Niet voorkomen in een grote stopwoordenlijst
+    - Specifiek economisch/vakinhoudelijk zijn
     """
     stopwoorden = {
-        "de", "het", "een", "is", "wat", "welke", "van", "in", "op", "aan",
-        "voor", "met", "zijn", "heeft", "worden", "wordt", "of", "en", "dat",
-        "die", "dit", "er", "als", "naar", "niet", "ook", "bij", "door",
-        "over", "uit", "te", "ze", "je", "we", "hij", "zij", "ik", "u",
-        "hoe", "waarom", "wanneer", "wie", "welk", "stel", "stelling",
-        "volgende", "leg", "uit", "geef", "noem", "beschrijf", "verklaar",
-        "waar", "onwaar", "true", "false", "juist", "onjuist",
+        # Algemene woorden
+        "welke", "volgende", "volgen", "voorbeeld", "stelling", "tussen",
+        "invloed", "heeft", "hebben", "wordt", "worden", "bepaal", "bepaalt",
+        "stijgt", "daalt", "nemen", "maken", "geven", "doen", "zien",
+        "kunnen", "moeten", "mogen", "willen", "gaan", "komen", "staan",
+        "grote", "kleine", "eerste", "tweede", "derde", "laatste",
+        "product", "producten", "goederen", "diensten", "prijs", "prijzen",
+        "markt", "markten", "economie", "economisch", "bedrijf", "bedrijven",
+        "overheid", "mensen", "persoon", "individu", "land", "landen",
+        "waarde", "waarden", "kosten", "opbrengst", "winst", "verlies",
     }
 
-    kernwoorden = set()
+    begrippen = set()
     for v in vragen:
+        # Gebruik de vraagtekst
         tekst = v.get("vraag", "").lower()
-        # Verwijder leestekens
         tekst = re.sub(r"[^\w\s]", " ", tekst)
-        woorden = tekst.split()
-        for woord in woorden:
-            if len(woord) > 3 and woord not in stopwoorden:
-                kernwoorden.add(woord)
+        for woord in tekst.split():
+            if len(woord) > 5 and woord not in stopwoorden:
+                begrippen.add(woord)
 
-    return list(kernwoorden)
+    return list(begrippen)
 
 
-def vraag_bevat_verboden_woord(user_input: str, kernwoorden: list[str]) -> bool:
+def invoer_matcht_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
     """
-    Controleert of de input van de leerling een kernwoord bevat
+    Controleert of de invoer van de leerling een vakbegrip bevat
     dat uit de opdrachtvragen komt.
     """
-    invoer = user_input.lower()
-    invoer = re.sub(r"[^\w\s]", " ", invoer)
-    invoer_woorden = set(invoer.split())
-
-    for kern in kernwoorden:
-        # Exacte match
-        if kern in invoer_woorden:
-            return True
-        # Gedeeltelijke match voor samengestelde woorden
-        # bijv. "markteconomie" matcht op "markt" en "economie"
-        if kern in invoer:
-            return True
-
-    return False
-
-
-def antwoord_bevat_verboden_woord(ai_antwoord: str, kernwoorden: list[str]) -> bool:
-    """
-    Controleert of het AI-antwoord kernwoorden uit de opdracht uitlegt.
-    Als de AI een definitie geeft van een verboden begrip, blokkeren we het.
-    """
-    antwoord = ai_antwoord.lower()
-    for kern in kernwoorden:
-        if kern in antwoord:
+    tekst_lower = re.sub(r"[^\w\s]", " ", tekst.lower())
+    for begrip in begrippen:
+        if begrip in tekst_lower:
             return True
     return False
+
+
+def is_verboden_vraag(tekst: str, begrippen: list[str]) -> bool:
+    """
+    Een vraag is verboden als BEIDE condities gelden:
+    1. Het is een definitie/uitlegvraag (patroon)
+    2. Het bevat een vakbegrip uit de opdracht
+    """
+    return is_definitie_vraag(tekst) and invoer_matcht_vakbegrip(tekst, begrippen)
 
 
 # ============ ENDPOINTS ============
@@ -121,31 +154,34 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        kernwoorden = extract_kernwoorden(vragen_lijst)
+        vakbegrippen = extract_vakbegrippen_uit_vragen(vragen_lijst)
 
         # ══════════════════════════════════════
-        # HARDE CHECK 1: Bevat de vraag van de leerling een verboden kernwoord?
+        # HARDE CHECK 1: Is dit een definitievraag over een vakbegrip?
+        # Alleen blokkeren als BEIDE waar zijn:
+        # - het is een definitie/uitlegvraag
+        # - het bevat een vakbegrip uit de opdracht
         # ══════════════════════════════════════
-        if vraag_bevat_verboden_woord(body.content, kernwoorden):
+        if is_verboden_vraag(body.content, vakbegrippen):
             return {"message": BLOKKEER_ANTWOORD}
 
-        # ══════════════════════════════════════
-        # HARDE CHECK 2: Bevat de gesprekshistorie recent een verboden onderwerp?
-        # Als de laatste 2 berichten van de leerling over verboden stof gingen,
-        # dan is de kans groot dat dit bericht een doorvraag is.
+        # ��═════════════════════════════════════
+        # HARDE CHECK 2: Doorvraag op eerder verboden onderwerp?
+        # Alleen als de vorige leerling-vraag ook verboden was
         # ══════════════════════════════════════
         recente_user_berichten = [
             m["content"] for m in (body.messages or [])
             if m.get("role") == "user"
-        ][-2:]  # laatste 2 berichten
+        ][-1:]  # alleen laatste bericht
 
         for recent in recente_user_berichten:
-            if vraag_bevat_verboden_woord(recent, kernwoorden):
-                # Doorvraag op verboden onderwerp — blokkeer ook
-                return {"message": BLOKKEER_ANTWOORD}
+            if is_verboden_vraag(recent, vakbegrippen):
+                # Vorige vraag was verboden, doorvraag ook blokkeren
+                if is_definitie_vraag(body.content) or invoer_matcht_vakbegrip(body.content, vakbegrippen):
+                    return {"message": BLOKKEER_ANTWOORD}
 
         # ══════════════════════════════════════
-        # AI mag antwoorden — maar met strikte prompt
+        # AI mag antwoorden
         # ══════════════════════════════════════
         verboden_tekst = "\n".join([
             f'Vraag {v["nummer"]}: {v["vraag"]}'
@@ -155,7 +191,7 @@ async def tutor_chat(body: TutorChatBody):
         system_prompt = (
             "Je bent een AI-tutor voor middelbare scholieren.\n"
             "Je helpt leerlingen NADENKEN. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
-            "De leerling maakt een opdracht met deze vragen — geef hierover NOOIT uitleg:\n"
+            "De leerling maakt een opdracht met deze vragen — geef hierover NOOIT uitleg of definities:\n"
             f"{verboden_tekst}\n\n"
             "WAT JE WEL MAG:\n"
             "✅ Vragen stellen: 'Wat weet je er zelf al van?'\n"
@@ -173,13 +209,6 @@ async def tutor_chat(body: TutorChatBody):
             role="student",
             module_prompts=[system_prompt],
         )
-
-        # ══════════════════════════════════════
-        # HARDE CHECK 3: Bevat het AI-antwoord toch een verboden begrip?
-        # Laatste vangnet.
-        # ══════════════════════════════════════
-        if antwoord_bevat_verboden_woord(response, kernwoorden):
-            return {"message": BLOKKEER_ANTWOORD}
 
         return {"message": response}
 
