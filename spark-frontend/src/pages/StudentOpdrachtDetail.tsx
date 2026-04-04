@@ -215,7 +215,6 @@ export default function StudentOpdrachtDetail() {
     load()
   }, [assignmentId, user, classId])
 
-  // Auto-save elke 30 seconden
   useEffect(() => {
     if (status !== 'bezig' || !opdracht) return
     const interval = setInterval(() => saveDraft(false), 30000)
@@ -267,7 +266,6 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
-  // Knop → check open vragen → juiste modal tonen
   const handleInleverKlik = () => {
     if (!opdracht) return
     const onbeantwoord = opdracht.vragen.filter(v => !antwoordenRef.current[v.nummer]?.trim())
@@ -279,7 +277,6 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
-  // Na bevestiging → eerst draft opslaan, dan echt inleveren
   const handleInleverBevestigd = async () => {
     setToonInleverModal(false)
     setToonOpenVragenModal(false)
@@ -420,7 +417,11 @@ export default function StudentOpdrachtDetail() {
     const totaal = nakijkResultaat.totaal_punten ?? 0
     const max = opdracht.max_punten
     const pct = max > 0 ? Math.round((totaal / max) * 100) : 0
-    const cijfer = Math.max(1, Math.min(10, Math.round(1 + (totaal / max) * 9)))
+
+    // ✅ Cijfer tot 1 decimaal (schaal 1.0 – 10.0)
+    const cijferRaw = max > 0 ? 1 + (totaal / max) * 9 : 1
+    const cijfer = Math.max(1.0, Math.min(10.0, Math.round(cijferRaw * 10) / 10))
+    const cijferTekst = cijfer.toFixed(1)
 
     return (
       <div className="space-y-6 max-w-3xl mx-auto">
@@ -430,39 +431,58 @@ export default function StudentOpdrachtDetail() {
           </button>
           <h2 className="text-2xl font-bold text-white">{opdracht.title}</h2>
         </div>
+
+        {/* Cijfer kaart */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 text-center">
           <div className={`text-6xl font-bold mb-2 ${pct >= 55 ? 'text-green-400' : 'text-red-400'}`}>
-            {cijfer}
+            {cijferTekst}
           </div>
           <p className="text-white/60 text-sm">{totaal} / {max} punten ({pct}%)</p>
           {nakijkResultaat.algemene_feedback && (
             <p className="text-white/50 text-sm mt-3 italic">"{nakijkResultaat.algemene_feedback}"</p>
           )}
         </div>
+
+        {/* Vragen met resultaten */}
         <div className="space-y-3">
           {opdracht.vragen.map(v => {
             const r = resultaten.find((res: any) => res.vraag_nummer === v.nummer)
             const ant = (nakijkResultaat.antwoorden || []).find((a: any) => a.vraag_nummer === v.nummer)
-            const goed = r ? r.punten_behaald === r.max_punten : false
+            const behaald = r?.punten_behaald ?? 0
+            const goed = r ? behaald === v.punten : false
+            const isOpen = v.type === 'open'
+
             return (
-              <div key={v.nummer} className={`bg-[#0f1029] border rounded-xl p-4 ${goed ? 'border-green-500/20' : 'border-red-500/20'}`}>
+              <div key={v.nummer} className={`bg-[#0f1029] border rounded-xl p-4 ${goed ? 'border-green-500/20' : behaald > 0 ? 'border-amber-500/20' : 'border-red-500/20'}`}>
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
-                  <span className={`shrink-0 text-sm font-bold ${goed ? 'text-green-400' : 'text-amber-400'}`}>
+                  <span className={`shrink-0 text-sm font-bold ${goed ? 'text-green-400' : behaald > 0 ? 'text-amber-400' : 'text-red-400'}`}>
                     {r?.punten_behaald ?? '?'}/{v.punten}pt
                   </span>
                 </div>
-                <p className="text-white/50 text-xs">
+
+                <p className="text-white/50 text-xs mb-1">
                   <span className="text-white/30">Jouw antwoord: </span>
                   {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
                 </p>
+
+                {/* Feedback altijd tonen */}
                 {r?.feedback && (
                   <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
+                )}
+
+                {/* ✅ Beredenering alleen bij open vragen */}
+                {isOpen && r?.beredenering && (
+                  <div className="mt-2 px-3 py-2 bg-white/3 border border-white/8 rounded-lg">
+                    <p className="text-white/30 text-xs font-medium mb-0.5">📝 Beredenering AI:</p>
+                    <p className="text-white/45 text-xs leading-relaxed">{r.beredenering}</p>
+                  </div>
                 )}
               </div>
             )
           })}
         </div>
+
         <button onClick={() => navigate(-1)}
           className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-all">
           Terug naar de klas
@@ -621,7 +641,6 @@ export default function StudentOpdrachtDetail() {
                   />
                 )}
 
-                {/* Navigatieknoppen onderaan de vraag */}
                 <div className="flex gap-2 pt-2">
                   {activeVraag > 1 && (
                     <button onClick={() => setActiveVraag(prev => prev - 1)}

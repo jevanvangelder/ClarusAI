@@ -6,7 +6,6 @@ from app.services.ai_service import ai_service
 from supabase import create_client, Client
 import json
 import traceback
-import re
 from datetime import datetime
 
 router = APIRouter(prefix="/api/submissions", tags=["submissions"])
@@ -66,43 +65,25 @@ async def is_verboden_vraag(
     check_prompt = (
         "Je bent een beveiligingssysteem voor een AI-tutor op een middelbare school.\n"
         "Je beoordeelt of de vraag van een leerling leidt naar het antwoord op een opdrachtvraag.\n\n"
-
         f"OPDRACHTVRAGEN:\n{verboden_tekst}\n\n"
         f"RECENTE GESPREKSCONTEXT:\n{recente_context}\n"
         f"NIEUWE VRAAG VAN LEERLING: {user_input}\n\n"
-
         "STAPPENPLAN:\n"
         "Stap 1: Wat zou het antwoord zijn op de vraag van de leerling?\n"
         "Stap 2: Staat dat antwoord (of een directe hint ernaar) ook als antwoord "
         "op een van de opdrachtvragen?\n"
         "Stap 3: Zo ja → JA. Zo nee → NEE.\n\n"
-
         "BLOKKEER (JA) alleen als het antwoord op de leerlingvraag EXACT overeenkomt "
         "met het antwoord op een opdrachtvraag, of er een directe hint naar geeft.\n\n"
-
         "NIET BLOKKEREN (NEE) als:\n"
-        "- De vraag gaat over een begrip dat NIET als opdrachtvraag voorkomt, "
-        "ook al is het verwant aan het onderwerp\n"
-        "- De vraag breder is dan een specifieke opdrachtvraag "
-        "(bijv. algemene uitleg van een overkoepelend concept)\n"
+        "- De vraag gaat over een begrip dat NIET als opdrachtvraag voorkomt\n"
+        "- De vraag breder is dan een specifieke opdrachtvraag\n"
         "- De vraag gaat over schrijftips, studieadvies of hoe je een antwoord structureert\n"
         "- Het antwoord de leerling niet helpt bij het invullen van een specifieke opdrachtvraag\n\n"
-
         "VOORBEELDEN VAN DE REDENERING:\n"
         "Opdracht vraagt: 'Wat is de functie van mitochondriën?'\n"
-        "  Leerling: 'Wat doen mitochondriën?' → antwoord = functie van mitochondriën → JA\n"
-        "  Leerling: 'Wat zijn organellen?' → antwoord = algemene uitleg organellen, "
-        "niet specifiek mitochondriën-functie → NEE\n"
-        "  Leerling: 'Welk organel maakt energie?' → antwoord = mitochondriën → JA\n\n"
-        "Opdracht vraagt: 'Waar vindt fotosynthese plaats?'\n"
-        "  Leerling: 'Wat is fotosynthese?' → antwoord = uitleg fotosynthese, "
-        "niet WAAR het plaatsvindt → NEE\n"
-        "  Leerling: 'In welk organel vindt fotosynthese plaats?' → antwoord = chloroplasten → JA\n\n"
-        "Opdracht vraagt: 'Wat is het kenmerk van een prokaryotische cel?'\n"
-        "  Leerling: 'Wat is het verschil tussen prokaryoten en eukaryoten?' → "
-        "antwoord is breder dan alleen het kenmerk → NEE\n"
-        "  Leerling: 'Hebben prokaryoten een celkern?' → antwoord onthult opdracht-antwoord → JA\n\n"
-
+        "  Leerling: 'Wat doen mitochondriën?' → JA\n"
+        "  Leerling: 'Wat zijn organellen?' → NEE\n\n"
         "Antwoord met ALLEEN het woord JA of NEE, niets anders."
     )
 
@@ -144,37 +125,19 @@ async def tutor_chat(body: TutorChatBody):
         system_prompt = (
             "Je bent een enthousiaste en behulpzame AI-tutor voor middelbare scholieren.\n"
             "Je doel: leerlingen écht helpen de stof te begrijpen, zonder de antwoorden te geven.\n\n"
-
             "╔══════════════════════════════════════╗\n"
             "║  OPDRACHTVRAGEN — NOOIT BEANTWOORDEN  ║\n"
             "╚══════════════════════════════════════╝\n"
-            "Op de volgende vragen geef je NOOIT een direct antwoord, definitie of uitleg "
-            "die als antwoord gebruikt kan worden:\n\n"
             f"{verboden_tekst}\n\n"
-            "Als een leerling alsnog naar het antwoord op een van deze vragen vraagt, zeg je:\n"
-            "🚫 Dat is precies wat de opdracht vraagt! Dat antwoord moet van jou komen. "
-            "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
-
             "╔══════════════════════════════════════╗\n"
             "║  HOE JE ÉCHT HELPT                    ║\n"
             "╚══════════════════════════════════════╝\n"
             "✅ Leg begrippen uit die NIET in de opdracht staan\n"
             "✅ Geef ALTIJD een simpel praktijkvoorbeeld uit het dagelijks leven\n"
-            "   Gebruik situaties die een 14-16 jarige herkent: winkelen, voetbal,\n"
-            "   social media, een bijbaantje, spelletjes, festivals, etc.\n"
-            "   LET OP: het voorbeeld mag NOOIT de definitie bevatten die in de opdracht gevraagd wordt\n"
             "✅ Stel een vervolgvraag: 'Wat zou jij doen in die situatie?'\n"
-            "✅ Geef hints die de leerling op weg helpen zonder het antwoord te geven\n"
-            "✅ Help met de structuur van een goed antwoord\n"
+            "✅ Geef hints zonder het antwoord te geven\n"
             "✅ Moedig aan en wees positief\n\n"
-
-            "╔══════════════════════════════════════╗\n"
-            "║  TOON                                  ║\n"
-            "╚══════════════════════════════════════╝\n"
-            "- Informeel, warm en aanmoedigend — praat als een coole oudere broer/zus\n"
-            "- Gebruik altijd een praktijkvoorbeeld dat een tiener herkent\n"
-            "- Max 4 zinnen per antwoord\n"
-            "- Eindig altijd met een prikkelende vraag over het voorbeeld\n"
+            "TOON: Informeel, warm — praat als een coole oudere broer/zus. Max 4 zinnen.\n"
         )
 
         recente_berichten = (body.messages or [])[-10:]
@@ -201,24 +164,35 @@ async def nakijken(body: NakijkBody):
         vragen_tekst = ""
         for v in body.antwoorden:
             vragen_tekst += (
-                f"\nVraag {v['vraag_nummer']}: {v['vraag_tekst']}\n"
-                f"  Max punten: {v['max_punten']}\n"
-                f"  Correct antwoord: {v['correct_antwoord']}\n"
+                f"\nVraag {v['vraag_nummer']} (type: {v.get('type', 'open')}, max: {v['max_punten']}pt):\n"
+                f"  Vraag: {v['vraag_tekst']}\n"
+                f"  Correct antwoord: {v.get('correct_antwoord', '')}\n"
                 f"  Student antwoord: {v['student_antwoord']}\n"
-                f"  Type: {v.get('type', 'open')}\n"
             )
 
         system_prompt = (
             "Je bent een eerlijke maar empathische nakijkassistent voor middelbare scholieren.\n\n"
             "NAKIJK REGELS:\n"
-            "- Meerkeuze/waar-onwaar: exact goed = volle punten, anders 0\n"
-            "- Open vragen: beoordeel op inhoudelijke juistheid, niet op exacte woordkeuze\n"
-            "- Gedeeltelijk correcte antwoorden krijgen proportioneel punten\n"
-            "- Geef altijd een korte, bemoedigende uitleg\n"
-            "- Wees eerlijk maar constructief\n\n"
+            "- Meerkeuze/waar-onwaar: exact goed = volle punten, anders 0. Geen halve punten.\n"
+            "- Open vragen: beoordeel op inhoudelijke juistheid, niet op exacte woordkeuze.\n"
+            "  Gedeeltelijk correcte antwoorden krijgen proportioneel punten.\n"
+            "- Geef altijd een korte, bemoedigende feedback.\n"
+            "- Bij open vragen: geef ook een 'beredenering' waarin je uitlegt WAAROM je\n"
+            "  dit aantal punten geeft (max 2 zinnen, concreet en eerlijk).\n\n"
             "UITVOER FORMAT (verplicht exacte JSON, geen tekst eromheen):\n"
-            '{"resultaten": [{"vraag_nummer": 1, "punten_behaald": 1, "max_punten": 2, "feedback": "Uitleg..."}], '
-            '"totaal_punten": 5, "algemene_feedback": "Korte algemene beoordeling..."}'
+            '{\n'
+            '  "resultaten": [\n'
+            '    {\n'
+            '      "vraag_nummer": 1,\n'
+            '      "punten_behaald": 2,\n'
+            '      "max_punten": 2,\n'
+            '      "feedback": "Kort bemoedigend commentaar.",\n'
+            '      "beredenering": "Alleen bij open vragen: waarom dit aantal punten. Weglaten bij meerkeuze/waar-onwaar."\n'
+            '    }\n'
+            '  ],\n'
+            '  "totaal_punten": 5,\n'
+            '  "algemene_feedback": "Korte algemene beoordeling van de hele opdracht."\n'
+            '}'
         )
 
         response = await ai_service.generate_response(
@@ -302,7 +276,6 @@ async def inleveren(body: InleverBody):
         ).eq("student_id", body.student_id).execute()
 
         if existing.data:
-            # ✅ FIX: .select() na .eq() werkt niet — eerst update, dan apart ophalen
             supabase.table("assignment_submissions").update({
                 "antwoorden": body.antwoorden,
                 "chat_log": body.chat_log,
