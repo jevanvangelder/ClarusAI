@@ -100,6 +100,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] flex">
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 z-40 lg:hidden"
@@ -107,9 +108,10 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         />
       )}
 
+      {/* Sidebar — altijd fixed, ook op desktop */}
       <aside
         className={`
-          fixed lg:static inset-y-0 left-0 z-50
+          fixed inset-y-0 left-0 z-50
           w-64 bg-[#0f1029] border-r border-white/10
           flex flex-col
           transform transition-transform duration-200 ease-in-out
@@ -117,7 +119,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         `}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-white/10">
+        <div className="h-16 flex items-center gap-3 px-6 border-b border-white/10 shrink-0">
           <img
             src="/logo.png"
             alt="ClarusAI"
@@ -163,7 +165,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </nav>
 
         {/* User section */}
-        <div className="border-t border-white/10 p-4">
+        <div className="border-t border-white/10 p-4 shrink-0">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
               <span className="text-blue-400 text-sm font-semibold">
@@ -196,8 +198,8 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         </div>
       </aside>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main content — verschuift 256px naar rechts zodat het naast de vaste sidebar valt */}
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
         <header className="h-16 bg-[#0f1029]/80 backdrop-blur-sm border-b border-white/10 flex items-center px-4 lg:px-6 sticky top-0 z-30">
           <button
             className="lg:hidden text-white/60 hover:text-white mr-4"
