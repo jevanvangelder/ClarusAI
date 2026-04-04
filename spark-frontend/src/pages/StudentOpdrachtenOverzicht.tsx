@@ -19,7 +19,6 @@ interface OpdrachtRij {
   vaknaam: string | null
   klasnaam: string
   eigen_titel: string | null
-  // Inleverstatus
   ingeleverd: boolean
   nagekeken: boolean
   totaal_punten: number | null
@@ -51,7 +50,6 @@ export default function StudentOpdrachtenOverzicht() {
     if (!user) return
     setLoading(true)
     try {
-      // 1. Haal alle klassen op waar de student in zit (via mijn_klassen view)
       const { data: klassen } = await supabase
         .from('mijn_klassen')
         .select('id, name, vak, eigen_titel')
@@ -59,7 +57,6 @@ export default function StudentOpdrachtenOverzicht() {
 
       if (!klassen || klassen.length === 0) { setOpdrachten([]); setLoading(false); return }
 
-      // 2. Haal alle assignment_classes op voor deze klassen
       const klasIds = klassen.map(k => k.id)
       const { data: acData } = await supabase
         .from('assignment_classes')
@@ -68,7 +65,6 @@ export default function StudentOpdrachtenOverzicht() {
 
       if (!acData || acData.length === 0) { setOpdrachten([]); setLoading(false); return }
 
-      // 3. Haal de opdrachten zelf op
       const assignmentIds = [...new Set(acData.map((r: any) => r.assignment_id))]
       const { data: aData } = await supabase
         .from('assignments')
@@ -78,7 +74,6 @@ export default function StudentOpdrachtenOverzicht() {
 
       if (!aData || aData.length === 0) { setOpdrachten([]); setLoading(false); return }
 
-      // 4. Haal alle inzendingen op van deze student
       const { data: subs } = await supabase
         .from('assignment_submissions')
         .select('assignment_id, ingeleverd_op, ai_nakijk_status, totaal_punten')
@@ -88,7 +83,6 @@ export default function StudentOpdrachtenOverzicht() {
       const subMap: Record<string, any> = {}
       ;(subs || []).forEach(s => { subMap[s.assignment_id] = s })
 
-      // 5. Bouw de gecombineerde lijst
       const klasMap: Record<string, typeof klassen[0]> = {}
       klassen.forEach(k => { klasMap[k.id] = k })
 
@@ -127,18 +121,14 @@ export default function StudentOpdrachtenOverzicht() {
         })
       }
 
-      // Sorteer: niet ingeleverd + deadline eerst, daarna de rest
       rijen.sort((a, b) => {
-        // Niet ingeleverd + heeft deadline → bovenaan
         const aOpen = !a.ingeleverd && !!a.deadline
         const bOpen = !b.ingeleverd && !!b.deadline
         if (aOpen && !bOpen) return -1
         if (!aOpen && bOpen) return 1
-        // Binnen open: op deadline (vroegste eerst)
         if (aOpen && bOpen) {
           return new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
         }
-        // De rest: op deadline of created_at
         const aDate = a.deadline || a.created_at
         const bDate = b.deadline || b.created_at
         return new Date(bDate).getTime() - new Date(aDate).getTime()
@@ -213,14 +203,14 @@ export default function StudentOpdrachtenOverzicht() {
   ]
 
   return (
-    <div className="space-y-6 max-w-4xl">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
         <p className="text-white/50 text-sm mt-1">Jouw openstaande en voltooide opdrachten</p>
       </div>
 
-      {/* Filters */}
+      {/* Filters + zoekbalk */}
       <div className="flex items-center gap-2 flex-wrap">
         {FILTERS.map(f => (
           <button
@@ -243,7 +233,6 @@ export default function StudentOpdrachtenOverzicht() {
           </button>
         ))}
 
-        {/* Zoekbalk */}
         <div className="relative ml-auto">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
           <input
@@ -295,15 +284,12 @@ export default function StudentOpdrachtenOverzicht() {
                 className="w-full text-left bg-[#0f1029] border border-white/10 hover:border-blue-500/30 hover:bg-blue-500/5 rounded-xl px-5 py-4 transition-all group"
               >
                 <div className="flex items-start gap-4">
-                  {/* Links: type + inhoud */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
-                      {/* Vaknaam badge */}
                       <span className="flex items-center gap-1 text-xs text-white/40 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full">
                         <BookOpen size={10} />
                         {o.eigen_titel || o.vaknaam || o.klasnaam}
                       </span>
-                      {/* Type badge */}
                       {o.type && (
                         <span className={`text-xs px-2 py-0.5 rounded border ${typeColor}`}>
                           {o.type}
@@ -320,7 +306,6 @@ export default function StudentOpdrachtenOverzicht() {
                       <p className="text-white/35 text-xs mt-0.5 line-clamp-1">{o.beschrijving}</p>
                     )}
 
-                    {/* Deadline */}
                     {o.deadline && (
                       <p className={`text-xs mt-1.5 flex items-center gap-1 ${
                         verlopen ? 'text-red-400/70'
@@ -337,7 +322,6 @@ export default function StudentOpdrachtenOverzicht() {
                     )}
                   </div>
 
-                  {/* Rechts: status + pijl */}
                   <div className="flex flex-col items-end gap-2 shrink-0">
                     <span className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border ${status.cls}`}>
                       {status.icon}
