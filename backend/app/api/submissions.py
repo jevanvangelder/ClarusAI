@@ -53,11 +53,6 @@ async def is_verboden_vraag(
     chat_history: list,
     vragen_lijst: list
 ) -> bool:
-    """
-    Eén AI-check die zowel directe als indirecte omzeilingen afvangt.
-    Werkt voor elk vak door te redeneren vanuit de opdrachtvragen,
-    niet vanuit vaste woordlijsten of voorbeelden.
-    """
     verboden_tekst = "\n".join([
         f'Vraag {v["nummer"]}: {v["vraag"]}'
         for v in vragen_lijst
@@ -126,7 +121,6 @@ async def is_verboden_vraag(
 
 @router.post("/tutor/chat")
 async def tutor_chat(body: TutorChatBody):
-    """AI tutor voor studenten — helpt écht maar geeft geen opdracht-antwoorden."""
     try:
         try:
             context_data = json.loads(body.opdracht_context)
@@ -134,9 +128,6 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        # ══════════════════════════════════════
-        # Eén slimme AI-check voor alles
-        # ══════════════════════════════════════
         geblokkeerd = await is_verboden_vraag(
             user_input=body.content,
             chat_history=body.messages or [],
@@ -145,9 +136,6 @@ async def tutor_chat(body: TutorChatBody):
         if geblokkeerd:
             return {"message": BLOKKEER_ANTWOORD}
 
-        # ══════════════════════════════════════
-        # Goedgekeurd — laat de tutor antwoorden
-        # ══════════════════════════════════════
         verboden_tekst = "\n".join([
             f'Vraag {v["nummer"]}: {v["vraag"]}'
             for v in vragen_lijst
@@ -314,15 +302,20 @@ async def inleveren(body: InleverBody):
         ).eq("student_id", body.student_id).execute()
 
         if existing.data:
-            result = supabase.table("assignment_submissions").update({
+            # ✅ FIX: .select() na .eq() werkt niet — eerst update, dan apart ophalen
+            supabase.table("assignment_submissions").update({
                 "antwoorden": body.antwoorden,
                 "chat_log": body.chat_log,
                 "max_punten": body.max_punten,
                 "ai_nakijk_status": "nakijken",
                 "ingeleverd_op": now,
                 "updated_at": now,
-            }).eq("id", existing.data[0]["id"]).select().execute()
-            return result.data[0]
+            }).eq("id", existing.data[0]["id"]).execute()
+
+            result = supabase.table("assignment_submissions").select("*").eq(
+                "id", existing.data[0]["id"]
+            ).single().execute()
+            return result.data
         else:
             result = supabase.table("assignment_submissions").insert({
                 "assignment_id": body.assignment_id,
@@ -333,7 +326,7 @@ async def inleveren(body: InleverBody):
                 "max_punten": body.max_punten,
                 "ai_nakijk_status": "nakijken",
                 "ingeleverd_op": now,
-            }).select().execute()
+            }).execute()
             return result.data[0]
     except Exception as e:
         print(f"❌ INLEVEREN error: {e}")
