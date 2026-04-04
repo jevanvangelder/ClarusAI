@@ -47,14 +47,14 @@ BLOKKEER_ANTWOORD = (
     "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?"
 )
 
-# Patronen die aangeven dat een leerling een definitie/antwoord wil
+# Directe definitiepatronen — snelle Python check vóór de AI
 DEFINITIE_PATRONEN = [
     r"\bwat is\b",
     r"\bwat zijn\b",
     r"\bwat betekent\b",
     r"\bwat betekenen\b",
     r"\bdefinieer\b",
-    r"\bdefinitie\b",
+    r"\bdefinitie van\b",
     r"\bomschrijf\b",
     r"\bleg uit wat\b",
     r"\buitleggen wat\b",
@@ -69,11 +69,10 @@ def is_definitie_vraag(tekst: str) -> bool:
     return False
 
 
-def get_exacte_vraagwoorden(vragen: list) -> list[str]:
+def get_vakbegrippen(vragen: list) -> list[str]:
     """
-    Haalt de kernbegrippen op die LETTERLIJK in de vraagtekst staan
-    en echt vakspecifiek zijn. Geen algemene woorden.
-    Minimaal 6 tekens, niet in stopwoordenlijst.
+    Haalt vakspecifieke kernbegrippen op uit de vraagteksten.
+    Filtert stopwoorden eruit zodat alleen echte vakbegrippen overblijven.
     """
     stopwoorden = {
         "welke", "volgende", "voorbeeld", "stelling", "tussen", "invloed",
@@ -90,7 +89,6 @@ def get_exacte_vraagwoorden(vragen: list) -> list[str]:
         "soorten", "uitleg", "uitleggen", "beschrijf", "noem", "geef",
         "stel", "waar", "onwaar", "juist", "onjuist", "correct",
     }
-
     begrippen = set()
     for v in vragen:
         tekst = v.get("vraag", "").lower()
@@ -98,7 +96,6 @@ def get_exacte_vraagwoorden(vragen: list) -> list[str]:
         for woord in tekst.split():
             if len(woord) >= 6 and woord not in stopwoorden:
                 begrippen.add(woord)
-
     return list(begrippen)
 
 
@@ -110,9 +107,65 @@ def invoer_bevat_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
     return False
 
 
-def is_verboden_vraag(tekst: str, begrippen: list[str]) -> bool:
-    """Alleen blokkeren als het ZOWEL een definitievraag IS als een vakbegrip bevat."""
+def is_directe_verboden_vraag(tekst: str, begrippen: list[str]) -> bool:
+    """Snelle check: definitievraag + vakbegrip = direct blokkeren."""
     return is_definitie_vraag(tekst) and invoer_bevat_vakbegrip(tekst, begrippen)
+
+
+async def is_indirecte_omzeiling(
+    user_input: str,
+    chat_history: list,
+    vragen_lijst: list
+) -> bool:
+    """
+    Vraagt een snelle AI-check: leidt deze vraag (direct of via de context
+    van het gesprek) naar het antwoord op een opdrachtvraag?
+    Geeft True terug als het geblokkeerd moet worden.
+    """
+    verboden_tekst = "\n".join([
+        f'Vraag {v["nummer"]}: {v["vraag"]}'
+        for v in vragen_lijst
+    ])
+
+    # Laatste 4 berichten als context meegeven
+    recente_context = ""
+    for m in chat_history[-4:]:
+        rol = "Leerling" if m.get("role") == "user" else "Tutor"
+        recente_context += f"{rol}: {m.get('content', '')}\n"
+
+    check_prompt = (
+        "Je bent een beveiligingssysteem voor een AI-tutor. "
+        "Je taak is te beoordelen of een vraag van een leerling leidt naar "
+        "het antwoord op een van de opdrachtvragen.\n\n"
+        f"OPDRACHTVRAGEN:\n{verboden_tekst}\n\n"
+        f"RECENTE GESPREKSCONTEXT:\n{recente_context}\n"
+        f"NIEUWE VRAAG VAN LEERLING: {user_input}\n\n"
+        "Beoordeel: leidt deze vraag (direct OF via de gesprekscontext) naar "
+        "het antwoord op een van de opdrachtvragen?\n\n"
+        "Voorbeelden die JA zijn:\n"
+        "- 'Het tegenovergestelde van deflatie?' → antwoord is inflatie → staat in vraag 6 → JA\n"
+        "- 'Stel er is maar 1 aanbieder, hoe heet dat?' → antwoord is monopolie → staat in vraag 10 → JA\n"
+        "- 'Waarom heet het spel Monopoly zo?' → legt monopolie uit → staat in vraag 10 → JA\n"
+        "- 'Wat zijn de andere twee schalen?' na gesprek over meso → micro/macro → vraag 4 → JA\n"
+        "- 'Klopt het dat schaarste betekent dat er te weinig is?' → vraag 1 → JA\n\n"
+        "Voorbeelden die NEE zijn:\n"
+        "- 'Wat is een dienst?' → staat niet in de opdracht → NEE\n"
+        "- 'Hoe schrijf ik een goed antwoord?' → algemeen → NEE\n"
+        "- 'Welke marktstructuren zijn er?' → staat niet in de opdracht → NEE\n"
+        "- 'Wat is deflatie?' → staat niet in de opdracht → NEE\n\n"
+        "Antwoord met ALLEEN het woord JA of NEE, niets anders."
+    )
+
+    try:
+        result = await ai_service.generate_response(
+            messages=[{"role": "user", "content": check_prompt}],
+            role="student",
+            module_prompts=[],
+        )
+        return result.strip().upper().startswith("JA")
+    except Exception:
+        # Bij twijfel: niet blokkeren, laat de hoofdprompt het afhandelen
+        return False
 
 
 # ============ ENDPOINTS ============
@@ -127,13 +180,28 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        vakbegrippen = get_exacte_vraagwoorden(vragen_lijst)
+        vakbegrippen = get_vakbegrippen(vragen_lijst)
 
-        # Harde blokkering: alleen als het een definitievraag is over een vakbegrip
-        if is_verboden_vraag(body.content, vakbegrippen):
+        # ══════════════════════════════════════
+        # CHECK 1: Snelle Python check — directe definitievraag over vakbegrip
+        # ══════════════════════════════════════
+        if is_directe_verboden_vraag(body.content, vakbegrippen):
             return {"message": BLOKKEER_ANTWOORD}
 
-        # Volledige vraagteksten voor de AI-prompt
+        # ══════════════════════════════════════
+        # CHECK 2: AI check — indirecte omzeiling via context of slimme formulering
+        # ══════════════════════════════════════
+        geblokkeerd = await is_indirecte_omzeiling(
+            user_input=body.content,
+            chat_history=body.messages or [],
+            vragen_lijst=vragen_lijst,
+        )
+        if geblokkeerd:
+            return {"message": BLOKKEER_ANTWOORD}
+
+        # ══════════════════════════════════════
+        # Goedgekeurd — laat de tutor antwoorden
+        # ══════════════════════════════════════
         verboden_tekst = "\n".join([
             f'Vraag {v["nummer"]}: {v["vraag"]}'
             for v in vragen_lijst
@@ -149,25 +217,19 @@ async def tutor_chat(body: TutorChatBody):
             "Op de volgende vragen geef je NOOIT een direct antwoord, definitie of uitleg "
             "die als antwoord gebruikt kan worden:\n\n"
             f"{verboden_tekst}\n\n"
-            "Als een leerling vraagt naar het antwoord op een van bovenstaande vragen "
-            "(ook indirect of anders geformuleerd), zeg je:\n"
+            "Als een leerling alsnog naar het antwoord op een van deze vragen vraagt, zeg je:\n"
             "🚫 Dat is precies wat de opdracht vraagt! Dat antwoord moet van jou komen. "
             "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
 
             "╔══════════════════════════════════════╗\n"
             "║  HOE JE ÉCHT HELPT                    ║\n"
             "╚══════════════════════════════════════╝\n"
-            "Voor ALLE andere vragen ben je zo behulpzaam mogelijk:\n\n"
             "✅ Leg begrippen uit die NIET in de opdracht staan\n"
             "✅ Geef ALTIJD een simpel praktijkvoorbeeld uit het dagelijks leven\n"
             "   Gebruik situaties die een 14-16 jarige herkent: winkelen, voetbal,\n"
             "   social media, een bijbaantje, spelletjes, festivals, etc.\n"
-            "   Voorbeeld: bij 'vraag en aanbod': 'Stel, iedereen wil de nieuwe Nike Air,\n"
-            "   maar er zijn maar 10 paar. Wat denk je dat er met de prijs gebeurt?'\n"
-            "   LET OP: het voorbeeld mag NOOIT de definitie of het antwoord bevatten\n"
-            "   dat in de opdracht gevraagd wordt. Gebruik het om de leerling\n"
-            "   zelf te laten redeneren, niet om het antwoord te geven.\n"
-            "✅ Stel een vervolgvraag over het voorbeeld: 'Wat zou jij doen in die situatie?'\n"
+            "   LET OP: het voorbeeld mag NOOIT de definitie bevatten die in de opdracht gevraagd wordt\n"
+            "✅ Stel een vervolgvraag: 'Wat zou jij doen in die situatie?'\n"
             "✅ Geef hints die de leerling op weg helpen zonder het antwoord te geven\n"
             "✅ Help met de structuur van een goed antwoord\n"
             "✅ Moedig aan en wees positief\n\n"
@@ -181,8 +243,9 @@ async def tutor_chat(body: TutorChatBody):
             "- Eindig altijd met een prikkelende vraag over het voorbeeld\n"
         )
 
-
-        conversation = list(body.messages) if body.messages else []
+        # Stuur maximaal de laatste 10 berichten mee om context window te beperken
+        recente_berichten = (body.messages or [])[-10:]
+        conversation = list(recente_berichten)
         conversation.append({"role": "user", "content": body.content})
 
         response = await ai_service.generate_response(
