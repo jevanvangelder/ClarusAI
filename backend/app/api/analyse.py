@@ -1,14 +1,18 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import Optional
 from app.services.ai_service import ai_service
 from app.core.config import settings
 from supabase import create_client, Client
+import os
 import json
 import traceback
 
 router = APIRouter(prefix="/api/analyse", tags=["analyse"])
-supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_KEY)
+
+# ✅ Gebruik service_key met fallback op anon key (net als opdrachten.py)
+_service_key = os.getenv("SUPABASE_SERVICE_KEY") or settings.SUPABASE_SERVICE_KEY or settings.SUPABASE_KEY
+supabase: Client = create_client(settings.SUPABASE_URL, _service_key)
 
 
 class KerninzichtBody(BaseModel):
