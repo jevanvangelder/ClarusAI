@@ -24,7 +24,6 @@ export default function Dashboard() {
   const { user, profile, role } = useAuth()
   const navigate = useNavigate()
 
-  // Begroeting op basis van tijdstip
   const getGreeting = () => {
     const hour = new Date().getHours()
     if (hour < 12) return 'Goedemorgen'
@@ -34,7 +33,6 @@ export default function Dashboard() {
 
   const displayName = profile?.full_name || user?.email?.split('@')[0] || 'gebruiker'
 
-  // Snelle acties per rol
   const getQuickActions = (): QuickAction[] => {
     const actions: QuickAction[] = []
 
@@ -105,61 +103,25 @@ export default function Dashboard() {
 
   const getColorClasses = (color: string) => {
     switch (color) {
-      case 'blue':
-        return {
-          bg: 'bg-blue-500/10',
-          border: 'border-blue-500/20',
-          icon: 'text-blue-400',
-          hover: 'hover:border-blue-500/40 hover:bg-blue-500/15',
-        }
-      case 'purple':
-        return {
-          bg: 'bg-purple-500/10',
-          border: 'border-purple-500/20',
-          icon: 'text-purple-400',
-          hover: 'hover:border-purple-500/40 hover:bg-purple-500/15',
-        }
-      case 'green':
-        return {
-          bg: 'bg-green-500/10',
-          border: 'border-green-500/20',
-          icon: 'text-green-400',
-          hover: 'hover:border-green-500/40 hover:bg-green-500/15',
-        }
-      case 'orange':
-        return {
-          bg: 'bg-orange-500/10',
-          border: 'border-orange-500/20',
-          icon: 'text-orange-400',
-          hover: 'hover:border-orange-500/40 hover:bg-orange-500/15',
-        }
-      case 'cyan':
-        return {
-          bg: 'bg-cyan-500/10',
-          border: 'border-cyan-500/20',
-          icon: 'text-cyan-400',
-          hover: 'hover:border-cyan-500/40 hover:bg-cyan-500/15',
-        }
-      default:
-        return {
-          bg: 'bg-white/5',
-          border: 'border-white/10',
-          icon: 'text-white/60',
-          hover: 'hover:border-white/20 hover:bg-white/10',
-        }
+      case 'blue':   return { bg: 'bg-blue-500/10',   border: 'border-blue-500/20',   icon: 'text-blue-400',   hover: 'hover:border-blue-500/40 hover:bg-blue-500/15' }
+      case 'purple': return { bg: 'bg-purple-500/10', border: 'border-purple-500/20', icon: 'text-purple-400', hover: 'hover:border-purple-500/40 hover:bg-purple-500/15' }
+      case 'green':  return { bg: 'bg-green-500/10',  border: 'border-green-500/20',  icon: 'text-green-400',  hover: 'hover:border-green-500/40 hover:bg-green-500/15' }
+      case 'orange': return { bg: 'bg-orange-500/10', border: 'border-orange-500/20', icon: 'text-orange-400', hover: 'hover:border-orange-500/40 hover:bg-orange-500/15' }
+      case 'cyan':   return { bg: 'bg-cyan-500/10',   border: 'border-cyan-500/20',   icon: 'text-cyan-400',   hover: 'hover:border-cyan-500/40 hover:bg-cyan-500/15' }
+      default:       return { bg: 'bg-white/5',        border: 'border-white/10',       icon: 'text-white/60',   hover: 'hover:border-white/20 hover:bg-white/10' }
     }
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="space-y-6">
       {/* Welkom sectie */}
-      <div className="bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-cyan-500/10 border border-white/10 rounded-2xl p-8">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white mb-2">
+      <div className="bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-cyan-500/10 border border-white/10 rounded-2xl p-5 sm:p-8">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-3xl font-bold text-white mb-1 sm:mb-2 leading-tight">
               {getGreeting()}, {displayName} 👋
             </h1>
-            <p className="text-white/50 text-lg">
+            <p className="text-white/50 text-sm sm:text-lg">
               {role === 'admin' && 'Welkom in het ClarusAI admin panel'}
               {role === 'school_admin' && 'Welkom op je school dashboard'}
               {role === 'teacher' && 'Wat wil je vandaag doen?'}
@@ -167,7 +129,7 @@ export default function Dashboard() {
               {!role && 'Welkom bij ClarusAI'}
             </p>
           </div>
-          <div className="hidden md:flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-2">
+          <div className="hidden sm:flex items-center gap-2 bg-white/5 border border-white/10 rounded-xl px-4 py-2 shrink-0">
             <Sparkles size={16} className="text-yellow-400" />
             <span className="text-sm text-white/60">AI-powered learning</span>
           </div>
@@ -176,72 +138,45 @@ export default function Dashboard() {
 
       {/* Stat cards — alleen voor docenten en hoger */}
       {(role === 'admin' || role === 'school_admin' || role === 'teacher') && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white/40 text-sm">Actieve leerlingen</span>
-              <Users size={18} className="text-blue-400" />
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { label: 'Actieve leerlingen', icon: Users, color: 'text-blue-400' },
+            { label: 'Vragen vandaag', icon: MessageSquare, color: 'text-purple-400' },
+            { label: 'Voortgang', icon: TrendingUp, color: 'text-green-400' },
+            { label: 'Opdrachten', icon: FileText, color: 'text-orange-400' },
+          ].map(stat => (
+            <div key={stat.label} className="bg-[#0f1029] border border-white/10 rounded-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white/40 text-xs leading-tight">{stat.label}</span>
+                <stat.icon size={16} className={stat.color} />
+              </div>
+              <p className="text-xl sm:text-2xl font-bold text-white">—</p>
+              <p className="text-xs text-white/30 mt-1 hidden sm:block">Binnenkort beschikbaar</p>
             </div>
-            <p className="text-2xl font-bold text-white">—</p>
-            <p className="text-xs text-white/30 mt-1">Binnenkort beschikbaar</p>
-          </div>
-
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white/40 text-sm">Vragen vandaag</span>
-              <MessageSquare size={18} className="text-purple-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">—</p>
-            <p className="text-xs text-white/30 mt-1">Binnenkort beschikbaar</p>
-          </div>
-
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white/40 text-sm">Voortgang</span>
-              <TrendingUp size={18} className="text-green-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">—</p>
-            <p className="text-xs text-white/30 mt-1">Binnenkort beschikbaar</p>
-          </div>
-
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-white/40 text-sm">Opdrachten</span>
-              <FileText size={18} className="text-orange-400" />
-            </div>
-            <p className="text-2xl font-bold text-white">—</p>
-            <p className="text-xs text-white/30 mt-1">Binnenkort beschikbaar</p>
-          </div>
+          ))}
         </div>
       )}
 
       {/* Snelle acties */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4">Snelle acties</h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-3">Snelle acties</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {quickActions.map((action) => {
             const colors = getColorClasses(action.color)
             return (
               <button
                 key={action.path}
                 onClick={() => navigate(action.path)}
-                className={`
-                  ${colors.bg} border ${colors.border} ${colors.hover}
-                  rounded-xl p-5 text-left transition-all duration-200
-                  group cursor-pointer
-                `}
+                className={`${colors.bg} border ${colors.border} ${colors.hover} rounded-xl p-4 sm:p-5 text-left transition-all duration-200 group cursor-pointer`}
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`p-2.5 rounded-lg ${colors.bg}`}>
-                    <action.icon size={22} className={colors.icon} />
+                <div className="flex items-start justify-between mb-2 sm:mb-3">
+                  <div className={`p-2 sm:p-2.5 rounded-lg ${colors.bg}`}>
+                    <action.icon size={20} className={colors.icon} />
                   </div>
-                  <ArrowRight
-                    size={18}
-                    className="text-white/20 group-hover:text-white/50 transition-all group-hover:translate-x-1"
-                  />
+                  <ArrowRight size={16} className="text-white/20 group-hover:text-white/50 transition-all group-hover:translate-x-1" />
                 </div>
-                <h3 className="text-white font-semibold mb-1">{action.label}</h3>
-                <p className="text-white/40 text-sm">{action.description}</p>
+                <h3 className="text-white font-semibold mb-0.5 sm:mb-1 text-sm sm:text-base">{action.label}</h3>
+                <p className="text-white/40 text-xs sm:text-sm">{action.description}</p>
               </button>
             )
           })}
@@ -249,23 +184,23 @@ export default function Dashboard() {
       </div>
 
       {/* AI Tip */}
-      <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/20 rounded-xl p-6">
-        <div className="flex items-start gap-4">
-          <div className="p-2.5 bg-blue-500/10 rounded-lg">
-            <Sparkles size={22} className="text-blue-400" />
+      <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/5 border border-blue-500/20 rounded-xl p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div className="p-2 sm:p-2.5 bg-blue-500/10 rounded-lg shrink-0">
+            <Sparkles size={20} className="text-blue-400" />
           </div>
-          <div>
-            <h3 className="text-white font-semibold mb-1">AI-tip</h3>
-            <p className="text-white/50 text-sm leading-relaxed">
+          <div className="min-w-0">
+            <h3 className="text-white font-semibold mb-1 text-sm sm:text-base">AI-tip</h3>
+            <p className="text-white/50 text-xs sm:text-sm leading-relaxed">
               {role === 'teacher'
                 ? 'Gebruik de AI Chat om snel toetsvragen te genereren op basis van je lesmateriaal. Probeer het eens!'
                 : 'Gebruik de AI Chat om uitleg te krijgen over moeilijke onderwerpen. ClarusAI past zich aan jouw niveau aan!'}
             </p>
             <button
               onClick={() => navigate('/chat')}
-              className="mt-3 text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 transition-colors"
+              className="mt-2 sm:mt-3 text-xs sm:text-sm text-blue-400 hover:text-blue-300 font-medium flex items-center gap-1 transition-colors"
             >
-              Start een chat <ArrowRight size={14} />
+              Start een chat <ArrowRight size={13} />
             </button>
           </div>
         </div>

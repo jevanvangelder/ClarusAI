@@ -54,7 +54,6 @@ export default function KlasDetail() {
   const [activeTab, setActiveTab] = useState<Tab>('leerlingen')
   const [copied, setCopied] = useState(false)
 
-  // Instellingen form
   const [editNaam, setEditNaam] = useState('')
   const [editVak, setEditVak] = useState('')
   const [editSchooljaar, setEditSchooljaar] = useState('')
@@ -63,14 +62,12 @@ export default function KlasDetail() {
   const [editTagInput, setEditTagInput] = useState('')
   const [savingInstellingen, setSavingInstellingen] = useState(false)
 
-  // Opdracht aanmaken
   const [opdrachtModalOpen, setOpdrachtModalOpen] = useState(false)
   const [opdrachtTitel, setOpdrachtTitel] = useState('')
   const [opdrachtBeschrijving, setOpdrachtBeschrijving] = useState('')
   const [opdrachtDeadline, setOpdrachtDeadline] = useState('')
   const [savingOpdracht, setSavingOpdracht] = useState(false)
 
-  // Modals
   const [verwijderLeerlingId, setVerwijderLeerlingId] = useState<string | null>(null)
   const [archiverenModal, setArchiverenModal] = useState(false)
 
@@ -243,25 +240,36 @@ export default function KlasDetail() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
-      <div className="flex items-start gap-4">
-        <button onClick={() => navigate('/klassen')} className="mt-1 text-white/50 hover:text-white transition-colors">
+      <div className="flex items-start gap-3">
+        <button onClick={() => navigate('/klassen')} className="mt-1 text-white/50 hover:text-white transition-colors shrink-0">
           <ArrowLeft size={20} />
         </button>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h2 className="text-2xl font-bold text-white">{klas.name}</h2>
-            {klas.vak && (
-              <span className="flex items-center gap-1 text-white/40 text-sm">
-                <BookOpen size={13} /> {klas.vak}
-              </span>
-            )}
-            {klas.schooljaar && (
-              <span className="flex items-center gap-1 text-white/40 text-sm">
-                <Calendar size={13} /> {klas.schooljaar}
-              </span>
-            )}
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{klas.name}</h2>
+              <div className="flex items-center gap-3 flex-wrap mt-1">
+                {klas.vak && (
+                  <span className="flex items-center gap-1 text-white/40 text-xs sm:text-sm">
+                    <BookOpen size={12} /> {klas.vak}
+                  </span>
+                )}
+                {klas.schooljaar && (
+                  <span className="flex items-center gap-1 text-white/40 text-xs sm:text-sm">
+                    <Calendar size={12} /> {klas.schooljaar}
+                  </span>
+                )}
+              </div>
+            </div>
+            {/* Klascode — mobiel-vriendelijk */}
+            <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 shrink-0">
+              <code className="text-xs font-mono text-blue-300 tracking-widest">{klas.code}</code>
+              <button onClick={copyCode} className="text-white/30 hover:text-blue-400 transition-colors ml-1">
+                {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+              </button>
+            </div>
           </div>
           {(klas.tags || []).length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -273,44 +281,35 @@ export default function KlasDetail() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="text-xs text-white/30">Code:</span>
-          <code className="text-xs font-mono bg-white/5 border border-white/10 rounded px-2 py-1 text-blue-300 tracking-widest">
-            {klas.code}
-          </code>
-          <button onClick={copyCode} className="text-white/30 hover:text-blue-400 transition-colors">
-            {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
-          </button>
-        </div>
       </div>
 
       {/* Stat pills */}
-      <div className="flex gap-3 flex-wrap">
+      <div className="flex gap-2 flex-wrap">
         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-          <Users size={14} className="text-blue-400" />
-          <span className="text-white/70 text-sm">{klas.leerling_count} leerling{klas.leerling_count !== 1 ? 'en' : ''}</span>
+          <Users size={13} className="text-blue-400" />
+          <span className="text-white/70 text-xs sm:text-sm">{klas.leerling_count} leerling{klas.leerling_count !== 1 ? 'en' : ''}</span>
         </div>
         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2">
-          <FileText size={14} className="text-purple-400" />
-          <span className="text-white/70 text-sm">{opdrachten.length} opdracht{opdrachten.length !== 1 ? 'en' : ''}</span>
+          <FileText size={13} className="text-purple-400" />
+          <span className="text-white/70 text-xs sm:text-sm">{opdrachten.length} opdracht{opdrachten.length !== 1 ? 'en' : ''}</span>
         </div>
       </div>
 
-      {/* Tabbladen */}
+      {/* Tabbladen — icons only op mobiel, tekst erbij op sm+ */}
       <div className="border-b border-white/10">
-        <div className="flex gap-1">
+        <div className="flex gap-0">
           {tabs.map(tab => (
             <button
               key={tab.key}
               onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
+              className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 transition-all -mb-px ${
                 activeTab === tab.key
                   ? 'border-blue-400 text-blue-400'
                   : 'border-transparent text-white/40 hover:text-white/70'
               }`}
             >
               <tab.icon size={15} />
-              {tab.label}
+              <span className="hidden xs:inline sm:inline">{tab.label}</span>
             </button>
           ))}
         </div>
@@ -320,7 +319,7 @@ export default function KlasDetail() {
       {activeTab === 'leerlingen' && (
         <div className="space-y-3">
           {leerlingen.length === 0 ? (
-            <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+            <div className="bg-[#0f1029] border border-white/10 rounded-xl p-10 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
                 <Users size={28} className="text-blue-400" />
               </div>
@@ -331,14 +330,14 @@ export default function KlasDetail() {
             </div>
           ) : (
             <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/5">
+              <div className="px-4 sm:px-5 py-3 border-b border-white/5">
                 <p className="text-white/50 text-xs uppercase tracking-wider">
                   {leerlingen.length} leerling{leerlingen.length !== 1 ? 'en' : ''}
                 </p>
               </div>
               <div className="divide-y divide-white/5">
                 {leerlingen.map((leerling) => (
-                  <div key={leerling.student_id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-white/[0.02] transition-colors group">
+                  <div key={leerling.student_id} className="flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-white/[0.02] transition-colors group">
                     <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                       <span className="text-blue-400 text-xs font-semibold">{getInitials(leerling)}</span>
                     </div>
@@ -346,12 +345,13 @@ export default function KlasDetail() {
                       <p className="text-white text-sm font-medium truncate">{getDisplayName(leerling)}</p>
                       <p className="text-white/30 text-xs truncate">{leerling.email || ''}</p>
                     </div>
-                    <p className="text-white/25 text-xs shrink-0">
-                      Lid sinds {new Date(leerling.joined_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+                    {/* Datum verbergen op heel klein scherm */}
+                    <p className="text-white/25 text-xs shrink-0 hidden sm:block">
+                      {new Date(leerling.joined_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                     </p>
                     <button
                       onClick={() => setVerwijderLeerlingId(leerling.student_id)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-red-400/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all"
+                      className="p-1.5 text-red-400/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0 opacity-0 group-hover:opacity-100"
                       title="Verwijder uit klas"
                     >
                       <Trash2 size={14} />
@@ -376,7 +376,7 @@ export default function KlasDetail() {
             </button>
           </div>
           {opdrachten.length === 0 ? (
-            <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+            <div className="bg-[#0f1029] border border-white/10 rounded-xl p-10 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
                 <FileText size={28} className="text-purple-400" />
               </div>
@@ -386,28 +386,23 @@ export default function KlasDetail() {
           ) : (
             <div className="space-y-3">
               {opdrachten.map(opdracht => (
-                <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 rounded-xl p-5 group">
+                <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 rounded-xl p-4 sm:p-5 group">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-semibold">{opdracht.title}</h3>
+                      <h3 className="text-white font-semibold text-sm sm:text-base">{opdracht.title}</h3>
                       {opdracht.beschrijving && (
                         <p className="text-white/40 text-sm mt-1 line-clamp-2">{opdracht.beschrijving}</p>
                       )}
                       {opdracht.deadline && (
                         <p className="text-amber-400/70 text-xs mt-2 flex items-center gap-1">
                           <Calendar size={11} />
-                          Deadline: {new Date(opdracht.deadline).toLocaleDateString('nl-NL', {
-                            day: 'numeric', month: 'long', year: 'numeric'
-                          })}
+                          Deadline: {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
                         </p>
                       )}
-                      <p className="text-white/25 text-xs mt-1">
-                        Aangemaakt op {new Date(opdracht.created_at).toLocaleDateString('nl-NL')}
-                      </p>
                     </div>
                     <button
                       onClick={() => handleVerwijderOpdracht(opdracht.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1.5 text-red-400/50 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0"
+                      className="p-1.5 text-red-400/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0 opacity-0 group-hover:opacity-100"
                     >
                       <Trash2 size={14} />
                     </button>
@@ -421,8 +416,8 @@ export default function KlasDetail() {
 
       {/* ── TAB: Instellingen ── */}
       {activeTab === 'instellingen' && (
-        <div className="space-y-6 max-w-lg">
-          <form onSubmit={handleSaveInstellingen} className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
+        <div className="space-y-6">
+          <form onSubmit={handleSaveInstellingen} className="bg-[#0f1029] border border-white/10 rounded-xl p-5 sm:p-6 space-y-4">
             <h3 className="text-white font-semibold">Klas bewerken</h3>
             <div>
               <label className="block text-sm text-white/60 mb-1.5">Naam <span className="text-red-400">*</span></label>
@@ -469,7 +464,7 @@ export default function KlasDetail() {
             </button>
           </form>
 
-          <div className="bg-[#0f1029] border border-red-500/20 rounded-xl p-6 space-y-3">
+          <div className="bg-[#0f1029] border border-red-500/20 rounded-xl p-5 sm:p-6 space-y-3">
             <h3 className="text-red-400 font-semibold text-sm">Gevaarzone</h3>
             <p className="text-white/40 text-sm">De klas wordt gearchiveerd en is niet meer zichtbaar voor leerlingen.</p>
             <button onClick={() => setArchiverenModal(true)}
@@ -511,13 +506,13 @@ export default function KlasDetail() {
       {opdrachtModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-6 border-b border-white/10">
+            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-white/10">
               <h3 className="text-lg font-semibold text-white">Nieuwe opdracht</h3>
               <button onClick={() => setOpdrachtModalOpen(false)} className="text-white/40 hover:text-white transition-colors">
                 <X size={20} />
               </button>
             </div>
-            <form onSubmit={handleSaveOpdracht} className="p-6 space-y-4">
+            <form onSubmit={handleSaveOpdracht} className="p-5 sm:p-6 space-y-4">
               <div>
                 <label className="block text-sm text-white/60 mb-1.5">Titel <span className="text-red-400">*</span></label>
                 <input type="text" value={opdrachtTitel} onChange={e => setOpdrachtTitel(e.target.value)}

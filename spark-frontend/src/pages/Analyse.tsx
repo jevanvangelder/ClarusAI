@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, ArrowLeft, Users, TrendingUp, TrendingDown,
   Loader2, ChevronRight, Lightbulb, Brain, MessageSquare,
-  CheckCircle, AlertTriangle, Clock
+  Clock
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -65,7 +65,6 @@ export default function Analyse() {
   const [kerninzicht, setKerninzicht] = useState<KerninzichtData | null>(null)
   const [loadingKerninzicht, setLoadingKerninzicht] = useState(false)
 
-  // ── Laad opdrachten met statistieken ──
   useEffect(() => {
     const load = async () => {
       if (!user) return
@@ -118,7 +117,6 @@ export default function Analyse() {
     load()
   }, [user])
 
-  // ── Laad detail van een opdracht ──
   const openDetail = async (opdracht: OpdrachtStat, class_id?: string) => {
     setSelectedOpdracht(opdracht)
     setSelectedClassId(class_id || null)
@@ -127,7 +125,6 @@ export default function Analyse() {
     setLoadingDetail(true)
 
     try {
-      // Haal vragen op
       const { data: opdrData } = await supabase
         .from('assignments')
         .select('vragen')
@@ -138,7 +135,6 @@ export default function Analyse() {
         ? opdrData.vragen
         : JSON.parse(opdrData?.vragen || '[]')
 
-      // Haal inzendingen op
       let query = supabase
         .from('assignment_submissions')
         .select('student_id, totaal_punten, antwoorden, ingeleverd_op')
@@ -150,7 +146,6 @@ export default function Analyse() {
 
       const { data: subs } = await query
 
-      // ✅ Haal namen op via backend (omzeilt RLS — gebruikt service key)
       const student_ids = [...new Set((subs || []).map(s => s.student_id))]
       let namenMap: Record<string, string> = {}
 
@@ -161,15 +156,12 @@ export default function Analyse() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ student_ids }),
           })
-          if (res.ok) {
-            namenMap = await res.json()
-          }
+          if (res.ok) namenMap = await res.json()
         } catch (err) {
           console.warn('Namen ophalen mislukt, gebruik fallback:', err)
         }
       }
 
-      // Verwerk inzendingen
       const verwerkt: Inzending[] = (subs || []).map(s => {
         const cijfer = opdracht.max_punten > 0
           ? Math.max(1, Math.min(10, Math.round((1 + (s.totaal_punten / opdracht.max_punten) * 9) * 10) / 10))
@@ -186,7 +178,6 @@ export default function Analyse() {
 
       setInzendingen(verwerkt)
 
-      // Per-vraag statistieken
       const vraagMap: Record<number, { behaald: number; max: number; count: number }> = {}
       for (const s of (subs || [])) {
         for (const ant of (s.antwoorden || [])) {
@@ -218,7 +209,6 @@ export default function Analyse() {
     }
   }
 
-  // ── Kerninzicht genereren ──
   const genereerKerninzicht = async () => {
     if (!selectedOpdracht) return
     setLoadingKerninzicht(true)
@@ -242,7 +232,6 @@ export default function Analyse() {
     }
   }
 
-  // ── Open in Chat ──
   const openInChat = () => {
     if (!kerninzicht?.chat_prompt) return
     localStorage.setItem('clarus-analyse-prompt', kerninzicht.chat_prompt)
@@ -273,14 +262,14 @@ export default function Analyse() {
     const laagste = inzendingen.length > 0 ? Math.min(...inzendingen.map(i => i.cijfer)) : 0
 
     return (
-      <div className="space-y-6 max-w-5xl">
+      <div className="space-y-5">
         {/* Header */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white">
+        <div className="flex items-start gap-3">
+          <button onClick={() => setView('overzicht')} className="mt-1 text-white/50 hover:text-white shrink-0">
             <ArrowLeft size={20} />
           </button>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold text-white">{selectedOpdracht.title}</h2>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedOpdracht.title}</h2>
             <p className="text-white/40 text-sm mt-0.5">
               {geselecteerdeKlas ? geselecteerdeKlas.klasnaam : 'Alle klassen'} · {selectedOpdracht.type}
             </p>
@@ -297,23 +286,23 @@ export default function Analyse() {
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: 'Ingeleverd', value: totaalIngeleverd.toString(), icon: Users, color: 'text-blue-400' },
-                { label: 'Gemiddeld cijfer', value: gemCijfer.toFixed(1), icon: BarChart3, color: gemCijfer >= 5.5 ? 'text-green-400' : 'text-red-400' },
+                { label: 'Gem. cijfer', value: gemCijfer.toFixed(1), icon: BarChart3, color: gemCijfer >= 5.5 ? 'text-green-400' : 'text-red-400' },
                 { label: 'Hoogste', value: hoogste.toFixed(1), icon: TrendingUp, color: 'text-green-400' },
                 { label: 'Laagste', value: laagste.toFixed(1), icon: TrendingDown, color: 'text-red-400' },
               ].map(stat => (
-                <div key={stat.label} className="bg-[#0f1029] border border-white/10 rounded-xl p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <stat.icon size={14} className="text-white/30" />
+                <div key={stat.label} className="bg-[#0f1029] border border-white/10 rounded-xl p-3 sm:p-4">
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <stat.icon size={13} className="text-white/30" />
                     <span className="text-white/40 text-xs">{stat.label}</span>
                   </div>
-                  <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                  <p className={`text-xl sm:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
                 </div>
               ))}
             </div>
 
             {/* Per vraag scorebalk */}
             {vraagStats.length > 0 && (
-              <div className="bg-[#0f1029] border border-white/10 rounded-xl p-5 space-y-3">
+              <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 sm:p-5 space-y-3">
                 <h3 className="text-white font-semibold text-sm flex items-center gap-2">
                   <BarChart3 size={14} className="text-white/40" />
                   Score per vraag
@@ -321,12 +310,12 @@ export default function Analyse() {
                 <div className="space-y-2">
                   {vraagStats.map(v => (
                     <div key={v.nummer} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <p className="text-white/70 text-xs truncate max-w-[70%]">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-white/70 text-xs truncate flex-1">
                           <span className="text-white/30 mr-1">#{v.nummer}</span>
                           {v.vraag}
                         </p>
-                        <span className={`text-xs font-medium ${
+                        <span className={`text-xs font-medium shrink-0 ${
                           v.pct < 0 ? 'text-white/20'
                           : v.pct >= 70 ? 'text-green-400'
                           : v.pct >= 40 ? 'text-amber-400'
@@ -354,7 +343,7 @@ export default function Analyse() {
             {/* Leerlingentabel */}
             {inzendingen.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-white/10">
+                <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10">
                   <h3 className="text-white font-semibold text-sm flex items-center gap-2">
                     <Users size={14} className="text-white/40" />
                     Leerlingen ({inzendingen.length})
@@ -362,7 +351,7 @@ export default function Analyse() {
                 </div>
                 <div className="divide-y divide-white/5">
                   {inzendingen.map(iz => (
-                    <div key={iz.student_id} className="flex items-center gap-4 px-5 py-3">
+                    <div key={iz.student_id} className="flex items-center gap-3 px-4 sm:px-5 py-3">
                       <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                         <span className="text-blue-400 text-xs font-semibold">
                           {iz.student_naam?.[0]?.toUpperCase() || '?'}
@@ -371,8 +360,7 @@ export default function Analyse() {
                       <div className="flex-1 min-w-0">
                         <p className="text-white text-sm font-medium truncate">{iz.student_naam}</p>
                         <p className="text-white/30 text-xs">
-                          {new Date(iz.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} ·{' '}
-                          {new Date(iz.ingeleverd_op).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                          {new Date(iz.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
@@ -394,10 +382,10 @@ export default function Analyse() {
               </div>
             )}
 
-            {/* ═══ KERNINZICHT SECTIE ═══ */}
+            {/* Kerninzicht */}
             {inzendingen.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-                <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+                <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10 flex items-center justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-2">
                     <Brain size={16} className="text-purple-400" />
                     <h3 className="text-white font-semibold text-sm">Kerninzicht</h3>
@@ -413,16 +401,13 @@ export default function Analyse() {
                     </button>
                   )}
                   {kerninzicht && !loadingKerninzicht && (
-                    <button
-                      onClick={genereerKerninzicht}
-                      className="text-white/30 hover:text-white/50 text-xs transition-all"
-                    >
+                    <button onClick={genereerKerninzicht} className="text-white/30 hover:text-white/50 text-xs transition-all">
                       🔄 Opnieuw
                     </button>
                   )}
                 </div>
 
-                <div className="p-5">
+                <div className="p-4 sm:p-5">
                   {loadingKerninzicht && (
                     <div className="flex items-center gap-3 text-white/40">
                       <Loader2 size={16} className="animate-spin" />
@@ -437,8 +422,7 @@ export default function Analyse() {
                   )}
 
                   {kerninzicht && !loadingKerninzicht && (
-                    <div className="space-y-5">
-                      {/* Kerninzicht */}
+                    <div className="space-y-4 sm:space-y-5">
                       <div className="space-y-2">
                         <div className="flex items-center gap-2">
                           <Brain size={13} className="text-purple-400" />
@@ -449,7 +433,6 @@ export default function Analyse() {
                         </div>
                       </div>
 
-                      {/* Vervolgvoorstel */}
                       {kerninzicht.vervolgvoorstel && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
@@ -462,7 +445,6 @@ export default function Analyse() {
                         </div>
                       )}
 
-                      {/* Chat doorstuur */}
                       {kerninzicht.chat_prompt && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
@@ -499,7 +481,7 @@ export default function Analyse() {
   // OVERZICHT VIEW
   // ═══════════════════════════════
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-white">Analyse</h2>
         <p className="text-white/50 text-sm mt-1">Inzicht in de voortgang van jouw leerlingen</p>
@@ -525,25 +507,24 @@ export default function Analyse() {
             const heeftData = o.aantal_ingeleverd > 0
             return (
               <div key={o.id} className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-                {/* Opdracht header */}
-                <div className="px-5 py-4 flex items-center gap-4 flex-wrap">
+                <div className="px-4 sm:px-5 py-4 flex items-start sm:items-center gap-3 sm:gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className={`text-xs px-2 py-0.5 rounded border ${TYPE_COLORS[o.type] || TYPE_COLORS.huiswerk}`}>
                         {o.type}
                       </span>
                       <span className="text-white/30 text-xs">{o.max_punten}pt</span>
                     </div>
-                    <h3 className="text-white font-semibold">{o.title}</h3>
+                    <h3 className="text-white font-semibold text-sm sm:text-base">{o.title}</h3>
                   </div>
-                  <div className="flex items-center gap-6 shrink-0">
+                  <div className="flex items-center gap-4 sm:gap-6 shrink-0">
                     <div className="text-center">
                       <p className="text-white/30 text-xs mb-0.5">Ingeleverd</p>
                       <p className="text-white font-semibold">{o.aantal_ingeleverd}</p>
                     </div>
                     {heeftData && (
                       <div className="text-center">
-                        <p className="text-white/30 text-xs mb-0.5">Gem. cijfer</p>
+                        <p className="text-white/30 text-xs mb-0.5">Gem.</p>
                         <p className={`font-bold text-lg ${o.gemiddeld_cijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
                           {o.gemiddeld_cijfer.toFixed(1)}
                         </p>
@@ -552,9 +533,8 @@ export default function Analyse() {
                   </div>
                 </div>
 
-                {/* Per klas knoppen */}
                 {o.klassen.length > 0 && (
-                  <div className="px-5 pb-4 flex flex-wrap gap-2">
+                  <div className="px-4 sm:px-5 pb-4 flex flex-wrap gap-2">
                     {o.klassen.map(k => (
                       <button
                         key={k.class_id}
@@ -580,7 +560,7 @@ export default function Analyse() {
                 )}
 
                 {!heeftData && (
-                  <div className="px-5 pb-4">
+                  <div className="px-4 sm:px-5 pb-4">
                     <span className="text-white/20 text-xs flex items-center gap-1">
                       <Clock size={11} /> Nog geen ingeleverde opdrachten
                     </span>
