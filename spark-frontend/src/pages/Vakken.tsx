@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
-import { GraduationCap, Search, X, LogIn, MoreVertical, Pencil, BookOpen } from 'lucide-react'
+import { Search, X, LogIn, MoreVertical, Pencil, BookOpen, Palette, GraduationCap, User } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface Vak {
@@ -12,6 +12,23 @@ interface Vak {
   docent_naam: string | null
   schooljaar: string | null
   eigen_titel: string | null
+  eigen_kleur: string | null
+}
+
+// Beschikbare kleuren voor vakken
+const KLEUR_OPTIES = [
+  { value: 'blue',   label: 'Blauw',   bg: 'bg-blue-500/15',   border: 'border-blue-500/30',   text: 'text-blue-400',   dot: 'bg-blue-400' },
+  { value: 'purple', label: 'Paars',   bg: 'bg-purple-500/15', border: 'border-purple-500/30', text: 'text-purple-400', dot: 'bg-purple-400' },
+  { value: 'green',  label: 'Groen',   bg: 'bg-green-500/15',  border: 'border-green-500/30',  text: 'text-green-400',  dot: 'bg-green-400' },
+  { value: 'amber',  label: 'Geel',    bg: 'bg-amber-500/15',  border: 'border-amber-500/30',  text: 'text-amber-400',  dot: 'bg-amber-400' },
+  { value: 'red',    label: 'Rood',    bg: 'bg-red-500/15',    border: 'border-red-500/30',    text: 'text-red-400',    dot: 'bg-red-400' },
+  { value: 'pink',   label: 'Roze',    bg: 'bg-pink-500/15',   border: 'border-pink-500/30',   text: 'text-pink-400',   dot: 'bg-pink-400' },
+  { value: 'cyan',   label: 'Cyaan',   bg: 'bg-cyan-500/15',   border: 'border-cyan-500/30',   text: 'text-cyan-400',   dot: 'bg-cyan-400' },
+  { value: 'orange', label: 'Oranje',  bg: 'bg-orange-500/15', border: 'border-orange-500/30', text: 'text-orange-400', dot: 'bg-orange-400' },
+]
+
+function getKleur(kleurWaarde: string | null) {
+  return KLEUR_OPTIES.find(k => k.value === kleurWaarde) || KLEUR_OPTIES[0]
 }
 
 export default function Vakken() {
@@ -28,9 +45,11 @@ export default function Vakken() {
   const menuRef = useRef<HTMLDivElement>(null)
 
   const [naamModalOpen, setNaamModalOpen] = useState(false)
+  const [kleurModalOpen, setKleurModalOpen] = useState(false)
   const [selectedVak, setSelectedVak] = useState<Vak | null>(null)
   const [nieuweNaam, setNieuweNaam] = useState('')
   const [savingNaam, setSavingNaam] = useState(false)
+  const [savingKleur, setSavingKleur] = useState(false)
 
   const [verlatenId, setVerlatenId] = useState<string | null>(null)
 
@@ -50,7 +69,7 @@ export default function Vakken() {
     try {
       const { data, error } = await supabase
         .from('mijn_klassen')
-        .select('id, name, vak, docent_naam, schooljaar, eigen_titel')
+        .select('id, name, vak, docent_naam, schooljaar, eigen_titel, eigen_kleur')
         .eq('is_active', true)
         .order('created_at', { ascending: false })
 
@@ -136,6 +155,29 @@ export default function Vakken() {
     }
   }
 
+  const handleSaveKleur = async (kleurWaarde: string) => {
+    if (!selectedVak || !user) return
+    setSavingKleur(true)
+    try {
+      const { error } = await supabase
+        .from('student_vak_instellingen')
+        .upsert({
+          student_id: user.id,
+          class_id: selectedVak.id,
+          eigen_kleur: kleurWaarde,
+        }, { onConflict: 'student_id,class_id' })
+      if (error) throw error
+      toast.success('Kleur opgeslagen!')
+      setKleurModalOpen(false)
+      setSelectedVak(null)
+      fetchVakken()
+    } catch (err: any) {
+      toast.error(err.message || 'Fout bij opslaan kleur')
+    } finally {
+      setSavingKleur(false)
+    }
+  }
+
   const gefilterdeVakken = vakken.filter((vak) => {
     const term = zoekterm.toLowerCase().trim()
     if (!term) return true
@@ -217,18 +259,18 @@ export default function Vakken() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {gefilterdeVakken.map((vak) => {
-            // Grote titel = eigen_titel als ingesteld, anders het vak, anders de klasnaam
             const grootTitel = vak.eigen_titel || vak.vak || vak.name
-            // Subtitel = klasnaam (altijd tonen), plus vak als het niet al de grote titel is
-            const toonKlasnaam = vak.name
-            const toonVak = !vak.eigen_titel && vak.vak ? null : vak.vak // alleen tonen als eigen_titel actief is
+            const kleur = getKleur(vak.eigen_kleur)
 
             return (
               <div
                 key={vak.id}
-                className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer relative"
+                className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 transition-all group cursor-pointer relative overflow-hidden"
                 onClick={() => navigate(`/vakken/${vak.id}`)}
               >
+                {/* Subtiele gekleurde top-accent balk */}
+                <div className={`absolute top-0 left-0 right-0 h-0.5 ${kleur.dot} opacity-60`} />
+
                 {/* Three-dots menu */}
                 <div
                   className="absolute top-3 right-3"
@@ -245,7 +287,7 @@ export default function Vakken() {
                   </button>
 
                   {openMenuId === vak.id && (
-                    <div className="absolute right-0 top-8 w-48 bg-[#1a1d3a] border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
+                    <div className="absolute right-0 top-8 w-52 bg-[#1a1d3a] border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -258,6 +300,18 @@ export default function Vakken() {
                       >
                         <Pencil size={14} />
                         Eigen naam instellen
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedVak(vak)
+                          setKleurModalOpen(true)
+                          setOpenMenuId(null)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition-all text-left"
+                      >
+                        <Palette size={14} />
+                        Kleur aanpassen
                       </button>
                       <div className="border-t border-white/5 my-1" />
                       <button
@@ -275,43 +329,38 @@ export default function Vakken() {
                   )}
                 </div>
 
-                <div className="flex items-start gap-3 mb-3 pr-7">
-                  {/* Icoon met eerste letter van het vak */}
-                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                    <span className="text-blue-400 text-sm font-bold">
-                      {grootTitel[0]?.toUpperCase() || '?'}
-                    </span>
+                {/* Kaart inhoud */}
+                <div className="flex items-start gap-3 mb-4 pr-7">
+                  {/* Gekleurd icoon-blok */}
+                  <div className={`w-11 h-11 rounded-xl ${kleur.bg} border ${kleur.border} flex items-center justify-center shrink-0`}>
+                    <BookOpen size={18} className={kleur.text} />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    {/* ✅ GROTE TITEL = vak (of eigen naam) */}
-                    <h3 className="text-white font-semibold truncate">
+
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    {/* Grote, gekleurde vaknaam */}
+                    <h3 className={`text-base font-bold truncate ${kleur.text}`}>
                       {grootTitel}
                     </h3>
-                    {/* ✅ SUBTITEL = klasnaam klein eronder */}
-                    <p className="text-white/40 text-xs mt-0.5 truncate">{toonKlasnaam}</p>
-                    {/* Extra vak als eigen_titel actief is */}
-                    {toonVak && (
-                      <p className="text-blue-400/70 text-xs mt-0.5 flex items-center gap-1">
-                        <BookOpen size={10} />
-                        {toonVak}
-                      </p>
-                    )}
+                    {/* Klasnaam klein eronder */}
+                    <p className="text-white/35 text-xs mt-0.5 truncate">{vak.name}</p>
                   </div>
                 </div>
 
+                {/* Docent */}
                 {vak.docent_naam && (
-                  <p className="text-white/35 text-xs mb-3 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px]">👤</span>
+                  <p className="text-white/35 text-xs mb-2 flex items-center gap-1.5">
+                    <User size={11} className="text-white/25" />
                     {vak.docent_naam}
                   </p>
                 )}
 
+                {/* Schooljaar */}
                 {vak.schooljaar && (
-                  <p className="text-white/25 text-xs mb-3">{vak.schooljaar}</p>
+                  <p className="text-white/20 text-xs mb-2">{vak.schooljaar}</p>
                 )}
 
                 <div className="flex items-center justify-end mt-3 pt-3 border-t border-white/5">
-                  <span className="text-xs text-blue-400/60 group-hover:text-blue-400 transition-colors select-none">
+                  <span className={`text-xs ${kleur.text} opacity-50 group-hover:opacity-100 transition-all select-none`}>
                     Bekijken →
                   </span>
                 </div>
@@ -359,6 +408,49 @@ export default function Vakken() {
                   {savingNaam ? 'Opslaan...' : 'Opslaan'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Kleur aanpassen */}
+      {kleurModalOpen && selectedVak && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-sm shadow-2xl">
+            <div className="flex items-center justify-between p-6 border-b border-white/10">
+              <h3 className="text-lg font-semibold text-white">Kleur aanpassen</h3>
+              <button onClick={() => { setKleurModalOpen(false); setSelectedVak(null) }}
+                className="text-white/40 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-white/40 text-sm">
+                Kies een kleur voor <span className="text-white/70">{selectedVak.eigen_titel || selectedVak.vak || selectedVak.name}</span>
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                {KLEUR_OPTIES.map((kleur) => {
+                  const isActief = (selectedVak.eigen_kleur || 'blue') === kleur.value
+                  return (
+                    <button
+                      key={kleur.value}
+                      onClick={() => handleSaveKleur(kleur.value)}
+                      disabled={savingKleur}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all ${
+                        isActief
+                          ? `${kleur.bg} ${kleur.border}`
+                          : 'bg-white/5 border-white/10 hover:bg-white/10'
+                      }`}
+                    >
+                      <div className={`w-6 h-6 rounded-full ${kleur.dot}`} />
+                      <span className={`text-xs ${isActief ? kleur.text : 'text-white/50'}`}>
+                        {kleur.label}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-white/25 text-xs">Alleen jij ziet deze kleur.</p>
             </div>
           </div>
         </div>
