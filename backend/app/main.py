@@ -7,6 +7,7 @@ from app.api.modules import router as modules_router
 from app.api.ebooks import router as ebooks_router
 from app.api.opdrachten import router as opdrachten_router
 from app.api.submissions import router as submissions_router
+from app.api.analyse import router as analyse_router
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -33,6 +34,7 @@ app.include_router(modules_router)
 app.include_router(ebooks_router)
 app.include_router(opdrachten_router)
 app.include_router(submissions_router)
+app.include_router(analyse_router)
 
 @app.get("/")
 async def root():

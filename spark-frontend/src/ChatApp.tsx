@@ -115,6 +115,18 @@ function App() {
     }
   }, [activeEbookId])
 
+  // ✅ Analyse-prompt oppakken vanuit Analyse-pagina
+  useEffect(() => {
+    const analysePrompt = localStorage.getItem('clarus-analyse-prompt')
+    if (analysePrompt) {
+      localStorage.removeItem('clarus-analyse-prompt')
+      setTimeout(() => {
+        setActiveChat(null)
+        setInputValue(analysePrompt)
+      }, 400)
+    }
+  }, [])
+
   const handleChatSelect = (chatId: string) => {
     setActiveChat(chatId)
     if (isMobile) setShowLeftSidebar(false)
@@ -280,11 +292,15 @@ function App() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend() } }}
                   rows={1}
                   disabled={isLoading}
-                  className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-h-[40px] max-h-[120px]"
+                  className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed"
                   style={{ height: 'auto', scrollbarWidth: 'thin' }}
                   onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = Math.min(target.scrollHeight, 120) + 'px' }}
                 />
-                <Button onClick={handleSend} disabled={(!inputValue.trim() && uploadedFiles.length === 0) || isLoading} className="flex-shrink-0">
+                <Button
+                  onClick={handleSend}
+                  disabled={(!inputValue.trim() && uploadedFiles.length === 0) || isLoading}
+                  className="flex-shrink-0"
+                >
                   <PaperPlaneRight size={18} weight="fill" />
                 </Button>
               </div>
@@ -311,7 +327,12 @@ function App() {
         )}
       </AnimatePresence>
 
-      <EbookModal isOpen={isEbookModalOpen} onClose={() => setIsEbookModalOpen(false)} onSelectEbook={(ebookId) => setActiveEbookId(ebookId)} activeEbookId={activeEbookId} />
+      <EbookModal
+        isOpen={isEbookModalOpen}
+        onClose={() => setIsEbookModalOpen(false)}
+        onSelectEbook={(ebookId) => setActiveEbookId(ebookId)}
+        activeEbookId={activeEbookId}
+      />
       <SettingsModal open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   )
