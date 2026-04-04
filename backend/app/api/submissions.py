@@ -152,7 +152,13 @@ async def is_indirecte_omzeiling(
         "- 'Wat is een dienst?' → staat niet in de opdracht → NEE\n"
         "- 'Hoe schrijf ik een goed antwoord?' → algemeen → NEE\n"
         "- 'Welke marktstructuren zijn er?' → staat niet in de opdracht → NEE\n"
-        "- 'Wat is deflatie?' → staat niet in de opdracht → NEE\n\n"
+        "- 'Wat is deflatie?' → staat niet in de opdracht → NEE\n"
+        "- 'Wat zijn organellen?' → algemeen begrip, staat niet als vraag in de opdracht → NEE\n"
+        "- 'Wat is het verschil tussen prokaryoten en eukaryoten?' → bredere uitlegvraag, niet letterlijk de opdrachtvraag → NEE\n"
+        "- 'Wat is het verschil tussen sparen en lenen?' → staat niet in de opdracht → NEE\n"
+        "- 'Ik snap vraag en aanbod niet' → vraag om uitleg van concept, niet om antwoord → NEE\n"
+        "- 'Wat is osmose?' → algemeen begrip buiten de opdracht → NEE\n"
+        "- 'Wat is DNA?' → algemeen begrip buiten de opdracht → NEE\n\n"
         "Antwoord met ALLEEN het woord JA of NEE, niets anders."
     )
 
