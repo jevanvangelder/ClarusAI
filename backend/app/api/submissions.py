@@ -47,121 +47,66 @@ BLOKKEER_ANTWOORD = (
     "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?"
 )
 
-# Directe definitiepatronen — snelle Python check vóór de AI
-DEFINITIE_PATRONEN = [
-    r"\bwat is\b",
-    r"\bwat zijn\b",
-    r"\bwat betekent\b",
-    r"\bwat betekenen\b",
-    r"\bdefinieer\b",
-    r"\bdefinitie van\b",
-    r"\bomschrijf\b",
-    r"\bleg uit wat\b",
-    r"\buitleggen wat\b",
-    r"\bverklaar\b",
-]
 
-def is_definitie_vraag(tekst: str) -> bool:
-    tekst_lower = tekst.lower()
-    for patroon in DEFINITIE_PATRONEN:
-        if re.search(patroon, tekst_lower):
-            return True
-    return False
-
-
-def get_vakbegrippen(vragen: list) -> list[str]:
-    """
-    Haalt vakspecifieke kernbegrippen op uit de vraagteksten.
-    Filtert stopwoorden eruit zodat alleen echte vakbegrippen overblijven.
-    """
-    stopwoorden = {
-        "welke", "volgende", "voorbeeld", "stelling", "tussen", "invloed",
-        "heeft", "hebben", "wordt", "worden", "bepaal", "bepaalt", "stijgt",
-        "daalt", "nemen", "maken", "geven", "doen", "zien", "kunnen",
-        "moeten", "mogen", "willen", "gaan", "komen", "staan", "grote",
-        "kleine", "eerste", "tweede", "derde", "laatste", "product",
-        "producten", "goederen", "diensten", "prijs", "prijzen", "markt",
-        "markten", "economie", "economisch", "bedrijf", "bedrijven",
-        "overheid", "mensen", "persoon", "individu", "land", "landen",
-        "waarde", "waarden", "kosten", "opbrengst", "winst", "verlies",
-        "vraag", "aanbod", "stijging", "daling", "factor", "factoren",
-        "verschil", "invloed", "gevolg", "oorzaak", "reden", "soort",
-        "soorten", "uitleg", "uitleggen", "beschrijf", "noem", "geef",
-        "stel", "waar", "onwaar", "juist", "onjuist", "correct",
-    }
-    begrippen = set()
-    for v in vragen:
-        tekst = v.get("vraag", "").lower()
-        tekst = re.sub(r"[^\w\s]", " ", tekst)
-        for woord in tekst.split():
-            if len(woord) >= 6 and woord not in stopwoorden:
-                begrippen.add(woord)
-    return list(begrippen)
-
-
-def invoer_bevat_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
-    tekst_lower = re.sub(r"[^\w\s]", " ", tekst.lower())
-    for begrip in begrippen:
-        if begrip in tekst_lower:
-            return True
-    return False
-
-
-def is_directe_verboden_vraag(tekst: str, begrippen: list[str]) -> bool:
-    """Snelle check: definitievraag + vakbegrip = direct blokkeren."""
-    return is_definitie_vraag(tekst) and invoer_bevat_vakbegrip(tekst, begrippen)
-
-
-async def is_indirecte_omzeiling(
+async def is_verboden_vraag(
     user_input: str,
     chat_history: list,
     vragen_lijst: list
 ) -> bool:
     """
-    AI-check: leidt deze vraag (direct of via gesprekscontext) naar
-    het antwoord op een opdrachtvraag?
-    Geeft True terug als het geblokkeerd moet worden.
-    Werkt voor elk vak — geen vak-specifieke voorbeelden.
+    Eén AI-check die zowel directe als indirecte omzeilingen afvangt.
+    Werkt voor elk vak door te redeneren vanuit de opdrachtvragen,
+    niet vanuit vaste woordlijsten of voorbeelden.
     """
     verboden_tekst = "\n".join([
         f'Vraag {v["nummer"]}: {v["vraag"]}'
         for v in vragen_lijst
     ])
 
-    # Laatste 4 berichten als context meegeven
     recente_context = ""
     for m in chat_history[-4:]:
         rol = "Leerling" if m.get("role") == "user" else "Tutor"
         recente_context += f"{rol}: {m.get('content', '')}\n"
 
     check_prompt = (
-        "Je bent een beveiligingssysteem voor een AI-tutor op een middelbare school. "
-        "Je taak is te beoordelen of de vraag van een leerling leidt naar "
-        "het antwoord op een van de opdrachtvragen.\n\n"
+        "Je bent een beveiligingssysteem voor een AI-tutor op een middelbare school.\n"
+        "Je beoordeelt of de vraag van een leerling leidt naar het antwoord op een opdrachtvraag.\n\n"
+
         f"OPDRACHTVRAGEN:\n{verboden_tekst}\n\n"
         f"RECENTE GESPREKSCONTEXT:\n{recente_context}\n"
         f"NIEUWE VRAAG VAN LEERLING: {user_input}\n\n"
 
-        "REDENEER ALS VOLGT:\n"
-        "1. Wat is het antwoord op de vraag van de leerling?\n"
-        "2. Is dat antwoord hetzelfde als (of een directe hint naar) het antwoord op een opdrachtvraag?\n"
-        "3. Zo ja → JA. Zo nee → NEE.\n\n"
+        "STAPPENPLAN:\n"
+        "Stap 1: Wat zou het antwoord zijn op de vraag van de leerling?\n"
+        "Stap 2: Staat dat antwoord (of een directe hint ernaar) ook als antwoord "
+        "op een van de opdrachtvragen?\n"
+        "Stap 3: Zo ja → JA. Zo nee → NEE.\n\n"
 
-        "BLOKKEER (JA) als:\n"
-        "- Het antwoord op de leerlingvraag direct overeenkomt met het antwoord op een opdrachtvraag\n"
-        "- De leerling via een omweg (andere formulering, spel, context) naar hetzelfde antwoord vraagt\n"
-        "- De leerling vraagt of een antwoord klopt dat gelijk is aan het opdracht-antwoord\n"
-        "- De leerling via de gesprekscontext doorvraagt naar een opdracht-antwoord\n\n"
+        "BLOKKEER (JA) alleen als het antwoord op de leerlingvraag EXACT overeenkomt "
+        "met het antwoord op een opdrachtvraag, of er een directe hint naar geeft.\n\n"
 
         "NIET BLOKKEREN (NEE) als:\n"
-        "- De vraag gaat over een begrip of onderwerp dat niet in de opdracht voorkomt\n"
-        "- De vraag breder is dan wat de opdracht specifiek vraagt\n"
-        "- De vraag gaat over een overkoepelend concept terwijl de opdracht alleen een deelaspect vraagt\n"
-        "- De vraag om schrijftips, studieadvies of uitleg van de opdrachtvorm gaat\n"
-        "- Het antwoord op de leerlingvraag de leerling NIET verder helpt bij het beantwoorden van een opdrachtvraag\n\n"
+        "- De vraag gaat over een begrip dat NIET als opdrachtvraag voorkomt, "
+        "ook al is het verwant aan het onderwerp\n"
+        "- De vraag breder is dan een specifieke opdrachtvraag "
+        "(bijv. algemene uitleg van een overkoepelend concept)\n"
+        "- De vraag gaat over schrijftips, studieadvies of hoe je een antwoord structureert\n"
+        "- Het antwoord de leerling niet helpt bij het invullen van een specifieke opdrachtvraag\n\n"
 
-        "BELANGRIJK: Je werkt voor elk vak (biologie, economie, geschiedenis, wiskunde etc.). "
-        "Redeneer altijd op basis van de opdrachtvragen hierboven, niet op basis van vaste voorbeelden.\n\n"
+        "VOORBEELDEN VAN DE REDENERING:\n"
+        "Opdracht vraagt: 'Wat is de functie van mitochondriën?'\n"
+        "  Leerling: 'Wat doen mitochondriën?' → antwoord = functie van mitochondriën → JA\n"
+        "  Leerling: 'Wat zijn organellen?' → antwoord = algemene uitleg organellen, "
+        "niet specifiek mitochondriën-functie → NEE\n"
+        "  Leerling: 'Welk organel maakt energie?' → antwoord = mitochondriën → JA\n\n"
+        "Opdracht vraagt: 'Waar vindt fotosynthese plaats?'\n"
+        "  Leerling: 'Wat is fotosynthese?' → antwoord = uitleg fotosynthese, "
+        "niet WAAR het plaatsvindt → NEE\n"
+        "  Leerling: 'In welk organel vindt fotosynthese plaats?' → antwoord = chloroplasten → JA\n\n"
+        "Opdracht vraagt: 'Wat is het kenmerk van een prokaryotische cel?'\n"
+        "  Leerling: 'Wat is het verschil tussen prokaryoten en eukaryoten?' → "
+        "antwoord is breder dan alleen het kenmerk → NEE\n"
+        "  Leerling: 'Hebben prokaryoten een celkern?' → antwoord onthult opdracht-antwoord → JA\n\n"
 
         "Antwoord met ALLEEN het woord JA of NEE, niets anders."
     )
@@ -174,7 +119,6 @@ async def is_indirecte_omzeiling(
         )
         return result.strip().upper().startswith("JA")
     except Exception:
-        # Bij twijfel: niet blokkeren, laat de hoofdprompt het afhandelen
         return False
 
 
@@ -190,18 +134,10 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        vakbegrippen = get_vakbegrippen(vragen_lijst)
-
         # ══════════════════════════════════════
-        # CHECK 1: Snelle Python check — directe definitievraag over vakbegrip
+        # Eén slimme AI-check voor alles
         # ══════════════════════════════════════
-        if is_directe_verboden_vraag(body.content, vakbegrippen):
-            return {"message": BLOKKEER_ANTWOORD}
-
-        # ══════════════════════════════════════
-        # CHECK 2: AI check — indirecte omzeiling via context of slimme formulering
-        # ══════════════════════════════════════
-        geblokkeerd = await is_indirecte_omzeiling(
+        geblokkeerd = await is_verboden_vraag(
             user_input=body.content,
             chat_history=body.messages or [],
             vragen_lijst=vragen_lijst,
@@ -253,7 +189,6 @@ async def tutor_chat(body: TutorChatBody):
             "- Eindig altijd met een prikkelende vraag over het voorbeeld\n"
         )
 
-        # Stuur maximaal de laatste 10 berichten mee om context window te beperken
         recente_berichten = (body.messages or [])[-10:]
         conversation = list(recente_berichten)
         conversation.append({"role": "user", "content": body.content})
