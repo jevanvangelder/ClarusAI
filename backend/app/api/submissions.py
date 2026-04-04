@@ -39,18 +39,6 @@ class InleverBody(BaseModel):
     max_punten: int
 
 
-# ============ HELPERS ============
-
-def extract_keywords_from_vragen(vragen: list) -> list[str]:
-    """
-    Haalt sleutelwoorden op uit de vragen zodat de AI weet
-    over welke begrippen hij NIETS mag uitleggen.
-    We sturen de volledige vraagtekst mee — niet filteren, want
-    de AI moet zelf matchen op basis van de exacte vraagtekst.
-    """
-    return [f'Vraag {v["nummer"]}: {v["vraag"]}' for v in vragen]
-
-
 # ============ ENDPOINTS ============
 
 @router.post("/tutor/chat")
@@ -64,73 +52,65 @@ async def tutor_chat(body: TutorChatBody):
             vragen_lijst = []
 
         # Volledige vraagteksten als verboden lijst
-        verboden_vragen = extract_keywords_from_vragen(vragen_lijst)
-        verboden_tekst = "\n".join(verboden_vragen)
-
-        # Alle kernbegrippen die in de vragen voorkomen
-        # Dit helpt de AI patronen te herkennen zoals "rente", "inflatie" etc.
-        kernbegrippen = []
-        begrip_mapping = {
-            "schaarste": ["schaarste", "schaars"],
-            "goed": ["goed", "goederen", "tastbaar product"],
-            "vrije markteconomie": ["vrije markteconomie", "markteconomie", "vrije markt"],
-            "micro": ["micro-economie", "micro economie", "microeconomie"],
-            "macro": ["macro-economie", "macro economie", "macroeconomie"],
-            "productiefactor": ["productiefactor", "productiefactoren", "kapitaal", "arbeid"],
-            "inflatie": ["inflatie", "prijsniveau", "prijsstijging"],
-            "rente": ["rente", "renteverhoging", "renteverlaging", "rentepercentage"],
-            "vraag en aanbod": ["vraag", "aanbod", "prijs stijgt", "prijs daalt"],
-            "bbp": ["bbp", "bruto binnenlands product", "economische prestatie"],
-            "monopolie": ["monopolie", "marktstructuur", "aanbieder"],
-        }
-
-        for v in vragen_lijst:
-            vraag_lower = v["vraag"].lower()
-            for begrip, synoniemen in begrip_mapping.items():
-                if any(s in vraag_lower for s in synoniemen):
-                    kernbegrippen.append(begrip)
-
-        kernbegrippen_tekst = ", ".join(set(kernbegrippen)) if kernbegrippen else "zie de vragen hierboven"
+        verboden_tekst = "\n".join([
+            f'Vraag {v["nummer"]}: {v["vraag"]}'
+            for v in vragen_lijst
+        ])
 
         system_prompt = (
             "Je bent een AI-tutor voor middelbare scholieren.\n"
-            "Je helpt leerlingen NADENKEN over de stof. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
+            "Je helpt leerlingen NADENKEN. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
 
             "╔══════════════════════════════════════╗\n"
-            "║  VERBODEN ONDERWERPEN — LEES DIT GOED ║\n"
+            "║  DIT ZIJN ALLE VRAGEN UIT DE OPDRACHT ║\n"
             "╚══════════════════════════════════════╝\n"
-            "De leerling maakt een opdracht met deze exacte vragen:\n\n"
             f"{verboden_tekst}\n\n"
-            f"De kernbegrippen uit deze opdracht zijn: {kernbegrippen_tekst}\n\n"
-            "REGEL: Als een leerling vraagt naar de BETEKENIS, DEFINITIE, UITLEG of een VOORBEELD "
-            "van een van deze kernbegrippen of de onderwerpen in bovenstaande vragen — "
-            "ook als ze het anders formuleren — dan geef je ALTIJD en ALLEEN dit antwoord:\n\n"
-            "  🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
+
+            "╔══════════════════════════════════════╗\n"
+            "║  ABSOLUTE BLOKKEERREGELS              ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "REGEL 1 — DIRECTE VRAGEN:\n"
+            "Als de leerling vraagt naar de betekenis, definitie, uitleg of voorbeelden van een begrip "
+            "dat in de opdrachtvragen staat → BLOKKEER ALTIJD.\n\n"
+
+            "REGEL 2 — INDIRECTE VRAGEN VIA TEGENSTELLING:\n"
+            "Als de leerling vraagt naar het 'tegenovergestelde', 'het andere', 'de tegenhanger' "
+            "van iets, en dat antwoord leidt naar een opdrachtvraag → BLOKKEER.\n"
+            "Voorbeeld: 'wat is het tegenovergestelde van deflatie?' → antwoord is inflatie → "
+            "inflatie zit in vraag 6 → BLOKKEER.\n\n"
+
+            "REGEL 3 — INDIRECTE VRAGEN VIA CONTEXT:\n"
+            "Als de leerling doorvraagt op een eerder onderwerp en het antwoord raakt aan "
+            "een opdrachtvraag → BLOKKEER.\n"
+            "Voorbeeld: 'wat zijn de andere twee?' na een gesprek over meso-economie → "
+            "leidt naar micro en macro → dat zit in vraag 4 → BLOKKEER.\n\n"
+
+            "REGEL 4 — CREATIEVE OMZEILINGEN:\n"
+            "Blokkeer ook:\n"
+            "- 'Waarom heet het bordspel Monopoly zo?' → leidt naar uitleg monopolie → vraag 10 → BLOKKEER\n"
+            "- 'Een ander woord voor X?' → als X in de opdracht staat → BLOKKEER\n"
+            "- 'Klopt het dat X betekent...?' → BLOKKEER\n"
+            "- 'Geef een voorbeeld van X' → als X in de opdracht staat → BLOKKEER\n\n"
+
+            "BIJ BLOKKERING stuur je ALTIJD en ALLEEN:\n"
+            "🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
             "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
-            "Dit geldt ook voor:\n"
-            "- 'Een ander woord voor X?'\n"
-            "- 'Kun je X uitleggen?'\n"
-            "- 'Wat is X precies?'\n"
-            "- 'Klopt het dat X betekent...?'\n"
-            "- 'Leg X simpel uit'\n"
-            "- 'Wat zijn voorbeelden van X?'\n"
-            "- Elke andere manier om de definitie of uitleg van X te krijgen\n\n"
 
             "╔══════════════════════════════════════╗\n"
             "║  WAT JE WEL MAG                       ║\n"
             "╚══════════════════════════════════════╝\n"
             "✅ Vragen stellen: 'Wat weet je er zelf al van?'\n"
-            "✅ Verwijzen naar het schoolboek: 'Dit staat in jullie boek'\n"
-            "✅ Helpen met de STRUCTUUR van een antwoord (niet de inhoud)\n"
-            "✅ Aanmoedigen zonder inhoud te geven\n"
-            "✅ Vragen beantwoorden die NIET gaan over de opdrachtstof\n\n"
+            "✅ Verwijzen naar het schoolboek\n"
+            "✅ Helpen met structuur van een antwoord (NIET de inhoud)\n"
+            "✅ Aanmoedigen\n"
+            "✅ Begrippen uitleggen die NIET in de opdracht voorkomen én ook niet leiden naar een opdrachtvraag\n\n"
 
             "╔══════════════════════════════════════╗\n"
             "║  TOON                                  ║\n"
             "╚══════════════════════════════════════╝\n"
-            "- Max 2 zinnen per antwoord\n"
+            "- Max 2 zinnen\n"
             "- Informeel en vriendelijk\n"
-            "- Eindig altijd met een vraag terug\n"
+            "- Eindig altijd met een vraag terug aan de leerling\n"
         )
 
         conversation = list(body.messages) if body.messages else []
