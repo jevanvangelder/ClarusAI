@@ -43,89 +43,66 @@ class InleverBody(BaseModel):
 # ============ HELPERS ============
 
 BLOKKEER_ANTWOORD = (
-    "🚫 Dat lijkt op een vraag uit je opdracht! Dat antwoord moet van jou komen. "
+    "🚫 Dat is precies wat de opdracht vraagt! Dat antwoord moet van jou komen. "
     "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?"
 )
 
-# Zinnen/patronen die aangeven dat de leerling naar een definitie/uitleg vraagt
-VRAAG_PATRONEN = [
-    r"wat is\b",
-    r"wat zijn\b",
-    r"wat betekent\b",
-    r"wat betekenen\b",
-    r"kun je .* uitleggen",
-    r"kan je .* uitleggen",
-    r"leg .* uit",
-    r"uitleg(gen)? over",
-    r"uitleggen wat",
-    r"definitie van",
-    r"omschrijf",
-    r"beschrijf",
-    r"hoe werkt\b",
-    r"hoe heet\b",
-    r"ander woord voor",
-    r"synoniem",
-    r"voorbeeld van\b",
-    r"voorbeelden van\b",
-    r"verklaar\b",
-    r"klopt het dat",
-    r"is het waar dat",
-    r"bedoel je",
-    r"wat houdt .* in",
-    r"wat versta je onder",
+# Patronen die aangeven dat een leerling een definitie/antwoord wil
+DEFINITIE_PATRONEN = [
+    r"\bwat is\b",
+    r"\bwat zijn\b",
+    r"\bwat betekent\b",
+    r"\bwat betekenen\b",
+    r"\bdefinieer\b",
+    r"\bdefinitie\b",
+    r"\bomschrijf\b",
+    r"\bleg uit wat\b",
+    r"\buitleggen wat\b",
+    r"\bverklaar\b",
 ]
 
 def is_definitie_vraag(tekst: str) -> bool:
-    """Controleert of de leerling een definitie/uitleg vraagt."""
     tekst_lower = tekst.lower()
-    for patroon in VRAAG_PATRONEN:
+    for patroon in DEFINITIE_PATRONEN:
         if re.search(patroon, tekst_lower):
             return True
     return False
 
 
-def extract_vakbegrippen_uit_vragen(vragen: list) -> list[str]:
+def get_exacte_vraagwoorden(vragen: list) -> list[str]:
     """
-    Haalt alleen de echte vakbegrippen op uit de vraagteksten.
-    Dit doet de AI zelf via een aparte prompt-aanroep — maar we
-    doen het hier slim door de antwoord/toelichting velden te gebruiken
-    als die beschikbaar zijn, anders de vraagtekst zelf.
-
-    We filteren op woorden die:
-    - Langer zijn dan 5 tekens (echte vakbegrippen zijn zelden kort)
-    - Niet voorkomen in een grote stopwoordenlijst
-    - Specifiek economisch/vakinhoudelijk zijn
+    Haalt de kernbegrippen op die LETTERLIJK in de vraagtekst staan
+    en echt vakspecifiek zijn. Geen algemene woorden.
+    Minimaal 6 tekens, niet in stopwoordenlijst.
     """
     stopwoorden = {
-        # Algemene woorden
-        "welke", "volgende", "volgen", "voorbeeld", "stelling", "tussen",
-        "invloed", "heeft", "hebben", "wordt", "worden", "bepaal", "bepaalt",
-        "stijgt", "daalt", "nemen", "maken", "geven", "doen", "zien",
-        "kunnen", "moeten", "mogen", "willen", "gaan", "komen", "staan",
-        "grote", "kleine", "eerste", "tweede", "derde", "laatste",
-        "product", "producten", "goederen", "diensten", "prijs", "prijzen",
-        "markt", "markten", "economie", "economisch", "bedrijf", "bedrijven",
+        "welke", "volgende", "voorbeeld", "stelling", "tussen", "invloed",
+        "heeft", "hebben", "wordt", "worden", "bepaal", "bepaalt", "stijgt",
+        "daalt", "nemen", "maken", "geven", "doen", "zien", "kunnen",
+        "moeten", "mogen", "willen", "gaan", "komen", "staan", "grote",
+        "kleine", "eerste", "tweede", "derde", "laatste", "product",
+        "producten", "goederen", "diensten", "prijs", "prijzen", "markt",
+        "markten", "economie", "economisch", "bedrijf", "bedrijven",
         "overheid", "mensen", "persoon", "individu", "land", "landen",
         "waarde", "waarden", "kosten", "opbrengst", "winst", "verlies",
+        "vraag", "aanbod", "stijging", "daling", "factor", "factoren",
+        "verschil", "invloed", "gevolg", "oorzaak", "reden", "soort",
+        "soorten", "uitleg", "uitleggen", "beschrijf", "noem", "geef",
+        "stel", "waar", "onwaar", "juist", "onjuist", "correct",
     }
 
     begrippen = set()
     for v in vragen:
-        # Gebruik de vraagtekst
         tekst = v.get("vraag", "").lower()
         tekst = re.sub(r"[^\w\s]", " ", tekst)
         for woord in tekst.split():
-            if len(woord) > 5 and woord not in stopwoorden:
+            if len(woord) >= 6 and woord not in stopwoorden:
                 begrippen.add(woord)
 
     return list(begrippen)
 
 
-def invoer_matcht_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
-    """
-    Controleert of de invoer van de leerling een vakbegrip bevat
-    dat uit de opdrachtvragen komt.
-    """
+def invoer_bevat_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
     tekst_lower = re.sub(r"[^\w\s]", " ", tekst.lower())
     for begrip in begrippen:
         if begrip in tekst_lower:
@@ -134,19 +111,15 @@ def invoer_matcht_vakbegrip(tekst: str, begrippen: list[str]) -> bool:
 
 
 def is_verboden_vraag(tekst: str, begrippen: list[str]) -> bool:
-    """
-    Een vraag is verboden als BEIDE condities gelden:
-    1. Het is een definitie/uitlegvraag (patroon)
-    2. Het bevat een vakbegrip uit de opdracht
-    """
-    return is_definitie_vraag(tekst) and invoer_matcht_vakbegrip(tekst, begrippen)
+    """Alleen blokkeren als het ZOWEL een definitievraag IS als een vakbegrip bevat."""
+    return is_definitie_vraag(tekst) and invoer_bevat_vakbegrip(tekst, begrippen)
 
 
 # ============ ENDPOINTS ============
 
 @router.post("/tutor/chat")
 async def tutor_chat(body: TutorChatBody):
-    """AI tutor voor studenten — helpt bij stof maar geeft NOOIT antwoorden."""
+    """AI tutor voor studenten — helpt écht maar geeft geen opdracht-antwoorden."""
     try:
         try:
             context_data = json.loads(body.opdracht_context)
@@ -154,51 +127,58 @@ async def tutor_chat(body: TutorChatBody):
         except Exception:
             vragen_lijst = []
 
-        vakbegrippen = extract_vakbegrippen_uit_vragen(vragen_lijst)
+        vakbegrippen = get_exacte_vraagwoorden(vragen_lijst)
 
-        # ══════════════════════════════════════
-        # HARDE CHECK 1: Is dit een definitievraag over een vakbegrip?
-        # Alleen blokkeren als BEIDE waar zijn:
-        # - het is een definitie/uitlegvraag
-        # - het bevat een vakbegrip uit de opdracht
-        # ══════════════════════════════════════
+        # Harde blokkering: alleen als het een definitievraag is over een vakbegrip
         if is_verboden_vraag(body.content, vakbegrippen):
             return {"message": BLOKKEER_ANTWOORD}
 
-        # ��═════════════════════════════════════
-        # HARDE CHECK 2: Doorvraag op eerder verboden onderwerp?
-        # Alleen als de vorige leerling-vraag ook verboden was
-        # ══════════════════════════════════════
-        recente_user_berichten = [
-            m["content"] for m in (body.messages or [])
-            if m.get("role") == "user"
-        ][-1:]  # alleen laatste bericht
-
-        for recent in recente_user_berichten:
-            if is_verboden_vraag(recent, vakbegrippen):
-                # Vorige vraag was verboden, doorvraag ook blokkeren
-                if is_definitie_vraag(body.content) or invoer_matcht_vakbegrip(body.content, vakbegrippen):
-                    return {"message": BLOKKEER_ANTWOORD}
-
-        # ══════════════════════════════════════
-        # AI mag antwoorden
-        # ══════════════════════════════════════
+        # Volledige vraagteksten voor de AI-prompt
         verboden_tekst = "\n".join([
             f'Vraag {v["nummer"]}: {v["vraag"]}'
             for v in vragen_lijst
         ])
 
         system_prompt = (
-            "Je bent een AI-tutor voor middelbare scholieren.\n"
-            "Je helpt leerlingen NADENKEN. Je geeft NOOIT antwoorden op opdrachtvragen.\n\n"
-            "De leerling maakt een opdracht met deze vragen — geef hierover NOOIT uitleg of definities:\n"
+            "Je bent een enthousiaste en behulpzame AI-tutor voor middelbare scholieren.\n"
+            "Je doel: leerlingen écht helpen de stof te begrijpen, zonder de antwoorden te geven.\n\n"
+
+            "╔══════════════════════════════════════╗\n"
+            "║  OPDRACHTVRAGEN — NOOIT BEANTWOORDEN  ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "Op de volgende vragen geef je NOOIT een direct antwoord, definitie of uitleg "
+            "die als antwoord gebruikt kan worden:\n\n"
             f"{verboden_tekst}\n\n"
-            "WAT JE WEL MAG:\n"
-            "✅ Vragen stellen: 'Wat weet je er zelf al van?'\n"
-            "✅ Verwijzen naar het schoolboek\n"
-            "✅ Aanmoedigen zonder inhoud te geven\n"
-            "✅ Helpen met onderwerpen die NIET in de opdracht staan\n\n"
-            "TOON: Max 2 zinnen, informeel, eindig met een vraag terug.\n"
+            "Als een leerling vraagt naar het antwoord op een van bovenstaande vragen "
+            "(ook indirect of anders geformuleerd), zeg je:\n"
+            "🚫 Dat is precies wat de opdracht vraagt! Dat antwoord moet van jou komen. "
+            "Heb je het al in je schoolboek opgezocht? Wat weet je er zelf al van?\n\n"
+
+            "╔═���════════════════════════════════════╗\n"
+            "║  HOE JE ÉCHT HELPT                    ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "Voor ALLE andere vragen ben je zo behulpzaam mogelijk:\n\n"
+            "✅ Leg begrippen uit die NIET in de opdracht staan (product, dienst, marktstructuur etc.)\n"
+            "✅ Geef voorbeelden uit het dagelijks leven om de stof te verduidelijken\n"
+            "✅ Leg uit hoe begrippen samenhangen\n"
+            "✅ Help de leerling nadenken met gerichte vragen\n"
+            "✅ Geef hints die de leerling op weg helpen zonder het antwoord te geven\n"
+            "✅ Leg de structuur van een goed antwoord uit (bijv. 'bij open vragen begin je met...')\n"
+            "✅ Moedig aan en wees positief\n\n"
+
+            "VOORBEELDEN van wat je WEL doet:\n"
+            "- 'Wat is een product?' → leg het gewoon uit, staat niet in de opdracht\n"
+            "- 'Wat zijn marktstructuren?' → geef uitleg, staat niet in de opdracht\n"
+            "- 'Ik snap vraag 4 niet' → help de leerling nadenken zonder het antwoord te geven\n"
+            "- 'Hoe schrijf ik een goed antwoord?' → geef schrijftips\n\n"
+
+            "╔══════════════════════════════════════╗\n"
+            "║  TOON                                  ║\n"
+            "╚══════════════════════════════════════╝\n"
+            "- Informeel, warm en aanmoedigend\n"
+            "- Geef echte uitleg als dat mag, niet alleen vragen terugkaatsen\n"
+            "- Max 3-4 zinnen per antwoord\n"
+            "- Eindig met een vraag die de leerling verder helpt\n"
         )
 
         conversation = list(body.messages) if body.messages else []
