@@ -119,7 +119,6 @@ function App() {
   }) || []
 
   return (
-    // ✅ Dashboard-stijl achtergrond: diepe donkerblauwe tint
     <div
       className="flex overflow-hidden font-['Inter'] text-white"
       style={{ height: 'calc(var(--vh, 1vh) * 100)', backgroundColor: '#080d1f' }}
@@ -160,14 +159,24 @@ function App() {
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col min-h-0">
-        {/* ✅ Top Bar — dashboard stijl */}
+        {/* Top Bar */}
         <div
-          className="h-14 flex items-center px-4 gap-4 flex-shrink-0 border-b border-white/10"
+          className="h-14 flex items-center px-4 gap-2 flex-shrink-0 border-b border-white/10"
           style={{ backgroundColor: '#0f1029' }}
         >
+          {/* LINKS: pijl linker sidebar — helemaal links */}
+          <button
+            onClick={() => setShowLeftSidebar(!showLeftSidebar)}
+            className="text-white/50 hover:text-white transition-colors flex-shrink-0"
+            title="Linkerzijbalk in-/uitklappen"
+          >
+            {showLeftSidebar ? <CaretLeft size={20} /> : <CaretRight size={20} />}
+          </button>
+
+          {/* Dashboard knop — direct rechts van pijl */}
           <a
             href="/"
-            className="flex items-center gap-1.5 text-white/50 hover:text-white transition-colors text-sm font-medium mr-1"
+            className="flex items-center gap-1.5 text-white/50 hover:text-white transition-colors text-sm font-medium flex-shrink-0"
             title="Terug naar Dashboard"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -177,27 +186,27 @@ function App() {
             <span className="hidden md:inline">Dashboard</span>
           </a>
 
-          <button onClick={() => setShowLeftSidebar(!showLeftSidebar)} className="text-white/50 hover:text-white transition-colors">
-            {showLeftSidebar ? <CaretLeft size={20} /> : <CaretRight size={20} />}
+          {/* Scheidingsstreepje */}
+          <div className="w-px h-5 bg-white/10 flex-shrink-0" />
+
+          {/* Nieuwe chat knop */}
+          <button
+            onClick={() => { setActiveChat(null); setInputValue('') }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all flex-shrink-0"
+          >
+            <span className="text-base leading-none">+</span>
+            <span className="hidden md:inline">Nieuwe chat</span>
           </button>
 
-          <div className="flex items-center gap-3">
-            {/* ✅ Nieuwe chat knop — blauwe dashboard stijl */}
-            <button
-              onClick={() => { setActiveChat(null); setInputValue('') }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-all"
-            >
-              <span className="text-base">+</span>
-              <span className="hidden md:inline">Nieuwe chat</span>
-            </button>
-            {currentChat && (
-              <h2 className="text-sm font-medium text-white/70 hidden md:block truncate max-w-[200px]">
-                {currentChat.title}
-              </h2>
-            )}
-          </div>
+          {/* Chat titel (indien actief) */}
+          {currentChat && (
+            <h2 className="text-sm font-medium text-white/70 hidden md:block truncate min-w-0">
+              {currentChat.title}
+            </h2>
+          )}
 
-          <div className="ml-auto flex items-center gap-2">
+          {/* RECHTS: schoolboek + pijl rechter sidebar */}
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
             {activeEbookId && activeEbookTitle ? (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium">
                 <span>{activeEbookEmoji || '📚'}</span>
@@ -218,14 +227,19 @@ function App() {
                 <span className="hidden md:inline">Schoolboek kiezen</span>
               </button>
             )}
-          </div>
 
-          <button onClick={() => setShowRightSidebar(!showRightSidebar)} className="text-white/50 hover:text-white transition-colors">
-            {showRightSidebar ? <CaretRight size={20} /> : <CaretLeft size={20} />}
-          </button>
+            {/* Pijl rechter sidebar — helemaal rechts */}
+            <button
+              onClick={() => setShowRightSidebar(!showRightSidebar)}
+              className="text-white/50 hover:text-white transition-colors"
+              title="Rechterzijbalk in-/uitklappen"
+            >
+              {showRightSidebar ? <CaretRight size={20} /> : <CaretLeft size={20} />}
+            </button>
+          </div>
         </div>
 
-        {/* ✅ Messages area */}
+        {/* Messages area */}
         <div className="flex-1 overflow-y-auto" ref={scrollRef}>
           <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-4">
             {!currentChat?.messages.length && (
@@ -251,7 +265,7 @@ function App() {
           </div>
         </div>
 
-        {/* ✅ Input Area — dashboard stijl */}
+        {/* Input Area */}
         <div className="p-4 flex-shrink-0 border-t border-white/10" style={{ backgroundColor: '#0f1029' }}>
           <div className="max-w-4xl mx-auto space-y-3">
             {uploadedFiles.length > 0 && (
@@ -292,7 +306,7 @@ function App() {
                   onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !isMobile) { e.preventDefault(); handleSend() } }}
                   rows={1}
                   disabled={isLoading}
-                  className="flex-1 bg-white/5 border border-white/10 hover:border-white/20 focus:border-blue-500/50 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 resize-none overflow-y-auto outline-none disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 bg-white/5 border border-white/10 hover:border-white/20 focus:border-blue-500/50 rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 resize-none overflow-y-auto outline-none transition-colors"
                   style={{ height: 'auto', scrollbarWidth: 'thin', lineHeight: '24px' }}
                 />
                 <button
