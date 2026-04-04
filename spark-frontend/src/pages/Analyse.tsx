@@ -150,14 +150,22 @@ export default function Analyse() {
 
       const { data: subs } = await query
 
-      // Haal namen op
+      // Haal namen op — inclusief first_name en last_name als fallback
       const student_ids = [...new Set((subs || []).map(s => s.student_id))]
       const { data: profielen } = await supabase
         .from('profiles')
-        .select('id, full_name')
+        .select('id, full_name, first_name, last_name')
         .in('id', student_ids)
+
       const namenMap: Record<string, string> = {}
-      ;(profielen || []).forEach(p => { namenMap[p.id] = p.full_name })
+      ;(profielen || []).forEach(p => {
+        // Gebruik full_name als het gevuld is, anders combineer first_name + last_name
+        if (p.full_name && p.full_name.trim() !== '') {
+          namenMap[p.id] = p.full_name.trim()
+        } else if (p.first_name || p.last_name) {
+          namenMap[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim()
+        }
+      })
 
       // Verwerk inzendingen
       const verwerkt: Inzending[] = (subs || []).map(s => {
