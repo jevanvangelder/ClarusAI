@@ -118,9 +118,10 @@ async def is_indirecte_omzeiling(
     vragen_lijst: list
 ) -> bool:
     """
-    Vraagt een snelle AI-check: leidt deze vraag (direct of via de context
-    van het gesprek) naar het antwoord op een opdrachtvraag?
+    AI-check: leidt deze vraag (direct of via gesprekscontext) naar
+    het antwoord op een opdrachtvraag?
     Geeft True terug als het geblokkeerd moet worden.
+    Werkt voor elk vak — geen vak-specifieke voorbeelden.
     """
     verboden_tekst = "\n".join([
         f'Vraag {v["nummer"]}: {v["vraag"]}'
@@ -134,33 +135,34 @@ async def is_indirecte_omzeiling(
         recente_context += f"{rol}: {m.get('content', '')}\n"
 
     check_prompt = (
-        "Je bent een beveiligingssysteem voor een AI-tutor. "
-        "Je taak is te beoordelen of een vraag van een leerling leidt naar "
+        "Je bent een beveiligingssysteem voor een AI-tutor op een middelbare school. "
+        "Je taak is te beoordelen of de vraag van een leerling leidt naar "
         "het antwoord op een van de opdrachtvragen.\n\n"
         f"OPDRACHTVRAGEN:\n{verboden_tekst}\n\n"
         f"RECENTE GESPREKSCONTEXT:\n{recente_context}\n"
         f"NIEUWE VRAAG VAN LEERLING: {user_input}\n\n"
-        "Beoordeel: leidt deze vraag (direct OF via de gesprekscontext) naar "
-        "het antwoord op een van de opdrachtvragen?\n\n"
-        "Voorbeelden die JA zijn:\n"
-        "- 'Het tegenovergestelde van deflatie?' → antwoord is inflatie → staat in vraag 6 → JA\n"
-        "- 'Stel er is maar 1 aanbieder, hoe heet dat?' → antwoord is monopolie → staat in vraag 10 → JA\n"
-        "- 'Waarom heet het spel Monopoly zo?' → legt monopolie uit → staat in vraag 10 → JA\n"
-        "- 'Wat zijn de andere twee schalen?' na gesprek over meso → micro/macro → vraag 4 → JA\n"
-        "- 'Klopt het dat schaarste betekent dat er te weinig is?' → vraag 1 → JA\n\n"
-        "Voorbeelden die NEE zijn:\n"
-        "- 'Wat is een dienst?' → staat niet in de opdracht → NEE\n"
-        "- 'Hoe schrijf ik een goed antwoord?' → algemeen → NEE\n"
-        "- 'Welke marktstructuren zijn er?' → staat niet in de opdracht → NEE\n"
-        "- 'Wat is deflatie?' → staat niet in de opdracht → NEE\n"
-        "- 'Wat zijn organellen?' → algemeen begrip, staat niet als vraag in de opdracht → NEE\n"
-        "- 'Wat is het verschil tussen prokaryoten en eukaryoten?' → bredere uitlegvraag, niet letterlijk de opdrachtvraag → NEE\n"
-        "- 'Wat is het verschil tussen sparen en lenen?' → staat niet in de opdracht → NEE\n"
-        "- 'Ik snap vraag en aanbod niet' → vraag om uitleg van concept, niet om antwoord → NEE\n"
-        "- 'Wat is osmose?' → algemeen begrip buiten de opdracht → NEE\n"
-        "- 'Wat is DNA?' → algemeen begrip buiten de opdracht → NEE\n"
-        "- 'Wat is het verschil tussen prokaryoten en eukaryoten?' → bredere uitlegvraag dan wat de opdracht vraagt → NEE\n"
-        "- 'Wat zijn de verschillen tussen dierlijke en plantaardige cellen in het algemeen?' → algemene uitlegvraag, breder dan de specifieke opdrachtvraag → NEE\n\n"
+
+        "REDENEER ALS VOLGT:\n"
+        "1. Wat is het antwoord op de vraag van de leerling?\n"
+        "2. Is dat antwoord hetzelfde als (of een directe hint naar) het antwoord op een opdrachtvraag?\n"
+        "3. Zo ja → JA. Zo nee → NEE.\n\n"
+
+        "BLOKKEER (JA) als:\n"
+        "- Het antwoord op de leerlingvraag direct overeenkomt met het antwoord op een opdrachtvraag\n"
+        "- De leerling via een omweg (andere formulering, spel, context) naar hetzelfde antwoord vraagt\n"
+        "- De leerling vraagt of een antwoord klopt dat gelijk is aan het opdracht-antwoord\n"
+        "- De leerling via de gesprekscontext doorvraagt naar een opdracht-antwoord\n\n"
+
+        "NIET BLOKKEREN (NEE) als:\n"
+        "- De vraag gaat over een begrip of onderwerp dat niet in de opdracht voorkomt\n"
+        "- De vraag breder is dan wat de opdracht specifiek vraagt\n"
+        "- De vraag gaat over een overkoepelend concept terwijl de opdracht alleen een deelaspect vraagt\n"
+        "- De vraag om schrijftips, studieadvies of uitleg van de opdrachtvorm gaat\n"
+        "- Het antwoord op de leerlingvraag de leerling NIET verder helpt bij het beantwoorden van een opdrachtvraag\n\n"
+
+        "BELANGRIJK: Je werkt voor elk vak (biologie, economie, geschiedenis, wiskunde etc.). "
+        "Redeneer altijd op basis van de opdrachtvragen hierboven, niet op basis van vaste voorbeelden.\n\n"
+
         "Antwoord met ALLEEN het woord JA of NEE, niets anders."
     )
 
