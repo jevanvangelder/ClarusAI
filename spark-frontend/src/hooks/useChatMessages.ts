@@ -46,6 +46,36 @@ export function useChatMessages({
     fileInputRef.current?.click()
   }
 
+  // ✅ AI-gegenereerde titel op basis van eerste heen-en-weer
+  const generateAITitle = async (
+    chatId: string,
+    userContent: string,
+    assistantContent: string
+  ) => {
+    try {
+      const res = await fetch(`${API_URL}/api/chat/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          content: `Genereer een korte, beschrijvende titel (max 5 woorden, geen aanhalingstekens) voor een gesprek dat begint met:
+Gebruiker: "${userContent.slice(0, 300)}"
+AI: "${assistantContent.slice(0, 300)}"
+Geef ALLEEN de titel terug, niets anders.`,
+          messages: [],
+          active_module_ids: [],
+          active_module_prompts: [],
+        }),
+      })
+      if (!res.ok) return null
+      const data = await res.json()
+      // Schoon de titel op: geen aanhalingstekens, max 60 tekens
+      const rawTitle = (data.message || '').trim().replace(/^["']|["']$/g, '')
+      return rawTitle.slice(0, 60) || null
+    } catch {
+      return null
+    }
+  }
+
   const handleSend = async () => {
     if (!inputValue.trim() && uploadedFiles.length === 0) return
     if (!user) return
@@ -66,9 +96,11 @@ export function useChatMessages({
     }
 
     let chatId = activeChat
+    let isNewChat = false
 
     // ✅ Chat aanmaken in Supabase als er nog geen actieve chat is
     if (!chatId) {
+      isNewChat = true
       try {
         const res = await fetch(`${API_URL}/api/chats`, {
           method: 'POST',
@@ -227,28 +259,28 @@ export function useChatMessages({
         )
       )
 
-      // ✅ Auto-titel genereren
-      const chatToCheck = chats.find(c => c.id === chatId)
-      if (chatToCheck?.title === 'Nieuwe chat') {
-        try {
-          const words = userMessage.content.split(' ').slice(0, 5).join(' ')
-          const generatedTitle = words.length > 40 ? words.substring(0, 40) + '...' : words
-
-          await fetch(`${API_URL}/api/chats/${chatId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ title: generatedTitle }),
-          })
-
-          setChats(prev =>
-            prev.map(chat =>
-              chat.id === chatId ? { ...chat, title: generatedTitle } : chat
+      // ✅ AI-titel genereren na het eerste heen-en-weer (alleen bij nieuwe chat)
+      if (isNewChat) {
+        // Fire-and-forget: titel genereren op de achtergrond
+        generateAITitle(chatId!, userMessageContent, response).then(async (aiTitel) => {
+          const titel = aiTitel || userMessageContent.split(' ').slice(0, 5).join(' ')
+          try {
+            await fetch(`${API_URL}/api/chats/${chatId}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ title: titel }),
+            })
+            setChats(prev =>
+              prev.map(chat =>
+                chat.id === chatId ? { ...chat, title: titel } : chat
+              )
             )
-          )
-        } catch (error) {
-          console.error('Error generating title:', error)
-        }
+          } catch (error) {
+            console.error('Error updating chat title:', error)
+          }
+        })
       }
+
     } catch (error) {
       toast.error('Er is een fout opgetreden bij het genereren van een antwoord.')
       console.error('Error generating response:', error)

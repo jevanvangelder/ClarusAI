@@ -26,14 +26,14 @@ interface ChatSidebarProps {
   activeFilter?: 'default' | 'favorite' | 'note' | 'trash'
   onFilterChange?: (filter: 'default' | 'favorite' | 'note' | 'trash') => void
   onSettingsClick?: () => void
-  onClose?: () => void  // ✅ NIEUW
+  onClose?: () => void
 }
 
-function ChatSidebarComponent({ 
-  chats, 
-  onChatSelect, 
-  activeChat, 
-  onDeleteChat, 
+function ChatSidebarComponent({
+  chats,
+  onChatSelect,
+  activeChat,
+  onDeleteChat,
   onRenameChat,
   onMoveToFavorites,
   onMoveToNotes,
@@ -43,13 +43,12 @@ function ChatSidebarComponent({
   activeFilter = 'default',
   onFilterChange,
   onSettingsClick,
-  onClose  // ✅ NIEUW
+  onClose,
 }: ChatSidebarProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [openMenuId, setOpenMenuId] = useState<string | null>(null)
   const [menuRefreshKey, setMenuRefreshKey] = useState(0)
 
-  // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       const target = e.target as HTMLElement
@@ -57,7 +56,6 @@ function ChatSidebarComponent({
         setOpenMenuId(null)
       }
     }
-
     if (openMenuId) {
       document.addEventListener('click', handleClickOutside)
       return () => document.removeEventListener('click', handleClickOutside)
@@ -70,21 +68,20 @@ function ChatSidebarComponent({
 
   return (
     <div className="w-full h-full bg-background border-r border-border flex flex-col">
-      {/* Header - Fixed */}
+      {/* Header */}
       <div className="flex-shrink-0 p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="font-['Space_Grotesk'] font-bold text-2xl uppercase tracking-wide">
             CHAT<br />GESCHIEDENIS
           </h1>
           <div className="flex items-center gap-1">
-            <button 
+            <button
               onClick={onSettingsClick}
               className="text-muted-foreground hover:text-foreground transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
               aria-label="Instellingen"
             >
               <Gear size={20} />
             </button>
-            {/* ✅ Close knop — alleen zichtbaar op mobiel */}
             {onClose && (
               <button
                 onClick={onClose}
@@ -98,9 +95,9 @@ function ChatSidebarComponent({
         </div>
 
         <div className="relative">
-          <MagnifyingGlass 
-            size={16} 
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" 
+          <MagnifyingGlass
+            size={16}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
           />
           <Input
             placeholder="Zoeken"
@@ -117,20 +114,20 @@ function ChatSidebarComponent({
           {filteredChats.map((chat) => (
             <div
               key={chat.id}
-              className={`relative group w-full max-w-full text-left py-2.5 rounded-md text-sm transition-all cursor-pointer ${
+              className={`relative group w-full text-left py-2.5 rounded-md text-sm transition-all cursor-pointer ${
                 activeChat === chat.id
                   ? 'bg-muted text-foreground border-l-2 border-primary'
                   : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
               }`}
               onClick={() => onChatSelect(chat.id)}
-              style={{ maxWidth: '100%', width: '100%' }}
             >
-              <div className="w-full max-w-full overflow-hidden pointer-events-none pr-10">
-                <span className="block truncate pl-3 pr-2 max-w-[200px] pointer-events-none">
+              {/* ✅ Titel: truncate werkt nu op volledige breedte minus de drie-puntjes knop */}
+              <div className="pl-3 pr-12 overflow-hidden pointer-events-none">
+                <span className="block truncate w-full pointer-events-none">
                   {chat.title}
                 </span>
                 {chat.status === 'trash' && chat.deletedAt && (
-                  <span className="block pl-3 pr-2 text-xs text-red-500 pointer-events-none">
+                  <span className="block text-xs text-red-500 pointer-events-none">
                     Verwijderd over {Math.max(0, 10 - Math.floor((Date.now() - chat.deletedAt) / (1000 * 60 * 60 * 24)))} dagen
                   </span>
                 )}
@@ -148,7 +145,7 @@ function ChatSidebarComponent({
               </button>
 
               {openMenuId === chat.id && (
-                <div 
+                <div
                   key={`${chat.id}-${chat.status}-${menuRefreshKey}`}
                   className="dropdown-menu absolute right-0 top-full mt-1 bg-popover border border-border rounded-md shadow-lg py-1 z-[100] min-w-[180px]"
                 >
@@ -167,16 +164,12 @@ function ChatSidebarComponent({
                       >
                         ↩️ Terugzetten
                       </button>
-
                       <div className="h-px bg-border my-1" />
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
                           if (window.confirm(`Chat "${chat.title}" definitief verwijderen?`)) {
-                            if (onPermanentDelete) {
-                              onPermanentDelete(chat.id)
-                            }
+                            if (onPermanentDelete) onPermanentDelete(chat.id)
                           }
                           setOpenMenuId(null)
                         }}
@@ -191,18 +184,14 @@ function ChatSidebarComponent({
                         onClick={(e) => {
                           e.stopPropagation()
                           const newTitle = prompt("Nieuwe titel:", chat.title)
-                          if (newTitle && onRenameChat) {
-                            onRenameChat(chat.id, newTitle)
-                          }
+                          if (newTitle && onRenameChat) onRenameChat(chat.id, newTitle)
                           setOpenMenuId(null)
                         }}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-muted flex items-center gap-2 min-h-[44px]"
                       >
                         ✏️ Titel aanpassen
                       </button>
-
                       <div className="h-px bg-border my-1" />
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -215,7 +204,6 @@ function ChatSidebarComponent({
                       >
                         ❤️ {chat.status === 'favorite' ? 'Uit favorieten' : 'Naar favorieten'}
                       </button>
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
@@ -228,15 +216,11 @@ function ChatSidebarComponent({
                       >
                         📝 {chat.status === 'note' ? 'Uit aantekeningen' : 'Naar aantekeningen'}
                       </button>
-
                       <div className="h-px bg-border my-1" />
-
                       <button
                         onClick={(e) => {
                           e.stopPropagation()
-                          if (onMoveToTrash) {
-                            onMoveToTrash(chat.id)
-                          }
+                          if (onMoveToTrash) onMoveToTrash(chat.id)
                           setOpenMenuId(null)
                         }}
                         className="w-full px-3 py-2 text-left text-sm hover:bg-muted text-orange-500 flex items-center gap-2 min-h-[44px]"
@@ -252,51 +236,39 @@ function ChatSidebarComponent({
         </div>
       </div>
 
-      {/* Footer - Fixed */}
+      {/* Footer */}
       <div className="flex-shrink-0 p-2 space-y-1 border-t border-border">
         <Separator className="mb-2" />
-        
-        <button 
+        <button
           onClick={() => onFilterChange?.('default')}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all min-h-[44px] ${
-            activeFilter === 'default' 
-              ? 'bg-muted text-foreground' 
-              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            activeFilter === 'default' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           <span>💬 Alle chats</span>
         </button>
-
-        <button 
+        <button
           onClick={() => onFilterChange?.('favorite')}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all min-h-[44px] ${
-            activeFilter === 'favorite' 
-              ? 'bg-muted text-foreground' 
-              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            activeFilter === 'favorite' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           <Heart size={18} />
           <span>Favorieten</span>
         </button>
-
-        <button 
+        <button
           onClick={() => onFilterChange?.('note')}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all min-h-[44px] ${
-            activeFilter === 'note' 
-              ? 'bg-muted text-foreground' 
-              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            activeFilter === 'note' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           <Note size={18} />
           <span>Aantekeningen</span>
         </button>
-
-        <button 
+        <button
           onClick={() => onFilterChange?.('trash')}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all min-h-[44px] ${
-            activeFilter === 'trash' 
-              ? 'bg-muted text-foreground' 
-              : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+            activeFilter === 'trash' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
           }`}
         >
           <Trash size={18} />
@@ -311,16 +283,14 @@ function arePropsEqual(prevProps: ChatSidebarProps, nextProps: ChatSidebarProps)
   if (prevProps.activeFilter !== nextProps.activeFilter) return false
   if (prevProps.activeChat !== nextProps.activeChat) return false
   if (prevProps.chats.length !== nextProps.chats.length) return false
-  
   const chatsEqual = prevProps.chats.every((chat, index) => {
     const nextChat = nextProps.chats[index]
-    return nextChat && 
-           chat.id === nextChat.id && 
-           chat.title === nextChat.title &&
-           chat.status === nextChat.status &&
-           chat.deletedAt === nextChat.deletedAt
+    return nextChat &&
+      chat.id === nextChat.id &&
+      chat.title === nextChat.title &&
+      chat.status === nextChat.status &&
+      chat.deletedAt === nextChat.deletedAt
   })
-  
   return chatsEqual
 }
 
