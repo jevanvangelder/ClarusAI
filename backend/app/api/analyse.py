@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from app.services.ai_service import ai_service
 from app.core.config import settings
 from supabase import create_client, Client
@@ -18,6 +18,40 @@ supabase: Client = create_client(settings.SUPABASE_URL, _service_key)
 class KerninzichtBody(BaseModel):
     assignment_id: str
     class_id: Optional[str] = None
+
+
+class StudentNamenBody(BaseModel):
+    student_ids: List[str]
+
+
+@router.post("/student-namen")
+async def get_student_namen(body: StudentNamenBody):
+    """
+    Haalt voornaam + achternaam op voor een lijst student-IDs.
+    Gebruikt de service key om RLS te omzeilen.
+    """
+    try:
+        if not body.student_ids:
+            return {}
+
+        profielen_res = supabase.table("profiles").select(
+            "id, full_name, first_name, last_name"
+        ).in_("id", body.student_ids).execute()
+
+        result = {}
+        for p in (profielen_res.data or []):
+            # Gebruik full_name als gevuld, anders first_name + last_name samenvoegen
+            if p.get("full_name") and p["full_name"].strip():
+                result[p["id"]] = p["full_name"].strip()
+            elif p.get("first_name") or p.get("last_name"):
+                result[p["id"]] = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip()
+
+        return result
+
+    except Exception as e:
+        print(f"❌ STUDENT-NAMEN error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/kerninzicht")
@@ -55,12 +89,20 @@ async def genereer_kerninzicht(body: KerninzichtBody):
                 "aantal_ingeleverd": 0,
             }
 
-        # Haal studentnamen op
+        # Haal studentnamen op (via service key, omzeilt RLS)
         student_ids = list({s["student_id"] for s in submissions})
         profielen_res = supabase.table("profiles").select(
-            "id, full_name"
+            "id, full_name, first_name, last_name"
         ).in_("id", student_ids).execute()
-        profielen = {p["id"]: p["full_name"] for p in (profielen_res.data or [])}
+
+        profielen = {}
+        for p in (profielen_res.data or []):
+            if p.get("full_name") and p["full_name"].strip():
+                profielen[p["id"]] = p["full_name"].strip()
+            elif p.get("first_name") or p.get("last_name"):
+                profielen[p["id"]] = f"{p.get('first_name') or ''} {p.get('last_name') or ''}".strip()
+            else:
+                profielen[p["id"]] = "Leerling"
 
         # Haal klasnaam op
         klasnaam = "de klas"

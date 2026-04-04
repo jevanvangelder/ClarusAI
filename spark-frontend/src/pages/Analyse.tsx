@@ -150,22 +150,24 @@ export default function Analyse() {
 
       const { data: subs } = await query
 
-      // Haal namen op — inclusief first_name en last_name als fallback
+      // ✅ Haal namen op via backend (omzeilt RLS — gebruikt service key)
       const student_ids = [...new Set((subs || []).map(s => s.student_id))]
-      const { data: profielen } = await supabase
-        .from('profiles')
-        .select('id, full_name, first_name, last_name')
-        .in('id', student_ids)
+      let namenMap: Record<string, string> = {}
 
-      const namenMap: Record<string, string> = {}
-      ;(profielen || []).forEach(p => {
-        // Gebruik full_name als het gevuld is, anders combineer first_name + last_name
-        if (p.full_name && p.full_name.trim() !== '') {
-          namenMap[p.id] = p.full_name.trim()
-        } else if (p.first_name || p.last_name) {
-          namenMap[p.id] = `${p.first_name || ''} ${p.last_name || ''}`.trim()
+      if (student_ids.length > 0) {
+        try {
+          const res = await fetch(`${API_URL}/api/analyse/student-namen`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ student_ids }),
+          })
+          if (res.ok) {
+            namenMap = await res.json()
+          }
+        } catch (err) {
+          console.warn('Namen ophalen mislukt, gebruik fallback:', err)
         }
-      })
+      }
 
       // Verwerk inzendingen
       const verwerkt: Inzending[] = (subs || []).map(s => {
