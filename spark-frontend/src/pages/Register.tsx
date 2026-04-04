@@ -1,12 +1,9 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth, UserRole } from '@/contexts/AuthContext'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
 import logoImg from '@/assets/logo.png'
-import { GraduationCap, BookOpen, School, Mail } from 'lucide-react'
+import { GraduationCap, BookOpen, School, Mail, Loader2, Eye, EyeOff } from 'lucide-react'
 
 const ROL_OPTIES: { value: UserRole; label: string; omschrijving: string; icon: any }[] = [
   { value: 'student', label: 'Student', omschrijving: 'Ik leer en maak opdrachten', icon: GraduationCap },
@@ -19,6 +16,7 @@ export default function Register() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [selectedRole, setSelectedRole] = useState<UserRole>('student')
   const [loading, setLoading] = useState(false)
   const [gelukt, setGelukt] = useState(false)
@@ -31,17 +29,16 @@ export default function Register() {
       return
     }
     if (password.length < 6) {
-      toast.error('Wachtwoord moet minimaal 6 karakters zijn')
+      toast.error('Wachtwoord moet minimaal 6 tekens zijn')
       return
     }
 
     setLoading(true)
-
     const { error } = await signUp(email, password, selectedRole)
 
     if (error) {
       if (error.message?.includes('already registered')) {
-        toast.error('Dit email adres is al in gebruik')
+        toast.error('Dit e-mailadres is al in gebruik')
       } else {
         toast.error(error.message || 'Er is een fout opgetreden')
       }
@@ -49,7 +46,6 @@ export default function Register() {
       return
     }
 
-    // Alles OK — toon bevestigscherm in dezelfde pagina
     setLoading(false)
     setGelukt(true)
   }
@@ -57,36 +53,43 @@ export default function Register() {
   // ===== BEVESTIGSCHERM =====
   if (gelukt) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <div className="w-full max-w-md">
-          <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-6 sm:p-8 space-y-6 text-center">
-            <div className="flex justify-center">
-              <img src={logoImg} alt="ClarusAI Logo" className="w-20 h-20 object-contain" />
+      <div className="min-h-screen bg-[#080d1f] flex items-center justify-center p-4">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-3xl" />
+        </div>
+
+        <div className="w-full max-w-md relative">
+          <div className="bg-[#0f1029] border border-white/10 rounded-2xl p-8 shadow-2xl space-y-6 text-center">
+            <img
+              src={logoImg}
+              alt="ClarusAI Logo"
+              className="w-14 h-14 object-contain mx-auto"
+              onError={(e) => { e.currentTarget.style.display = 'none' }}
+            />
+
+            <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mx-auto">
+              <Mail size={28} className="text-blue-400" />
             </div>
-            <div className="flex justify-center">
-              <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center">
-                <Mail size={30} className="text-blue-400" />
-              </div>
-            </div>
+
             <div className="space-y-3">
-              <h1 className="font-['Space_Grotesk'] text-2xl font-bold text-foreground">
-                Controleer je e-mail! 📬
-              </h1>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                Je account is aangemaakt! We hebben een verificatie-e-mail gestuurd naar:
+              <h1 className="text-2xl font-bold text-white">Controleer je e-mail! 📬</h1>
+              <p className="text-white/50 text-sm leading-relaxed">
+                Je account is aangemaakt. We hebben een verificatielink gestuurd naar:
               </p>
-              <p className="text-primary font-semibold">{email}</p>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                Klik op de link in die e-mail om je account te activeren. Daarna kun je inloggen bij ClarusAI.
+              <p className="text-blue-400 font-semibold text-sm">{email}</p>
+              <p className="text-white/40 text-sm leading-relaxed">
+                Klik op de link in de e-mail om je account te activeren. Daarna kun je inloggen bij ClarusAI.
               </p>
             </div>
-            <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg px-4 py-3 text-xs text-blue-300/80 text-left space-y-1">
-              <p>📁 Geen e-mail ontvangen?</p>
-              <p>Controleer je spam of ongewenste e-mail map. De e-mail kan soms een paar minuten onderweg zijn.</p>
+
+            <div className="bg-blue-500/5 border border-blue-500/15 rounded-xl px-4 py-3 text-xs text-blue-300/70 text-left space-y-1">
+              <p className="font-medium">📁 Geen e-mail ontvangen?</p>
+              <p>Controleer je spam of ongewenste e-mail map. Het kan soms een paar minuten duren.</p>
             </div>
+
             <Link
               to="/login"
-              className="block w-full py-2.5 px-4 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium rounded-lg transition-all text-center"
+              className="block w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-all text-center"
             >
               Terug naar inloggen
             </Link>
@@ -98,39 +101,54 @@ export default function Register() {
 
   // ===== REGISTRATIE FORMULIER =====
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
-        <div className="bg-card border-2 border-primary/50 rounded-xl shadow-2xl shadow-primary/20 p-6 sm:p-8 space-y-6">
-          <div className="flex justify-center">
-            <img src={logoImg} alt="ClarusAI Logo" className="w-20 h-20 object-contain" />
-          </div>
-          <div className="text-center space-y-2">
-            <h1 className="font-['Space_Grotesk'] text-3xl font-bold tracking-tight text-foreground">
-              Account aanmaken
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Of{' '}
-              <Link to="/login" className="font-medium text-primary hover:text-primary/80 transition-colors underline">
-                log in met je bestaande account
-              </Link>
-            </p>
+    <div className="min-h-screen bg-[#080d1f] flex items-center justify-center p-4">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/5 rounded-full blur-3xl" />
+      </div>
+
+      <div className="w-full max-w-md relative">
+        <div className="bg-[#0f1029] border border-white/10 rounded-2xl p-8 shadow-2xl space-y-7">
+
+          {/* Logo + titel */}
+          <div className="flex flex-col items-center gap-4 text-center">
+            <img
+              src={logoImg}
+              alt="ClarusAI Logo"
+              className="w-14 h-14 object-contain"
+              onError={(e) => { e.currentTarget.style.display = 'none' }}
+            />
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight">
+                Account aanmaken bij <span className="text-blue-400">ClarusAI</span>
+              </h1>
+              <p className="text-white/40 text-sm mt-1.5">
+                Al een account?{' '}
+                <Link
+                  to="/login"
+                  className="text-blue-400 hover:text-blue-300 transition-colors font-medium"
+                >
+                  Log in
+                </Link>
+              </p>
+            </div>
           </div>
 
+          {/* Rol kiezen */}
           <div className="space-y-2">
-            <Label className="text-foreground">Ik ben een...</Label>
+            <p className="text-sm font-medium text-white/60">Ik ben een...</p>
             <div className="grid grid-cols-3 gap-2">
               {ROL_OPTIES.map(({ value, label, omschrijving, icon: Icon }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setSelectedRole(value)}
-                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all text-center ${
+                  className={`flex flex-col items-center gap-2 p-3 rounded-xl border transition-all text-center ${
                     selectedRole === value
-                      ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:text-foreground'
+                      ? 'bg-blue-600/20 border-blue-500/30 text-white'
+                      : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white/70'
                   }`}
                 >
-                  <Icon size={22} />
+                  <Icon size={20} className={selectedRole === value ? 'text-blue-400' : ''} />
                   <span className="text-xs font-semibold leading-tight">{label}</span>
                   <span className="text-[10px] leading-tight opacity-70">{omschrijving}</span>
                 </button>
@@ -138,24 +156,74 @@ export default function Register() {
             </div>
           </div>
 
+          {/* Formulier */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="email" className="text-foreground">E-mailadres</Label>
-                <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={loading} className="mt-1.5" placeholder="jouw@email.nl" />
-              </div>
-              <div>
-                <Label htmlFor="password" className="text-foreground">Wachtwoord</Label>
-                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required disabled={loading} className="mt-1.5" placeholder="Minimaal 6 karakters" />
-              </div>
-              <div>
-                <Label htmlFor="confirmPassword" className="text-foreground">Bevestig wachtwoord</Label>
-                <Input id="confirmPassword" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required disabled={loading} className="mt-1.5" placeholder="Herhaal je wachtwoord" />
+            {/* E-mail */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white/60">E-mailadres</label>
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={loading}
+                placeholder="jouw@email.nl"
+                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+              />
+            </div>
+
+            {/* Wachtwoord */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white/60">Wachtwoord</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  disabled={loading}
+                  placeholder="Minimaal 6 tekens"
+                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 pr-11 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white/60 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
               </div>
             </div>
-            <Button type="submit" disabled={loading} className="w-full">
-              {loading ? 'Bezig met aanmaken...' : `Account aanmaken als ${ROL_OPTIES.find(r => r.value === selectedRole)?.label}`}
-            </Button>
+
+            {/* Bevestig wachtwoord */}
+            <div className="space-y-1.5">
+              <label className="block text-sm font-medium text-white/60">Bevestig wachtwoord</label>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                disabled={loading}
+                placeholder="Herhaal je wachtwoord"
+                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+              />
+            </div>
+
+            {/* Submit */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all text-sm mt-2"
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Bezig met aanmaken...
+                </>
+              ) : (
+                `Account aanmaken als ${ROL_OPTIES.find(r => r.value === selectedRole)?.label}`
+              )}
+            </button>
           </form>
         </div>
       </div>
