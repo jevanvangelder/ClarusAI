@@ -113,13 +113,13 @@ export default function Opdrachten() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  const sparInputRef = useRef<HTMLInputElement>(null)
+  // ✅ textarea ref (was HTMLInputElement)
+  const sparInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [sparMessages])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      // ✅ Sluit dropdown als er buiten de hele klas-sectie (dropdown + deadline-lijst) geklikt wordt
       if (klasDropdownRef.current && !klasDropdownRef.current.contains(e.target as Node))
         setKlasDropdownOpen(false)
     }
@@ -203,7 +203,6 @@ export default function Opdrachten() {
     })
   }
 
-  // ✅ NIEUW: alleen de deadline wissen, klas blijft geselecteerd
   const clearDeadlineForKlas = (class_id: string) => {
     setEditKlasDeadlines(prev =>
       prev.map(kd => kd.class_id === class_id ? { ...kd, deadline: '' } : kd)
@@ -239,13 +238,11 @@ export default function Opdrachten() {
     try {
       const vragenToSave = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
       const autoMaxPunten = berekenMaxPunten(vragenToSave)
-
       const { error: assignErr } = await supabase
         .from('assignments')
         .update({ title: editTitel, beschrijving: editBeschrijving, type: editType, max_punten: autoMaxPunten, vragen: vragenToSave })
         .eq('id', selectedOpdracht.id)
       if (assignErr) throw assignErr
-
       await supabase.from('assignment_classes').delete().eq('assignment_id', selectedOpdracht.id)
       if (editKlasDeadlines.length > 0) {
         const { error: acErr } = await supabase.from('assignment_classes').insert(
@@ -257,7 +254,6 @@ export default function Opdrachten() {
         )
         if (acErr) throw acErr
       }
-
       toast.success('Opdracht opgeslagen!')
       setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false)
       await fetchOpdrachten()
@@ -304,6 +300,10 @@ export default function Opdrachten() {
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
+    // ✅ Hoogte resetten naar 1 regel na verzenden
+    if (sparInputRef.current) {
+      sparInputRef.current.style.height = 'auto'
+    }
     try {
       let rawResponse: string
       const alleFiles = [...sparFiles, ...sparPastedImages.map(p => p.file)]
@@ -340,7 +340,6 @@ export default function Opdrachten() {
     try {
       const vragen = parseVragen(gegenereerdeOpdracht.vragen)
       const autoMaxPunten = berekenMaxPunten(vragen)
-
       if (selectedOpdracht && sparContext) {
         const { error } = await supabase
           .from('assignments')
@@ -355,7 +354,6 @@ export default function Opdrachten() {
           .select()
         if (error) throw error
       }
-
       toast.success('Opdracht opgeslagen!')
       setSparMessages([])
       setGegenereerdeOpdracht(null)
@@ -468,26 +466,40 @@ export default function Opdrachten() {
                 ))}
               </div>
             )}
-            <div className="p-3 border-t border-white/10 flex gap-2">
+
+            {/* ✅ Input: textarea met auto-resize (1-5 regels), shift+enter = nieuwe regel */}
+            <div className="p-3 border-t border-white/10 flex gap-2 items-end">
               <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*"
                 onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70" title="Bestand uploaden">
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 mb-0.5" title="Bestand uploaden">
                 <Paperclip size={16} />
               </button>
-              <input
+              <textarea
                 ref={sparInputRef}
-                type="text"
+                rows={1}
                 value={sparInput}
-                onChange={e => setSparInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSparSend()}
+                onChange={e => {
+                  setSparInput(e.target.value)
+                  // Auto-resize: max 5 regels (5 × 24px line-height)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = Math.min(e.target.scrollHeight, 5 * 24) + 'px'
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSparSend()
+                  }
+                  // Shift+Enter → nieuwe regel (standaard textarea gedrag, niets doen)
+                }}
                 onPaste={handlePaste}
                 placeholder={sparContext ? 'Stel een vraag, plak een afbeelding (Ctrl+V)...' : 'Beschrijf je opdracht of plak een afbeelding...'}
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50"
+                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50 resize-none overflow-y-auto"
+                style={{ height: 'auto', lineHeight: '24px' }}
               />
               <button
                 onClick={handleSparSend}
                 disabled={sparLoading || (!sparInput.trim() && sparFiles.length === 0 && sparPastedImages.length === 0)}
-                className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-all"
+                className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-all mb-0.5"
               >
                 <Send size={16} />
               </button>
@@ -612,7 +624,6 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* ✅ klasDropdownRef omvat nu ZOWEL de dropdown-knop ALS de deadline-lijst */}
           <div ref={klasDropdownRef}>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
@@ -643,8 +654,6 @@ export default function Opdrachten() {
                 </div>
               )}
             </div>
-
-            {/* ✅ Deadline-lijst: nu met aparte knoppen voor deadline wissen vs klas verwijderen */}
             {editKlasDeadlines.length > 0 && (
               <div className="mt-3 space-y-2">
                 <p className="text-white/30 text-xs">Stel per klas een deadline in (optioneel):</p>
@@ -665,22 +674,12 @@ export default function Opdrachten() {
                           onChange={e => setDeadlineForKlas(kd.class_id, e.target.value)}
                           className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500/50"
                         />
-                        {/* ✅ Wis alleen de deadline, klas blijft geselecteerd */}
                         {kd.deadline && (
-                          <button
-                            onClick={() => clearDeadlineForKlas(kd.class_id)}
-                            title="Deadline wissen"
-                            className="text-white/30 hover:text-white/60 transition-colors"
-                          >
+                          <button onClick={() => clearDeadlineForKlas(kd.class_id)} title="Deadline wissen" className="text-white/30 hover:text-white/60 transition-colors">
                             <X size={13} />
                           </button>
                         )}
-                        {/* ✅ Verwijder de klas uit de selectie */}
-                        <button
-                          onClick={() => toggleKlas(kd.class_id)}
-                          title="Klas verwijderen uit selectie"
-                          className="text-red-400/50 hover:text-red-400 transition-colors ml-1"
-                        >
+                        <button onClick={() => toggleKlas(kd.class_id)} title="Klas verwijderen uit selectie" className="text-red-400/50 hover:text-red-400 transition-colors ml-1">
                           <Trash size={13} />
                         </button>
                       </div>
@@ -901,4 +900,4 @@ export default function Opdrachten() {
       )}
     </div>
   )
-}
+} 
