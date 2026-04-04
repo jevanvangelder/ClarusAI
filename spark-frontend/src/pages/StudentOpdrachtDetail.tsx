@@ -37,7 +37,7 @@ interface Antwoord {
   type: string
   max_punten: number
   correct_antwoord?: string
-  nakijk?: { punten_behaald: number; feedback: string }
+  nakijk?: { punten_behaald: number; feedback: string; beredenering?: string }
 }
 
 interface TutorMessage {
@@ -65,16 +65,10 @@ function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAn
           <span className="text-white/80 font-medium">niet meer wijzigen</span>.
         </p>
         <div className="flex gap-3">
-          <button
-            onClick={onAnnuleer}
-            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all"
-          >
+          <button onClick={onAnnuleer} className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all">
             Nee, terug
           </button>
-          <button
-            onClick={onBevestig}
-            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
-          >
+          <button onClick={onBevestig} className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all">
             <CheckCircle size={14} />
             Ja, inleveren
           </button>
@@ -104,16 +98,10 @@ function OpenVragenModal({ aantalOpen, onBevestig, onAnnuleer }: { aantalOpen: n
           Je kunt daarna <span className="text-white/80 font-medium">niet meer wijzigen</span>.
         </p>
         <div className="flex gap-3">
-          <button
-            onClick={onAnnuleer}
-            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all"
-          >
+          <button onClick={onAnnuleer} className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all">
             Nee, terug
           </button>
-          <button
-            onClick={onBevestig}
-            className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
-          >
+          <button onClick={onBevestig} className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all">
             <CheckCircle size={14} />
             Toch inleveren
           </button>
@@ -196,18 +184,36 @@ export default function StudentOpdrachtDetail() {
 
       if (subData) {
         setSubmissionId(subData.id)
+        // ✅ Altijd antwoorden laden uit opgeslagen data
         const antwoordMap: Record<number, string> = {}
-        ;(subData.antwoorden || []).forEach((a: any) => { antwoordMap[a.vraag_nummer] = a.student_antwoord })
+        ;(subData.antwoorden || []).forEach((a: any) => {
+          antwoordMap[a.vraag_nummer] = a.student_antwoord
+        })
         setAntwoorden(antwoordMap)
         setTutorMessages(subData.chat_log || [])
-        if (subData.ingeleverd_op) {
-          if (subData.ai_nakijk_status === 'done') {
-            setNakijkResultaat(subData)
-            setStatus('nagekeken')
-          } else {
-            setStatus('ingeleverd')
-          }
+
+        // ✅ Status bepalen — voor testen: ingeleverd_op check behouden maar opnieuw inleveren toegestaan
+        if (subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
+          // Bouw resultaten op uit opgeslagen antwoorden (die bevatten nakijk data)
+          const resultaten = (subData.antwoorden || [])
+            .filter((a: any) => a.nakijk)
+            .map((a: any) => ({
+              vraag_nummer: a.vraag_nummer,
+              punten_behaald: a.nakijk.punten_behaald,
+              max_punten: a.max_punten,
+              feedback: a.nakijk.feedback,
+              beredenering: a.nakijk.beredenering,
+            }))
+          const totaal = subData.totaal_punten ?? resultaten.reduce((sum: number, r: any) => sum + (r.punten_behaald || 0), 0)
+          setNakijkResultaat({
+            ...subData,
+            resultaten,
+            totaal_punten: totaal,
+            antwoorden: subData.antwoorden,
+          })
+          setStatus('nagekeken')
         }
+        // ✅ Als al ingeleverd maar nog niet nagekeken: gewoon 'bezig' laten (voor testen)
       }
 
       setLoading(false)
@@ -215,6 +221,7 @@ export default function StudentOpdrachtDetail() {
     load()
   }, [assignmentId, user, classId])
 
+  // Auto-save elke 30 seconden
   useEffect(() => {
     if (status !== 'bezig' || !opdracht) return
     const interval = setInterval(() => saveDraft(false), 30000)
@@ -266,9 +273,10 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
+  // ✅ Gebruik live antwoorden state (niet ref) voor de check — ref is alleen nodig in async functies
   const handleInleverKlik = () => {
     if (!opdracht) return
-    const onbeantwoord = opdracht.vragen.filter(v => !antwoordenRef.current[v.nummer]?.trim())
+    const onbeantwoord = opdracht.vragen.filter(v => !antwoorden[v.nummer]?.trim())
     if (onbeantwoord.length > 0) {
       setAantalOpenVragen(onbeantwoord.length)
       setToonOpenVragenModal(true)
@@ -369,15 +377,10 @@ export default function StudentOpdrachtDetail() {
           opdracht_context: opdrachtContext,
         }),
       })
-      if (!res.ok) {
-        const errText = await res.text()
-        console.error('Tutor API error:', res.status, errText)
-        throw new Error(`API ${res.status}`)
-      }
+      if (!res.ok) throw new Error(`API ${res.status}`)
       const data = await res.json()
       setTutorMessages(prev => [...prev, { role: 'assistant', content: data.message }])
     } catch (err) {
-      console.error('Tutor fout:', err)
       setTutorMessages(prev => [...prev, { role: 'assistant', content: '❌ Er ging iets mis. Probeer opnieuw.' }])
     } finally {
       setTutorLoading(false)
@@ -397,6 +400,7 @@ export default function StudentOpdrachtDetail() {
   if (!opdracht) return null
 
   const huidigeVraag = opdracht.vragen.find(v => v.nummer === activeVraag)
+  // ✅ Gebruik live antwoorden state voor voortgangsbalk — altijd actueel zonder opslaan
   const aantalBeantwoord = opdracht.vragen.filter(v => antwoorden[v.nummer]?.trim()).length
   const voortgang = Math.round((aantalBeantwoord / opdracht.vragen.length) * 100)
   const isLaatsteVraag = activeVraag === opdracht.vragen.length
@@ -417,8 +421,6 @@ export default function StudentOpdrachtDetail() {
     const totaal = nakijkResultaat.totaal_punten ?? 0
     const max = opdracht.max_punten
     const pct = max > 0 ? Math.round((totaal / max) * 100) : 0
-
-    // ✅ Cijfer tot 1 decimaal (schaal 1.0 – 10.0)
     const cijferRaw = max > 0 ? 1 + (totaal / max) * 9 : 1
     const cijfer = Math.max(1.0, Math.min(10.0, Math.round(cijferRaw * 10) / 10))
     const cijferTekst = cijfer.toFixed(1)
@@ -432,7 +434,6 @@ export default function StudentOpdrachtDetail() {
           <h2 className="text-2xl font-bold text-white">{opdracht.title}</h2>
         </div>
 
-        {/* Cijfer kaart */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 text-center">
           <div className={`text-6xl font-bold mb-2 ${pct >= 55 ? 'text-green-400' : 'text-red-400'}`}>
             {cijferTekst}
@@ -443,20 +444,24 @@ export default function StudentOpdrachtDetail() {
           )}
         </div>
 
-        {/* Vragen met resultaten */}
         <div className="space-y-3">
           {opdracht.vragen.map(v => {
             const r = resultaten.find((res: any) => res.vraag_nummer === v.nummer)
+            // ✅ Antwoord ophalen uit nakijkResultaat.antwoorden
             const ant = (nakijkResultaat.antwoorden || []).find((a: any) => a.vraag_nummer === v.nummer)
             const behaald = r?.punten_behaald ?? 0
             const goed = r ? behaald === v.punten : false
             const isOpen = v.type === 'open'
 
             return (
-              <div key={v.nummer} className={`bg-[#0f1029] border rounded-xl p-4 ${goed ? 'border-green-500/20' : behaald > 0 ? 'border-amber-500/20' : 'border-red-500/20'}`}>
+              <div key={v.nummer} className={`bg-[#0f1029] border rounded-xl p-4 ${
+                goed ? 'border-green-500/20' : behaald > 0 ? 'border-amber-500/20' : 'border-red-500/20'
+              }`}>
                 <div className="flex items-start justify-between gap-3 mb-2">
                   <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
-                  <span className={`shrink-0 text-sm font-bold ${goed ? 'text-green-400' : behaald > 0 ? 'text-amber-400' : 'text-red-400'}`}>
+                  <span className={`shrink-0 text-sm font-bold ${
+                    goed ? 'text-green-400' : behaald > 0 ? 'text-amber-400' : 'text-red-400'
+                  }`}>
                     {r?.punten_behaald ?? '?'}/{v.punten}pt
                   </span>
                 </div>
@@ -466,14 +471,12 @@ export default function StudentOpdrachtDetail() {
                   {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
                 </p>
 
-                {/* Feedback altijd tonen */}
                 {r?.feedback && (
                   <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
                 )}
 
-                {/* ✅ Beredenering alleen bij open vragen */}
                 {isOpen && r?.beredenering && (
-                  <div className="mt-2 px-3 py-2 bg-white/3 border border-white/8 rounded-lg">
+                  <div className="mt-2 px-3 py-2 bg-white/[0.03] border border-white/[0.08] rounded-lg">
                     <p className="text-white/30 text-xs font-medium mb-0.5">📝 Beredenering AI:</p>
                     <p className="text-white/45 text-xs leading-relaxed">{r.beredenering}</p>
                   </div>
@@ -483,10 +486,17 @@ export default function StudentOpdrachtDetail() {
           })}
         </div>
 
-        <button onClick={() => navigate(-1)}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-all">
-          Terug naar de klas
-        </button>
+        {/* ✅ Voor testen: opnieuw maken knop */}
+        <div className="flex gap-3">
+          <button onClick={() => navigate(-1)}
+            className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-medium transition-all">
+            Terug naar de klas
+          </button>
+          <button onClick={() => setStatus('bezig')}
+            className="py-3 px-5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white rounded-xl text-sm transition-all">
+            🔄 Opnieuw maken
+          </button>
+        </div>
       </div>
     )
   }
@@ -562,6 +572,7 @@ export default function StudentOpdrachtDetail() {
           </div>
         </div>
 
+        {/* ✅ Voortgangsbalk — live bijgewerkt zonder opslaan */}
         <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
           <div className="bg-blue-500 h-full rounded-full transition-all duration-500" style={{ width: `${voortgang}%` }} />
         </div>
