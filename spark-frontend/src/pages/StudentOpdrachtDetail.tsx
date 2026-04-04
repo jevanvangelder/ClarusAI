@@ -105,6 +105,13 @@ export default function StudentOpdrachtDetail() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const tutorInputRef = useRef<HTMLInputElement>(null)
 
+  // Gebruik een ref om altijd de meest recente antwoorden te hebben in async functies
+  const antwoordenRef = useRef(antwoorden)
+  useEffect(() => { antwoordenRef.current = antwoorden }, [antwoorden])
+
+  const tutorMessagesRef = useRef(tutorMessages)
+  useEffect(() => { tutorMessagesRef.current = tutorMessages }, [tutorMessages])
+
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [tutorMessages])
 
   useEffect(() => {
@@ -174,18 +181,19 @@ export default function StudentOpdrachtDetail() {
     return () => clearInterval(interval)
   }, [antwoorden, tutorMessages, status, opdracht])
 
-  const buildAntwoordenArray = (): Antwoord[] => {
+  const buildAntwoordenArray = (huidigAntwoorden?: Record<number, string>): Antwoord[] => {
     if (!opdracht) return []
+    const bron = huidigAntwoorden ?? antwoordenRef.current
     return opdracht.vragen.map(v => ({
       vraag_nummer: v.nummer,
       vraag_tekst: v.vraag,
-      student_antwoord: antwoorden[v.nummer] || '',
+      student_antwoord: bron[v.nummer] || '',
       type: v.type,
       max_punten: v.punten,
     }))
   }
 
-  const saveDraft = async (showToast = true) => {
+  const saveDraft = async (showToast = true, huidigAntwoorden?: Record<number, string>) => {
     if (!opdracht || !user || !classId || status !== 'bezig') return
     if (showToast) setOpslaan(true)
     try {
@@ -198,8 +206,8 @@ export default function StudentOpdrachtDetail() {
           assignment_id: opdracht.id,
           student_id: user.id,
           class_id: classId,
-          antwoorden: buildAntwoordenArray(),
-          chat_log: tutorMessages,
+          antwoorden: buildAntwoordenArray(huidigAntwoorden),
+          chat_log: tutorMessagesRef.current,
         }),
         signal: controller.signal,
       })
@@ -230,12 +238,16 @@ export default function StudentOpdrachtDetail() {
     setToonInleverModal(true)
   }
 
-  // Stap 2: na bevestiging in modal → echt inleveren
+  // Stap 2: na bevestiging in modal → eerst draft opslaan, dan echt inleveren
   const handleInleverBevestigd = async () => {
     setToonInleverModal(false)
     if (!opdracht || !user || !classId) return
     setInleveren(true)
+
     try {
+      // ✅ Eerst de volledige huidige voortgang opslaan als draft
+      await saveDraft(false, antwoordenRef.current)
+
       const { data: volledigeOpdracht } = await supabase
         .from('assignments').select('vragen').eq('id', opdracht.id).single()
       const volledigeVragen = Array.isArray(volledigeOpdracht?.vragen)
@@ -247,7 +259,7 @@ export default function StudentOpdrachtDetail() {
         return {
           vraag_nummer: v.nummer,
           vraag_tekst: v.vraag,
-          student_antwoord: antwoorden[v.nummer] || '',
+          student_antwoord: antwoordenRef.current[v.nummer] || '',
           correct_antwoord: volledig?.antwoord || '',
           type: v.type,
           max_punten: v.punten,
@@ -262,7 +274,7 @@ export default function StudentOpdrachtDetail() {
           student_id: user.id,
           class_id: classId,
           antwoorden: antwoordenMetCorrect,
-          chat_log: tutorMessages,
+          chat_log: tutorMessagesRef.current,
           max_punten: opdracht.max_punten,
         }),
       })
