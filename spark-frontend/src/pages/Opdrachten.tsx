@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil,
-  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar
+  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
@@ -87,6 +87,7 @@ export default function Opdrachten() {
   const [opdrachten, setOpdrachten] = useState<Opdracht[]>([])
   const [selectedOpdracht, setSelectedOpdracht] = useState<Opdracht | null>(null)
   const [klassen, setKlassen] = useState<Klas[]>([])
+  const [zoekterm, setZoekterm] = useState('')
 
   const [editTitel, setEditTitel] = useState('')
   const [editBeschrijving, setEditBeschrijving] = useState('')
@@ -113,7 +114,6 @@ export default function Opdrachten() {
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
-  // ✅ textarea ref (was HTMLInputElement)
   const sparInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [sparMessages])
@@ -300,7 +300,6 @@ export default function Opdrachten() {
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
-    // ✅ Hoogte resetten naar 1 regel na verzenden
     if (sparInputRef.current) {
       sparInputRef.current.style.height = 'auto'
     }
@@ -466,8 +465,6 @@ export default function Opdrachten() {
                 ))}
               </div>
             )}
-
-            {/* ✅ Input: textarea met auto-resize (1-5 regels), shift+enter = nieuwe regel */}
             <div className="p-3 border-t border-white/10 flex gap-2 items-end">
               <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*"
                 onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
@@ -480,7 +477,6 @@ export default function Opdrachten() {
                 value={sparInput}
                 onChange={e => {
                   setSparInput(e.target.value)
-                  // Auto-resize: max 5 regels (5 × 24px line-height)
                   e.target.style.height = 'auto'
                   e.target.style.height = Math.min(e.target.scrollHeight, 5 * 24) + 'px'
                 }}
@@ -489,7 +485,6 @@ export default function Opdrachten() {
                     e.preventDefault()
                     handleSparSend()
                   }
-                  // Shift+Enter → nieuwe regel (standaard textarea gedrag, niets doen)
                 }}
                 onPaste={handlePaste}
                 placeholder={sparContext ? 'Stel een vraag, plak een afbeelding (Ctrl+V)...' : 'Beschrijf je opdracht of plak een afbeelding...'}
@@ -713,7 +708,7 @@ export default function Opdrachten() {
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
             <button
               onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
@@ -737,7 +732,7 @@ export default function Opdrachten() {
                                   <span className="text-white/40 text-xs shrink-0">#{v.nummer}</span>
                                   <textarea value={v.vraag}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[36px]" rows={1} />
+                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[36px]" rows={2} />
                                   <input type="number" min={0} value={v.punten}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
                                     className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none text-center" />
@@ -822,9 +817,23 @@ export default function Opdrachten() {
   // ═══════════════════════════════
   // OVERZICHT
   // ═══════════════════════════════
+  const gefilterdeOpdrachten = opdrachten.filter(o => {
+    const term = zoekterm.toLowerCase().trim()
+    if (!term) return true
+    return (
+      o.titel.toLowerCase().includes(term) ||
+      o.beschrijving.toLowerCase().includes(term) ||
+      o.type.toLowerCase().includes(term) ||
+      o.klas_deadlines.some(kd => {
+        const k = klassen.find(k => k.id === kd.class_id)
+        return k?.name.toLowerCase().includes(term) || k?.vak?.toLowerCase().includes(term)
+      })
+    )
+  })
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
           <p className="text-white/50 text-sm mt-1">
@@ -833,13 +842,31 @@ export default function Opdrachten() {
               : 'Jouw openstaande en voltooide opdrachten'}
           </p>
         </div>
-        {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
-          <button
-            onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all">
-            <Plus size={16} /> Nieuwe opdracht aanmaken
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Zoekbalk */}
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+            <input
+              type="text"
+              value={zoekterm}
+              onChange={e => setZoekterm(e.target.value)}
+              placeholder="Zoek op titel, type of klas..."
+              className="bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-blue-500/50 w-64"
+            />
+            {zoekterm && (
+              <button onClick={() => setZoekterm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+            <button
+              onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all whitespace-nowrap">
+              <Plus size={16} /> Nieuwe opdracht aanmaken
+            </button>
+          )}
+        </div>
       </div>
 
       {opdrachten.length === 0 ? (
@@ -857,9 +884,17 @@ export default function Opdrachten() {
             </button>
           )}
         </div>
+      ) : gefilterdeOpdrachten.length === 0 ? (
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
+          <div className="w-16 h-16 rounded-full bg-white/5 border border-white/10 flex items-center justify-center mb-4">
+            <Search size={24} className="text-white/30" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">Geen opdrachten gevonden</h3>
+          <p className="text-white/40 text-sm">Probeer een andere zoekterm.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {opdrachten.map(opdracht => {
+          {gefilterdeOpdrachten.map(opdracht => {
             const deadline = eerstvolgendeDeadline(opdracht.klas_deadlines)
             const aantalKlassen = opdracht.klas_deadlines.length
             return (
@@ -900,4 +935,4 @@ export default function Opdrachten() {
       )}
     </div>
   )
-} 
+}
