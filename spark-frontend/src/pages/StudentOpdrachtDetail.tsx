@@ -48,7 +48,7 @@ interface TutorMessage {
 type Status = 'bezig' | 'ingeleverd' | 'nagekeken'
 
 // ═══════════════════════════════
-// BEVESTIGING MODAL COMPONENT
+// BEVESTIGING MODAL — alle vragen ingevuld
 // ═══════════════════════════════
 function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAnnuleer: () => void }) {
   return (
@@ -61,7 +61,8 @@ function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAn
           <h3 className="text-white font-semibold text-base">Opdracht inleveren?</h3>
         </div>
         <p className="text-white/55 text-sm leading-relaxed mb-6">
-          Weet je zeker dat je de opdracht wilt inleveren? Je kunt daarna <span className="text-white/80 font-medium">niet meer wijzigen</span>.
+          Weet je zeker dat je de opdracht wilt inleveren? Je kunt daarna{' '}
+          <span className="text-white/80 font-medium">niet meer wijzigen</span>.
         </p>
         <div className="flex gap-3">
           <button
@@ -76,6 +77,45 @@ function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAn
           >
             <CheckCircle size={14} />
             Ja, inleveren
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════
+// WAARSCHUWING MODAL — open vragen
+// ═══════════════════════════════
+function OpenVragenModal({ aantalOpen, onBevestig, onAnnuleer }: { aantalOpen: number; onBevestig: () => void; onAnnuleer: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="bg-[#0f1029] border border-white/15 rounded-2xl p-6 max-w-sm w-full mx-4 shadow-2xl">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-red-500/15 border border-red-500/30 flex items-center justify-center shrink-0">
+            <AlertTriangle size={18} className="text-red-400" />
+          </div>
+          <h3 className="text-white font-semibold text-base">Nog vragen open!</h3>
+        </div>
+        <p className="text-white/55 text-sm leading-relaxed mb-6">
+          Je hebt nog{' '}
+          <span className="text-white/80 font-medium">{aantalOpen} {aantalOpen === 1 ? 'vraag' : 'vragen'}</span>{' '}
+          niet beantwoord. Weet je zeker dat je toch wilt inleveren?
+          Je kunt daarna <span className="text-white/80 font-medium">niet meer wijzigen</span>.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={onAnnuleer}
+            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all"
+          >
+            Nee, terug
+          </button>
+          <button
+            onClick={onBevestig}
+            className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
+          >
+            <CheckCircle size={14} />
+            Toch inleveren
           </button>
         </div>
       </div>
@@ -98,6 +138,8 @@ export default function StudentOpdrachtDetail() {
   const [opslaan, setOpslaan] = useState(false)
   const [activeVraag, setActiveVraag] = useState(1)
   const [toonInleverModal, setToonInleverModal] = useState(false)
+  const [toonOpenVragenModal, setToonOpenVragenModal] = useState(false)
+  const [aantalOpenVragen, setAantalOpenVragen] = useState(0)
 
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
   const [tutorInput, setTutorInput] = useState('')
@@ -105,7 +147,6 @@ export default function StudentOpdrachtDetail() {
   const chatEndRef = useRef<HTMLDivElement>(null)
   const tutorInputRef = useRef<HTMLInputElement>(null)
 
-  // Gebruik een ref om altijd de meest recente antwoorden te hebben in async functies
   const antwoordenRef = useRef(antwoorden)
   useEffect(() => { antwoordenRef.current = antwoorden }, [antwoorden])
 
@@ -226,26 +267,26 @@ export default function StudentOpdrachtDetail() {
     }
   }
 
-  // Stap 1: knop → check onbeantwoorde vragen → toon modal
+  // Knop → check open vragen → juiste modal tonen
   const handleInleverKlik = () => {
     if (!opdracht) return
-    const onbeantwoord = opdracht.vragen.filter(v => !antwoorden[v.nummer]?.trim())
+    const onbeantwoord = opdracht.vragen.filter(v => !antwoordenRef.current[v.nummer]?.trim())
     if (onbeantwoord.length > 0) {
-      toast.error(`Je hebt nog ${onbeantwoord.length} vraag/vragen niet beantwoord`)
-      setActiveVraag(onbeantwoord[0].nummer)
-      return
+      setAantalOpenVragen(onbeantwoord.length)
+      setToonOpenVragenModal(true)
+    } else {
+      setToonInleverModal(true)
     }
-    setToonInleverModal(true)
   }
 
-  // Stap 2: na bevestiging in modal → eerst draft opslaan, dan echt inleveren
+  // Na bevestiging → eerst draft opslaan, dan echt inleveren
   const handleInleverBevestigd = async () => {
     setToonInleverModal(false)
+    setToonOpenVragenModal(false)
     if (!opdracht || !user || !classId) return
     setInleveren(true)
 
     try {
-      // ✅ Eerst de volledige huidige voortgang opslaan als draft
       await saveDraft(false, antwoordenRef.current)
 
       const { data: volledigeOpdracht } = await supabase
@@ -447,11 +488,17 @@ export default function StudentOpdrachtDetail() {
   // ═══════════════════════════════
   return (
     <>
-      {/* Bevestiging modal */}
       {toonInleverModal && (
         <InleverModal
           onBevestig={handleInleverBevestigd}
           onAnnuleer={() => setToonInleverModal(false)}
+        />
+      )}
+      {toonOpenVragenModal && (
+        <OpenVragenModal
+          aantalOpen={aantalOpenVragen}
+          onBevestig={handleInleverBevestigd}
+          onAnnuleer={() => setToonOpenVragenModal(false)}
         />
       )}
 
@@ -484,8 +531,11 @@ export default function StudentOpdrachtDetail() {
               {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
               {opslaan ? 'Opslaan...' : 'Opslaan'}
             </button>
-            <button onClick={handleInleverKlik} disabled={inleveren}
-              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all">
+            <button
+              onClick={handleInleverKlik}
+              disabled={inleveren}
+              className="px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center gap-1.5 transition-all"
+            >
               {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
               {inleveren ? 'Inleveren...' : 'Inleveren'}
             </button>
