@@ -86,6 +86,15 @@ function App() {
     }
   }, [currentChat?.messages])
 
+  // ✅ Textarea hoogte automatisch aanpassen bij elke inputValue wijziging
+  // Dit zorgt dat de hoogte ook klopt als de analyse-prompt automatisch wordt ingevuld
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + 'px'
+    }
+  }, [inputValue])
+
   // ✅ Load active ebook info
   useEffect(() => {
     const savedActiveEbook = localStorage.getItem('clarus-active-ebook')
@@ -123,6 +132,7 @@ function App() {
       setTimeout(() => {
         setActiveChat(null)
         setInputValue(analysePrompt)
+        // Hoogte update na het invullen (textarea hoogte effect loopt via inputValue useEffect)
       }, 400)
     }
   }, [])
@@ -180,7 +190,6 @@ function App() {
       <div className="flex-1 flex flex-col min-h-0">
         {/* Top Bar */}
         <div className="h-14 border-b border-border flex items-center px-4 gap-4 flex-shrink-0">
-          {/* Dashboard terugknop */}
           <a
             href="/"
             className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground transition-colors text-sm font-medium mr-1"
@@ -193,7 +202,6 @@ function App() {
             <span className="hidden md:inline">Dashboard</span>
           </a>
 
-          {/* Sidebar toggle */}
           <button onClick={() => setShowLeftSidebar(!showLeftSidebar)} className="text-muted-foreground hover:text-foreground transition-colors">
             {showLeftSidebar ? <CaretLeft size={20} /> : <CaretRight size={20} />}
           </button>
@@ -294,7 +302,6 @@ function App() {
                   disabled={isLoading}
                   className="flex-1 bg-card border border-border rounded-md px-3 py-2 text-sm resize-none overflow-y-auto focus:outline-none focus:ring-2 focus:ring-ring disabled:cursor-not-allowed"
                   style={{ height: 'auto', scrollbarWidth: 'thin' }}
-                  onInput={(e) => { const target = e.target as HTMLTextAreaElement; target.style.height = 'auto'; target.style.height = Math.min(target.scrollHeight, 120) + 'px' }}
                 />
                 <Button
                   onClick={handleSend}
