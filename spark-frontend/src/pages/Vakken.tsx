@@ -140,7 +140,7 @@ export default function Vakken() {
     const term = zoekterm.toLowerCase().trim()
     if (!term) return true
     return (
-      (vak.eigen_titel || vak.name).toLowerCase().includes(term) ||
+      (vak.eigen_titel || vak.vak || vak.name).toLowerCase().includes(term) ||
       vak.vak?.toLowerCase().includes(term) ||
       vak.docent_naam?.toLowerCase().includes(term)
     )
@@ -167,7 +167,7 @@ export default function Vakken() {
             onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(null) }}
             placeholder="Voer klascode in (bijv. AB3X9KPQ)"
             maxLength={8}
-            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm font-mono tracking-widest placeholder:text-white/20 focus:outline-none focus:border-green-500/50 uppercase"
+            className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm font-mono tracking-widest placeholder:text-white/20 focus:outline-none focus:border-green-500/50"
           />
           <button
             type="submit"
@@ -216,96 +216,108 @@ export default function Vakken() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {gefilterdeVakken.map((vak) => (
-            <div
-              key={vak.id}
-              className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer relative"
-              onClick={() => navigate(`/vakken/${vak.id}`)}
-            >
-              {/* Three-dots menu */}
+          {gefilterdeVakken.map((vak) => {
+            // Grote titel = eigen_titel als ingesteld, anders het vak, anders de klasnaam
+            const grootTitel = vak.eigen_titel || vak.vak || vak.name
+            // Subtitel = klasnaam (altijd tonen), plus vak als het niet al de grote titel is
+            const toonKlasnaam = vak.name
+            const toonVak = !vak.eigen_titel && vak.vak ? null : vak.vak // alleen tonen als eigen_titel actief is
+
+            return (
               <div
-                className="absolute top-3 right-3"
-                ref={openMenuId === vak.id ? menuRef : undefined}
+                key={vak.id}
+                className="bg-[#0f1029] border border-white/10 hover:border-blue-500/30 rounded-xl p-5 transition-all group cursor-pointer relative"
+                onClick={() => navigate(`/vakken/${vak.id}`)}
               >
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setOpenMenuId(openMenuId === vak.id ? null : vak.id)
-                  }}
-                  className="p-1.5 rounded-lg text-white/20 hover:text-white/60 hover:bg-white/5 transition-all"
+                {/* Three-dots menu */}
+                <div
+                  className="absolute top-3 right-3"
+                  ref={openMenuId === vak.id ? menuRef : undefined}
                 >
-                  <MoreVertical size={15} />
-                </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setOpenMenuId(openMenuId === vak.id ? null : vak.id)
+                    }}
+                    className="p-1.5 rounded-lg text-white/20 hover:text-white/60 hover:bg-white/5 transition-all"
+                  >
+                    <MoreVertical size={15} />
+                  </button>
 
-                {openMenuId === vak.id && (
-                  <div className="absolute right-0 top-8 w-48 bg-[#1a1d3a] border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setSelectedVak(vak)
-                        setNieuweNaam(vak.eigen_titel || vak.name)
-                        setNaamModalOpen(true)
-                        setOpenMenuId(null)
-                      }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition-all text-left"
-                    >
-                      <Pencil size={14} />
-                      Eigen naam instellen
-                    </button>
-                    <div className="border-t border-white/5 my-1" />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setVerlatenId(vak.id)
-                        setOpenMenuId(null)
-                      }}
-                      className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-500/5 transition-all text-left"
-                    >
-                      <X size={14} />
-                      Klas verlaten
-                    </button>
+                  {openMenuId === vak.id && (
+                    <div className="absolute right-0 top-8 w-48 bg-[#1a1d3a] border border-white/10 rounded-lg shadow-xl z-20 overflow-hidden">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedVak(vak)
+                          setNieuweNaam(vak.eigen_titel || vak.vak || vak.name)
+                          setNaamModalOpen(true)
+                          setOpenMenuId(null)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-white/60 hover:text-white hover:bg-white/5 transition-all text-left"
+                      >
+                        <Pencil size={14} />
+                        Eigen naam instellen
+                      </button>
+                      <div className="border-t border-white/5 my-1" />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setVerlatenId(vak.id)
+                          setOpenMenuId(null)
+                        }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-red-400/70 hover:text-red-400 hover:bg-red-500/5 transition-all text-left"
+                      >
+                        <X size={14} />
+                        Klas verlaten
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-start gap-3 mb-3 pr-7">
+                  {/* Icoon met eerste letter van het vak */}
+                  <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
+                    <span className="text-blue-400 text-sm font-bold">
+                      {grootTitel[0]?.toUpperCase() || '?'}
+                    </span>
                   </div>
+                  <div className="flex-1 min-w-0">
+                    {/* ✅ GROTE TITEL = vak (of eigen naam) */}
+                    <h3 className="text-white font-semibold truncate">
+                      {grootTitel}
+                    </h3>
+                    {/* ✅ SUBTITEL = klasnaam klein eronder */}
+                    <p className="text-white/40 text-xs mt-0.5 truncate">{toonKlasnaam}</p>
+                    {/* Extra vak als eigen_titel actief is */}
+                    {toonVak && (
+                      <p className="text-blue-400/70 text-xs mt-0.5 flex items-center gap-1">
+                        <BookOpen size={10} />
+                        {toonVak}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {vak.docent_naam && (
+                  <p className="text-white/35 text-xs mb-3 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px]">👤</span>
+                    {vak.docent_naam}
+                  </p>
                 )}
-              </div>
 
-              <div className="flex items-start gap-3 mb-3 pr-7">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                  <GraduationCap size={18} className="text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-white font-semibold truncate">
-                    {vak.eigen_titel || vak.name}
-                  </h3>
-                  {vak.eigen_titel && vak.eigen_titel !== vak.name && (
-                    <p className="text-white/25 text-xs truncate">{vak.name}</p>
-                  )}
-                  {vak.vak && (
-                    <p className="text-blue-400/70 text-xs mt-0.5 flex items-center gap-1">
-                      <BookOpen size={10} />
-                      {vak.vak}
-                    </p>
-                  )}
+                {vak.schooljaar && (
+                  <p className="text-white/25 text-xs mb-3">{vak.schooljaar}</p>
+                )}
+
+                <div className="flex items-center justify-end mt-3 pt-3 border-t border-white/5">
+                  <span className="text-xs text-blue-400/60 group-hover:text-blue-400 transition-colors select-none">
+                    Bekijken →
+                  </span>
                 </div>
               </div>
-
-              {vak.docent_naam && (
-                <p className="text-white/35 text-xs mb-3 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px]">👤</span>
-                  {vak.docent_naam}
-                </p>
-              )}
-
-              {vak.schooljaar && (
-                <p className="text-white/25 text-xs mb-3">{vak.schooljaar}</p>
-              )}
-
-              <div className="flex items-center justify-end mt-3 pt-3 border-t border-white/5">
-                <span className="text-xs text-blue-400/60 group-hover:text-blue-400 transition-colors select-none">
-                  Bekijken →
-                </span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
@@ -322,7 +334,7 @@ export default function Vakken() {
             </div>
             <div className="p-6 space-y-4">
               <p className="text-white/40 text-sm">
-                Officiële naam: <span className="text-white/60">{selectedVak.name}</span>
+                Vak: <span className="text-white/60">{selectedVak.vak || selectedVak.name}</span>
               </p>
               <div>
                 <label className="block text-sm text-white/60 mb-1.5">Jouw naam voor dit vak</label>
