@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Users, BookOpen, Calendar, Copy, Check,
-  Trash2, Plus, X, Settings, FileText
+  Trash2, X, Settings, FileText, BarChart3, Clock, ChevronRight
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -40,15 +40,28 @@ interface Opdracht {
   max_punten: number
   is_active: boolean
   created_at: string
+  // stats voor deze klas
+  aantal_ingeleverd: number
+  aantal_nagekeken: number
+  aantal_nog_nakijken: number
+  gemiddeld_cijfer: number | null
 }
 
 type Tab = 'leerlingen' | 'opdrachten' | 'instellingen'
+type TypeFilter = 'alles' | 'huiswerk' | 'oefentoets' | 'casus' | 'opdracht'
 
 const TYPE_COLORS: Record<string, string> = {
   huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
   oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
   casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
   opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+}
+
+const TYPE_FILTER_COLORS: Record<string, string> = {
+  huiswerk:   'bg-blue-500/15 border-blue-500/30 text-blue-400',
+  oefentoets: 'bg-purple-500/15 border-purple-500/30 text-purple-400',
+  casus:      'bg-orange-500/15 border-orange-500/30 text-orange-400',
+  opdracht:   'bg-green-500/15 border-green-500/30 text-green-400',
 }
 
 export default function KlasDetail() {
@@ -62,6 +75,7 @@ export default function KlasDetail() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('leerlingen')
   const [copied, setCopied] = useState(false)
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
 
   const [editNaam, setEditNaam] = useState('')
   const [editVak, setEditVak] = useState('')
@@ -97,25 +111,19 @@ export default function KlasDetail() {
       .select('student_id, first_name, last_name, full_name, email, joined_at')
       .eq('class_id', id)
       .order('joined_at', { ascending: true })
-    if (error) { console.error('Fout bij ophalen leerlingen:', error); return }
+    if (error) { console.error(error); return }
     setLeerlingen(data || [])
   }
 
   const fetchOpdrachten = async () => {
     if (!id) return
-    // Haal opdrachten op via assignment_classes koppeltabel
     const { data, error } = await supabase
       .from('assignment_classes')
-      .select(`
-        deadline,
-        assignments (
-          id, title, beschrijving, type, max_punten, is_active, created_at
-        )
-      `)
+      .select(`deadline, assignments (id, title, beschrijving, type, max_punten, is_active, created_at)`)
       .eq('class_id', id)
-    if (error) { console.error('Fout bij ophalen opdrachten:', error); return }
+    if (error) { console.error(error); return }
 
-    const opdrachtList: Opdracht[] = (data || [])
+    const basisOpdrachten = (data || [])
       .filter((row: any) => row.assignments?.is_active)
       .map((row: any) => ({
         id: row.assignments.id,
@@ -127,9 +135,40 @@ export default function KlasDetail() {
         is_active: row.assignments.is_active,
         created_at: row.assignments.created_at,
       }))
-      .sort((a: Opdracht, b: Opdracht) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-    setOpdrachten(opdrachtList)
+    // Haal stats op per opdracht voor deze specifieke klas
+    const metStats: Opdracht[] = await Promise.all(
+      basisOpdrachten.map(async (o: any) => {
+        const { data: subs } = await supabase
+          .from('assignment_submissions')
+          .select('totaal_punten, ai_nakijk_status, ingeleverd_op')
+          .eq('assignment_id', o.id)
+          .eq('class_id', id)
+          .not('ingeleverd_op', 'is', null)
+
+        const ingeleverd = subs || []
+        const nagekeken = ingeleverd.filter(s => ['done', 'afgerond'].includes(s.ai_nakijk_status))
+        const nog_nakijken = nagekeken.filter(s => s.ai_nakijk_status === 'done').length
+
+        let gemiddeld_cijfer: number | null = null
+        if (nagekeken.length > 0 && o.max_punten > 0) {
+          const totaal = nagekeken.reduce((sum, s) => sum + (s.totaal_punten || 0), 0)
+          const gem_score = totaal / nagekeken.length
+          gemiddeld_cijfer = Math.max(1, Math.min(10, Math.round((1 + (gem_score / o.max_punten) * 9) * 10) / 10))
+        }
+
+        return {
+          ...o,
+          aantal_ingeleverd: ingeleverd.length,
+          aantal_nagekeken: nagekeken.length,
+          aantal_nog_nakijken: nog_nakijken,
+          gemiddeld_cijfer,
+        }
+      })
+    )
+
+    setOpdrachten(metStats)
   }
 
   useEffect(() => {
@@ -201,6 +240,11 @@ export default function KlasDetail() {
     }
   }
 
+  const openAnalyse = (opdracht: Opdracht) => {
+    localStorage.setItem('clarus-analyse-open', JSON.stringify({ assignmentId: opdracht.id, classId: id }))
+    navigate('/analyse')
+  }
+
   const getInitials = (l: Leerling) => {
     if (l.first_name && l.last_name) return `${l.first_name[0]}${l.last_name[0]}`.toUpperCase()
     if (l.full_name) return l.full_name[0].toUpperCase()
@@ -228,6 +272,11 @@ export default function KlasDetail() {
     { key: 'opdrachten', label: 'Opdrachten', icon: FileText },
     { key: 'instellingen', label: 'Instellingen', icon: Settings },
   ]
+
+  const beschikbareTypes = ['huiswerk', 'oefentoets', 'casus', 'opdracht'].filter(t =>
+    opdrachten.some(o => o.type === t)
+  )
+  const gefilterdeOpdrachten = typeFilter === 'alles' ? opdrachten : opdrachten.filter(o => o.type === typeFilter)
 
   return (
     <div className="space-y-5">
@@ -354,51 +403,118 @@ export default function KlasDetail() {
 
       {/* ── TAB: Opdrachten ── */}
       {activeTab === 'opdrachten' && (
-        <div className="space-y-3">
-          <div className="flex justify-end">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {/* Type filters */}
+            {beschikbareTypes.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  onClick={() => setTypeFilter('alles')}
+                  className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                    typeFilter === 'alles'
+                      ? 'bg-white/15 border-white/25 text-white'
+                      : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                  }`}
+                >
+                  Alle soorten
+                </button>
+                {beschikbareTypes.map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setTypeFilter(t as TypeFilter)}
+                    className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                      typeFilter === t
+                        ? TYPE_FILTER_COLORS[t]
+                        : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                    }`}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+            )}
             <button
               onClick={() => navigate('/opdrachten')}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all shrink-0"
             >
-              <Plus size={16} /> Nieuwe opdracht
+              + Nieuwe opdracht
             </button>
           </div>
-          {opdrachten.length === 0 ? (
+
+          {gefilterdeOpdrachten.length === 0 ? (
             <div className="bg-[#0f1029] border border-white/10 rounded-xl p-10 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center mb-4">
                 <FileText size={28} className="text-purple-400" />
               </div>
-              <h3 className="text-lg font-semibold text-white mb-2">Nog geen opdrachten</h3>
+              <h3 className="text-lg font-semibold text-white mb-2">Geen opdrachten</h3>
               <p className="text-white/40 text-sm">Wijs een opdracht toe aan deze klas via de Opdrachten-pagina.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {opdrachten.map(opdracht => {
+              {gefilterdeOpdrachten.map(opdracht => {
                 const typeColor = TYPE_COLORS[opdracht.type] || TYPE_COLORS.opdracht
                 const isVerlopen = opdracht.deadline ? new Date(opdracht.deadline) < new Date() : false
+                const aantalLeerlingen = klas.leerling_count
+                const voortgangPct = aantalLeerlingen > 0 ? Math.round((opdracht.aantal_ingeleverd / aantalLeerlingen) * 100) : 0
+                const heeftCijfer = opdracht.gemiddeld_cijfer !== null
+
                 return (
-                  <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 sm:p-5 transition-all">
+                  <button
+                    key={opdracht.id}
+                    onClick={() => openAnalyse(opdracht)}
+                    className="w-full text-left bg-[#0f1029] border border-white/10 hover:border-white/25 rounded-xl p-4 sm:p-5 transition-all group"
+                  >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex-1 min-w-0 space-y-2">
+                        {/* Type + punten + deadline */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-xs px-2 py-0.5 rounded border ${typeColor}`}>{opdracht.type}</span>
                           <span className="text-white/30 text-xs">{opdracht.max_punten}pt</span>
+                          {opdracht.deadline && (
+                            <span className={`text-xs flex items-center gap-1 ${isVerlopen ? 'text-red-400/70' : 'text-amber-400/70'}`}>
+                              <Clock size={10} />
+                              {isVerlopen ? 'Verlopen' : new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
+                            </span>
+                          )}
                         </div>
-                        <h3 className="text-white font-semibold text-sm sm:text-base">{opdracht.title}</h3>
-                        {opdracht.beschrijving && (
-                          <p className="text-white/40 text-sm line-clamp-2">{opdracht.beschrijving}</p>
+
+                        {/* Titel */}
+                        <h3 className="text-white font-semibold text-sm sm:text-base group-hover:text-blue-300 transition-colors">{opdracht.title}</h3>
+
+                        {/* Voortgang balkje */}
+                        <div className="space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-white/30 text-xs">
+                              {opdracht.aantal_ingeleverd}/{aantalLeerlingen} ingeleverd
+                              {opdracht.aantal_nog_nakijken > 0 && (
+                                <span className="text-amber-400/70 ml-2">· {opdracht.aantal_nog_nakijken} wacht op afronden</span>
+                              )}
+                            </span>
+                            <span className="text-white/30 text-xs">{voortgangPct}%</span>
+                          </div>
+                          <div className="bg-white/5 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${voortgangPct === 100 ? 'bg-green-500' : 'bg-blue-500'}`}
+                              style={{ width: `${voortgangPct}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Gemiddeld cijfer */}
+                      <div className="shrink-0 flex items-center gap-2">
+                        {heeftCijfer && (
+                          <div className="text-right">
+                            <p className="text-white/30 text-xs">Gem.</p>
+                            <p className={`text-xl font-bold ${opdracht.gemiddeld_cijfer! >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
+                              {opdracht.gemiddeld_cijfer!.toFixed(1)}
+                            </p>
+                          </div>
                         )}
-                        {opdracht.deadline && (
-                          <p className={`text-xs mt-1 flex items-center gap-1 ${isVerlopen ? 'text-red-400/70' : 'text-amber-400/70'}`}>
-                            <Calendar size={11} />
-                            {isVerlopen ? 'Verlopen: ' : 'Deadline: '}
-                            {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}{' '}
-                            {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
-                          </p>
-                        )}
+                        <ChevronRight size={16} className="text-white/20 group-hover:text-white/50 transition-colors" />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 )
               })}
             </div>

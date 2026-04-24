@@ -76,18 +76,12 @@ function AfrondenKlasModal({ klasnaam, aantalStudenten, onBevestig, onAnnuleer, 
           officieel zichtbaar als "Nagekeken". Weet u zeker dat u dit wilt doen?
         </p>
         <div className="flex gap-3">
-          <button
-            onClick={onAnnuleer}
-            disabled={loading}
-            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all disabled:opacity-40"
-          >
+          <button onClick={onAnnuleer} disabled={loading}
+            className="flex-1 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-sm rounded-xl transition-all disabled:opacity-40">
             Nee, annuleren
           </button>
-          <button
-            onClick={onBevestig}
-            disabled={loading}
-            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all"
-          >
+          <button onClick={onBevestig} disabled={loading}
+            className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-xl flex items-center justify-center gap-2 transition-all">
             {loading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
             Ja, afronden
           </button>
@@ -138,6 +132,8 @@ export default function Analyse() {
   const [savingPunten, setSavingPunten] = useState(false)
   const [loadingAfrondenLeerling, setLoadingAfrondenLeerling] = useState(false)
 
+  const [pendingOpen, setPendingOpen] = useState<{ assignmentId: string; classId: string } | null>(null)
+
   useEffect(() => {
     const load = async () => {
       if (!user) return
@@ -183,12 +179,29 @@ export default function Analyse() {
           })
         }
         setOpdrachten(stats)
+
+        // Auto-open vanuit KlasDetail
+        const pending = localStorage.getItem('clarus-analyse-open')
+        if (pending) {
+          localStorage.removeItem('clarus-analyse-open')
+          setPendingOpen(JSON.parse(pending))
+        }
       } finally {
         setLoadingOpdrachten(false)
       }
     }
     load()
   }, [user])
+
+  // Zodra opdrachten geladen zijn én er een pendingOpen is, open de detail view
+  useEffect(() => {
+    if (!pendingOpen || opdrachten.length === 0) return
+    const gevonden = opdrachten.find(o => o.id === pendingOpen.assignmentId)
+    if (gevonden) {
+      openDetail(gevonden, pendingOpen.classId)
+      setPendingOpen(null)
+    }
+  }, [pendingOpen, opdrachten])
 
   const openDetail = async (opdracht: OpdrachtStat, class_id?: string) => {
     setSelectedOpdracht(opdracht)
@@ -356,9 +369,6 @@ export default function Analyse() {
     }
   }
 
-  // ─── Nakijken afronden voor één leerling ───────────────────────────────────
-  // Render (gratis tier) slaapt na 15 min — eerste aanroep kan 30-60s duren.
-  // Daarom: toast.loading direct zichtbaar + AbortController timeout van 20s.
   const rondeAfLeerling = async () => {
     if (!selectedLeerling) return
     setLoadingAfrondenLeerling(true)
@@ -398,7 +408,6 @@ export default function Analyse() {
     }
   }
 
-  // ─── Nakijken afronden voor hele klas ─────────────────────────────────────
   const rondeAfKlas = async () => {
     if (!selectedOpdracht) return
     setLoadingAfronden(true)
