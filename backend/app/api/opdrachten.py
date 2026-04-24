@@ -222,14 +222,19 @@ async def upload_afbeelding(file: UploadFile = File(...)):
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":["A","B"],"antwoord":"correct antwoord","toelichting":"uitleg","afbeelding":"optionele URL naar afbeelding"}]}'
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":[],"antwoord":"...","toelichting":"...","afbeelding":"https://..."}]}'
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
             "Je kunt op twee manieren reageren:\n\n"
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil of iets bespreekt — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
-            "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen:\n"
+            "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen.\n"
+            "   In dat geval stuur je UITSLUITEND dit, zonder enige tekst ervoor of erna:\n"
             f"OPDRACHT_UPDATE:{json_voorbeeld}\n\n"
+            "⚠️ ABSOLUUT VERBODEN bij een OPDRACHT_UPDATE:\n"
+            "- Geen inleidende zin zoals 'Uiteraard, hier is de opdracht:'\n"
+            "- Geen uitleg na de JSON\n"
+            "- ALLEEN de prefix OPDRACHT_UPDATE: gevolgd door de JSON, niets anders\n\n"
             "KRITIEKE REGELS BIJ AANPASSEN VAN EEN BESTAANDE OPDRACHT:\n"
             "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn, tenzij de docent expliciet vraagt een vraag te verwijderen\n"
             "- Tel het aantal vragen in de context en zorg dat de output EXACT dat aantal + eventuele nieuwe vragen bevat\n"
@@ -237,12 +242,11 @@ async def spar_chat(body: SparChatMessage):
             "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n\n"
             "AFBEELDINGEN:\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...] in de tekst), gebruik dan die URL direct in het 'afbeelding' veld van de betreffende vraag\n"
-            "- Als een vraag een afbeelding nodig heeft, voeg dan 'afbeelding_zoekterm' toe met een Engelse zoekterm\n"
+            "- Als een vraag een afbeelding nodig heeft maar er geen URL is meegegeven, voeg dan 'afbeelding_zoekterm' toe met een Engelse zoekterm\n"
             "- Voeg ALLEEN een afbeelding toe als dat zinvol is\n\n"
             "Regels:\n"
             "- Stel verhelderingsvragen als onderwerp, niveau of aantal vragen onduidelijk is\n"
             "- Genereer ALLEEN een OPDRACHT_UPDATE als de docent expliciet om een opdracht vraagt\n"
-            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg erbij\n"
         )
 
         if body.context:
@@ -261,9 +265,10 @@ async def spar_chat(body: SparChatMessage):
         )
 
         PREFIX = "OPDRACHT_UPDATE:"
-        if response.startswith(PREFIX):
+        if PREFIX in response:
             try:
-                parsed = json.loads(response[len(PREFIX):].strip())
+                idx = response.index(PREFIX)
+                parsed = json.loads(response[idx + len(PREFIX):].strip())
                 vragen = parsed.get("vragen", [])
                 print(f"📝 AI genereerde {len(vragen)} vragen")
                 for vraag in vragen:
@@ -306,7 +311,6 @@ async def spar_upload(
                 file_bytes = await file.read()
                 parsed = parse_file(file.filename, file_bytes)
                 if parsed["type"] == "image":
-                    # Upload naar Supabase en krijg publieke URL
                     try:
                         content_type = file.content_type or "image/png"
                         public_url = upload_afbeelding_naar_supabase(file_bytes, file.filename or "afbeelding.png", content_type)
@@ -321,7 +325,6 @@ async def spar_upload(
                     parts.append(f"=== BESTAND: {file.filename} ===\n{parsed['text']}")
             file_context = "\n\n".join(parts)
 
-        # Voeg afbeelding URLs toe aan de user content zodat de AI ze kan gebruiken
         enhanced_content = content
         if uploaded_image_urls:
             urls_text = " ".join([f"[AFBEELDING_URL:{url}]" for url in uploaded_image_urls])
@@ -331,13 +334,17 @@ async def spar_upload(
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
             "Je kunt op twee manieren reageren:\n\n"
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt of advies wil — reageer normaal in het Nederlands.\n\n"
-            "2. OPDRACHT AANPASSEN: Als de docent vraagt een afbeelding toe te voegen aan een vraag:\n"
+            "2. OPDRACHT AANPASSEN: Als de docent vraagt een afbeelding toe te voegen of de opdracht aan te passen.\n"
+            "   In dat geval stuur je UITSLUITEND dit, zonder enige tekst ervoor of erna:\n"
             "OPDRACHT_UPDATE:{...json...}\n\n"
+            "⚠️ ABSOLUUT VERBODEN bij een OPDRACHT_UPDATE:\n"
+            "- Geen inleidende zin zoals 'Uiteraard, hier is de opdracht:'\n"
+            "- Geen uitleg na de JSON\n"
+            "- ALLEEN de prefix OPDRACHT_UPDATE: gevolgd door de JSON, niets anders\n\n"
             "KRITIEKE REGELS:\n"
             "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn\n"
             "- Als de docent zegt 'voeg deze afbeelding toe aan vraag X', gebruik dan de [AFBEELDING_URL:...] uit de tekst als 'afbeelding' waarde voor die vraag\n"
             "- Kopieer alle andere vragen 1-op-1 zonder wijzigingen\n"
-            "- Bij een OPDRACHT_UPDATE: stuur ALLEEN de prefix + JSON, geen uitleg\n"
         )
 
         if context:
@@ -359,11 +366,11 @@ async def spar_upload(
             images=images if images else None,
         )
 
-        # Verwerk OPDRACHT_UPDATE
         PREFIX = "OPDRACHT_UPDATE:"
-        if response.startswith(PREFIX):
+        if PREFIX in response:
             try:
-                parsed = json.loads(response[len(PREFIX):].strip())
+                idx = response.index(PREFIX)
+                parsed = json.loads(response[idx + len(PREFIX):].strip())
                 return {"message": f"{PREFIX}{json.dumps(parsed)}"}
             except Exception as e:
                 print(f"⚠️ Kon OPDRACHT_UPDATE niet parsen: {e}")

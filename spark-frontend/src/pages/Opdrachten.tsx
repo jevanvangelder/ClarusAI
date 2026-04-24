@@ -273,11 +273,14 @@ export default function Opdrachten() {
     setView('spar')
   }
 
+  // ✅ FIX: gebruik indexOf ipv startsWith zodat tekst vóór OPDRACHT_UPDATE ook werkt
   const parseAIResponse = (text: string) => {
     const PREFIX = 'OPDRACHT_UPDATE:'
-    if (text.startsWith(PREFIX)) {
+    const idx = text.indexOf(PREFIX)
+    if (idx !== -1) {
       try {
-        const parsed = JSON.parse(text.slice(PREFIX.length).trim())
+        const jsonStr = text.slice(idx + PREFIX.length).trim()
+        const parsed = JSON.parse(jsonStr)
         if (parsed.titel && parsed.vragen) {
           setGegenereerdeOpdracht(parsed)
           setSparContext(JSON.stringify(parsed))
@@ -708,7 +711,7 @@ export default function Opdrachten() {
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
             <button
               onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white hover:border-white/20'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
@@ -843,7 +846,6 @@ export default function Opdrachten() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Zoekbalk */}
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
             <input
