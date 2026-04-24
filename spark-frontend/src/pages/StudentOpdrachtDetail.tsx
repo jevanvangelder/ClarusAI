@@ -193,7 +193,8 @@ export default function StudentOpdrachtDetail() {
         setAntwoorden(antwoordMap)
         setTutorMessages(subData.chat_log || [])
 
-        if (!opnieuwBezig && subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
+        const isNagekeken = subData.ai_nakijk_status === 'done' || subData.ai_nakijk_status === 'afgerond'
+if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
           const deadline = ac?.deadline || null
           const te_laat = deadline
             ? new Date(subData.ingeleverd_op) > new Date(deadline)
