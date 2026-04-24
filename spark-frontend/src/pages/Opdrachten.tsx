@@ -82,7 +82,6 @@ const toDatetimeLocal = (iso: string | null): string => {
 }
 
 // ── Afbeelding preview component ──────────────────────────────────────────────
-// Toont de afbeelding als die laadt, anders een link naar de URL
 function AfbeeldingPreview({ src, className }: { src: string; className?: string }) {
   const [broken, setBroken] = useState(false)
   const isUrl = src.startsWith('http://') || src.startsWith('https://')
@@ -125,7 +124,6 @@ export default function Opdrachten() {
   const [editVragen, setEditVragen] = useState<Vraag[]>([])
   const [saving, setSaving] = useState(false)
   const [klasDropdownOpen, setKlasDropdownOpen] = useState(false)
-  const klasDropdownRef = useRef<HTMLDivElement>(null)
   const vraagAfbeeldingRefs = useRef<(HTMLInputElement | null)[]>([])
 
   const [sparMessages, setSparMessages] = useState<SparMessage[]>([])
@@ -143,15 +141,6 @@ export default function Opdrachten() {
   const sparInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [sparMessages])
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (klasDropdownRef.current && !klasDropdownRef.current.contains(e.target as Node))
-        setKlasDropdownOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
 
   const fetchOpdrachten = async () => {
     if (!user) return
@@ -283,7 +272,6 @@ export default function Opdrachten() {
       toast.success('Opdracht opgeslagen!')
       setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false)
       await fetchOpdrachten()
-      // Herlaad selectedOpdracht zodat de detail-view de nieuwe vragen (incl. afbeeldingen) toont
       const { data: updated } = await supabase
         .from('assignments')
         .select('id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)')
@@ -350,9 +338,7 @@ export default function Opdrachten() {
     const newMessages = [...sparMessages, userMsg]
     setSparMessages(newMessages)
     setSparInput('')
-    if (sparInputRef.current) {
-      sparInputRef.current.style.height = 'auto'
-    }
+    if (sparInputRef.current) sparInputRef.current.style.height = 'auto'
     try {
       let rawResponse: string
       const alleFiles = [...sparFiles, ...sparPastedImages.map(p => p.file)]
@@ -531,10 +517,7 @@ export default function Opdrachten() {
                   e.target.style.height = Math.min(e.target.scrollHeight, 5 * 24) + 'px'
                 }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    handleSparSend()
-                  }
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSparSend() }
                 }}
                 onPaste={handlePaste}
                 placeholder={sparContext ? 'Stel een vraag, plak een afbeelding (Ctrl+V)...' : 'Beschrijf je opdracht of plak een afbeelding...'}
@@ -588,9 +571,7 @@ export default function Opdrachten() {
                         <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
-                      {v.afbeelding && (
-                        <AfbeeldingPreview src={v.afbeelding} />
-                      )}
+                      {v.afbeelding && <AfbeeldingPreview src={v.afbeelding} />}
                       {v.opties && v.opties.length > 0 && (
                         <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
                       )}
@@ -667,11 +648,21 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          <div ref={klasDropdownRef}>
+          {/* ── Klas dropdown met overlay-fix ── */}
+          <div>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
-              <button onClick={() => setKlasDropdownOpen(prev => !prev)}
-                className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all">
+              {/* Transparante overlay: sluit dropdown bij klik buiten het dropdown-menu zelf */}
+              {klasDropdownOpen && (
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setKlasDropdownOpen(false)}
+                />
+              )}
+              <button
+                onClick={() => setKlasDropdownOpen(prev => !prev)}
+                className="relative z-50 flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all"
+              >
                 <span className="flex-1 text-left">
                   {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen —'
                     : `${geselecteerdeKlasIds.length} klas${geselecteerdeKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}
@@ -796,13 +787,10 @@ export default function Opdrachten() {
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
                                     className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-green-500/50" />
                                 </div>
-
-                                {/* ── Afbeelding sectie in edit mode ── */}
                                 <div className="space-y-1.5">
                                   {v.afbeelding ? (
                                     <div className="space-y-1.5">
                                       <AfbeeldingPreview src={v.afbeelding} className="max-h-40 w-auto max-w-full rounded-lg border border-white/10 object-contain bg-white/5" />
-                                      {/* Toon URL als het een externe link is */}
                                       {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
                                         <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
                                           className="flex items-center gap-1 text-xs text-blue-400/60 hover:text-blue-400 truncate max-w-xs">
@@ -843,7 +831,6 @@ export default function Opdrachten() {
               </Droppable>
             </DragDropContext>
           ) : (
-            // ── Read-only view ──
             <div className="space-y-3">
               {huidigeVragen.map((v, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">

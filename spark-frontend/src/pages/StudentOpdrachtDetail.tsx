@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import {
   ArrowLeft, Send, CheckCircle, Clock,
-  MessageCircle, FileText, ChevronRight, Loader2, AlertTriangle
+  MessageCircle, FileText, ChevronRight, Loader2, AlertTriangle, X, ZoomIn
 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { toast } from 'sonner'
@@ -47,8 +47,64 @@ interface TutorMessage {
 
 type Status = 'bezig' | 'ingeleverd' | 'nagekeken'
 
+// ── Lightbox component ────────────────────────────────────────────────────────
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-9 h-9 bg-white/10 hover:bg-white/20 border border-white/20 rounded-full flex items-center justify-center text-white transition-all"
+      >
+        <X size={16} />
+      </button>
+      <img
+        src={src}
+        alt="Vergroot"
+        className="max-w-[90vw] max-h-[85vh] object-contain rounded-xl border border-white/10 shadow-2xl"
+        onClick={e => e.stopPropagation()}
+      />
+    </div>
+  )
+}
+
+// ── Klikbare afbeelding voor studenten ────────────────────────────────────────
+function VraagAfbeelding({ src, nummer }: { src: string; nummer: number }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [broken, setBroken] = useState(false)
+
+  if (broken) return null
+
+  return (
+    <>
+      {lightboxOpen && <ImageLightbox src={src} onClose={() => setLightboxOpen(false)} />}
+      <div className="relative group mt-3 cursor-zoom-in" onClick={() => setLightboxOpen(true)}>
+        <img
+          src={src}
+          alt={`Afbeelding vraag ${nummer}`}
+          className="w-full max-h-48 object-contain rounded-lg border border-white/10 transition-opacity group-hover:opacity-80"
+          onError={() => setBroken(true)}
+        />
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="bg-black/50 rounded-full p-2">
+            <ZoomIn size={20} className="text-white" />
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
 // ═══════════════════════════════
-// BEVESTIGING MODAL — alle vragen ingevuld
+// BEVESTIGING MODAL ��� alle vragen ingevuld
 // ═══════════════════════════════
 function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAnnuleer: () => void }) {
   return (
@@ -128,7 +184,6 @@ export default function StudentOpdrachtDetail() {
   const [toonInleverModal, setToonInleverModal] = useState(false)
   const [toonOpenVragenModal, setToonOpenVragenModal] = useState(false)
   const [aantalOpenVragen, setAantalOpenVragen] = useState(0)
-
   const [opnieuwBezig, setOpnieuwBezig] = useState(false)
 
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
@@ -194,7 +249,7 @@ export default function StudentOpdrachtDetail() {
         setTutorMessages(subData.chat_log || [])
 
         const isNagekeken = subData.ai_nakijk_status === 'done' || subData.ai_nakijk_status === 'afgerond'
-if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
+        if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
           const deadline = ac?.deadline || null
           const te_laat = deadline
             ? new Date(subData.ingeleverd_op) > new Date(deadline)
@@ -333,7 +388,6 @@ if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
       setStatus('ingeleverd')
       toast.success('Opdracht ingeleverd! AI is aan het nakijken...')
 
-      // Bereken of te laat
       const te_laat = opdracht.deadline
         ? new Date(sub.ingeleverd_op || new Date()) > new Date(opdracht.deadline)
         : false
@@ -458,14 +512,13 @@ if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
           <h2 className="text-2xl font-bold text-white">{opdracht.title}</h2>
         </div>
 
-        {/* Te laat banner */}
         {nakijkResultaat.te_laat && (
           <div className="bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 flex items-center gap-3">
             <AlertTriangle size={16} className="text-red-400 shrink-0" />
             <div>
               <p className="text-red-400 text-sm font-medium">Te laat ingeleverd</p>
               <p className="text-red-400/60 text-xs">
-                De deadline was {opdracht.deadline ? new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '–'}. Je opdracht is wel nagekeken.
+                De deadline was {opdracht.deadline ? new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '–'}.
               </p>
             </div>
           </div>
@@ -502,7 +555,8 @@ if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
                     {nietIngevuld ? '?' : behaald}/{v.punten}pt
                   </span>
                 </div>
-                <p className="text-white/50 text-xs mb-1">
+                {v.afbeelding && <VraagAfbeelding src={v.afbeelding} nummer={v.nummer} />}
+                <p className="text-white/50 text-xs mb-1 mt-2">
                   <span className="text-white/30">Jouw antwoord: </span>
                   {ant?.student_antwoord?.trim()
                     ? ant.student_antwoord
@@ -600,7 +654,7 @@ if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
             <button
               onClick={() => saveDraft(true)}
               disabled={opslaan}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1.5"
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1"
             >
               {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
               {opslaan ? 'Opslaan...' : 'Opslaan'}
@@ -653,8 +707,7 @@ if (!opnieuwBezig && subData.ingeleverd_op && isNagekeken) {
                   </div>
                   <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
                   {huidigeVraag.afbeelding && (
-                    <img src={huidigeVraag.afbeelding} alt={`Afbeelding vraag ${huidigeVraag.nummer}`}
-                      className="mt-3 w-full max-h-48 object-contain rounded-lg border border-white/10" />
+                    <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
                   )}
                 </div>
                 {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
