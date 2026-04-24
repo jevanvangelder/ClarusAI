@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import {
   FileText, Calendar, CheckCircle, Clock,
-  AlertTriangle, BookOpen, ChevronRight, Search, X
+  AlertTriangle, BookOpen, ChevronRight, Search, X, Star
 } from 'lucide-react'
 
 interface OpdrachtRij {
@@ -20,13 +20,15 @@ interface OpdrachtRij {
   klasnaam: string
   eigen_titel: string | null
   ingeleverd: boolean
-  nagekeken: boolean
+  ai_klaar: boolean       // AI heeft nagekeken, docent nog niet afgerond
+  nagekeken: boolean      // docent heeft afgerond
   totaal_punten: number | null
   cijfer: number | null
   te_laat: boolean
 }
 
-type Filter = 'alles' | 'open' | 'ingeleverd' | 'nagekeken'
+type StatusFilter = 'alles' | 'open' | 'ingeleverd' | 'nagekeken'
+type TypeFilter = 'alles' | 'casus' | 'oefentoets' | 'huiswerk' | 'opdracht'
 
 const TYPE_COLORS: Record<string, string> = {
   huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
@@ -35,12 +37,20 @@ const TYPE_COLORS: Record<string, string> = {
   opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
 }
 
+const TYPE_FILTER_COLORS: Record<string, string> = {
+  casus:      'bg-orange-500/15 border-orange-500/30 text-orange-400',
+  oefentoets: 'bg-purple-500/15 border-purple-500/30 text-purple-400',
+  huiswerk:   'bg-blue-500/15 border-blue-500/30 text-blue-400',
+  opdracht:   'bg-green-500/15 border-green-500/30 text-green-400',
+}
+
 export default function StudentOpdrachtenOverzicht() {
   const { user } = useAuth()
   const navigate = useNavigate()
   const [opdrachten, setOpdrachten] = useState<OpdrachtRij[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<Filter>('alles')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('alles')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
   const [zoekterm, setZoekterm] = useState('')
 
   useEffect(() => {
@@ -97,13 +107,17 @@ export default function StudentOpdrachtenOverzicht() {
         const sub = subMap[a.id]
 
         const ingeleverd = !!sub?.ingeleverd_op
-        const nagekeken = sub?.ai_nakijk_status === 'done'
+        // AI klaar maar docent nog niet afgerond
+        const ai_klaar = sub?.ai_nakijk_status === 'done'
+        // Docent heeft officieel afgerond
+        const nagekeken = sub?.ai_nakijk_status === 'afgerond'
+
         const totaal = sub?.totaal_punten ?? null
-        const cijfer = nagekeken && a.max_punten && totaal !== null
+        const heeftCijfer = (ai_klaar || nagekeken) && a.max_punten && totaal !== null
+        const cijfer = heeftCijfer
           ? Math.max(1, Math.min(10, Math.round((1 + (totaal / a.max_punten) * 9) * 10) / 10))
           : null
 
-        // Controleer of te laat ingeleverd
         const te_laat = ingeleverd && !!ac.deadline && new Date(sub.ingeleverd_op) > new Date(ac.deadline)
 
         rijen.push({
@@ -119,6 +133,7 @@ export default function StudentOpdrachtenOverzicht() {
           klasnaam: klas.name,
           eigen_titel: klas.eigen_titel,
           ingeleverd,
+          ai_klaar,
           nagekeken,
           totaal_punten: totaal,
           cijfer,
@@ -131,9 +146,7 @@ export default function StudentOpdrachtenOverzicht() {
         const bOpen = !b.ingeleverd && !!b.deadline
         if (aOpen && !bOpen) return -1
         if (!aOpen && bOpen) return 1
-        if (aOpen && bOpen) {
-          return new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
-        }
+        if (aOpen && bOpen) return new Date(a.deadline!).getTime() - new Date(b.deadline!).getTime()
         const aDate = a.deadline || a.created_at
         const bDate = b.deadline || b.created_at
         return new Date(bDate).getTime() - new Date(aDate).getTime()
@@ -154,29 +167,43 @@ export default function StudentOpdrachtenOverzicht() {
   }
 
   const gefilterdeOpdrachten = opdrachten.filter(o => {
-    const matchFilter =
-      filter === 'alles' ? true
-      : filter === 'open' ? !o.ingeleverd
-      : filter === 'ingeleverd' ? o.ingeleverd && !o.nagekeken
-      : filter === 'nagekeken' ? o.nagekeken
+    const matchStatus =
+      statusFilter === 'alles' ? true
+      : statusFilter === 'open' ? !o.ingeleverd
+      : statusFilter === 'ingeleverd' ? o.ingeleverd && !o.nagekeken
+      : statusFilter === 'nagekeken' ? o.nagekeken
       : true
+
+    const matchType =
+      typeFilter === 'alles' ? true
+      : o.type === typeFilter
 
     const term = zoekterm.toLowerCase().trim()
     const matchZoek = !term || [o.title, o.vaknaam, o.klasnaam, o.eigen_titel]
       .some(v => v?.toLowerCase().includes(term))
 
-    return matchFilter && matchZoek
+    return matchStatus && matchType && matchZoek
   })
 
   const aantalOpen = opdrachten.filter(o => !o.ingeleverd).length
   const aantalIngeleverd = opdrachten.filter(o => o.ingeleverd && !o.nagekeken).length
   const aantalNagekeken = opdrachten.filter(o => o.nagekeken).length
 
+  // Beschikbare types in de opdrachten
+  const beschikbareTypes = ['casus', 'oefentoets', 'huiswerk', 'opdracht'].filter(t =>
+    opdrachten.some(o => o.type === t)
+  )
+
   const getStatusBadge = (o: OpdrachtRij) => {
     if (o.nagekeken) return {
       label: o.cijfer ? `Nagekeken · ${o.cijfer.toFixed(1)}` : 'Nagekeken',
       cls: 'bg-green-500/10 border-green-500/20 text-green-400',
       icon: <CheckCircle size={11} />,
+    }
+    if (o.ai_klaar) return {
+      label: o.cijfer ? `Ingeleverd · ${o.cijfer.toFixed(1)}` : 'Ingeleverd',
+      cls: 'bg-blue-500/10 border-blue-500/20 text-blue-400',
+      icon: <Star size={11} />,
     }
     if (o.ingeleverd) return {
       label: 'Ingeleverd',
@@ -200,7 +227,7 @@ export default function StudentOpdrachtenOverzicht() {
     }
   }
 
-  const FILTERS: { key: Filter; label: string; count?: number }[] = [
+  const STATUS_FILTERS: { key: StatusFilter; label: string; count?: number }[] = [
     { key: 'alles', label: 'Alles', count: opdrachten.length },
     { key: 'open', label: 'Open', count: aantalOpen },
     { key: 'ingeleverd', label: 'Ingeleverd', count: aantalIngeleverd },
@@ -208,21 +235,21 @@ export default function StudentOpdrachtenOverzicht() {
   ]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
         <p className="text-white/50 text-sm mt-1">Jouw openstaande en voltooide opdrachten</p>
       </div>
 
-      {/* Filters + zoekbalk */}
+      {/* Status filters + zoekbalk */}
       <div className="flex items-center gap-2 flex-wrap">
-        {FILTERS.map(f => (
+        {STATUS_FILTERS.map(f => (
           <button
             key={f.key}
-            onClick={() => setFilter(f.key)}
+            onClick={() => setStatusFilter(f.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-all ${
-              filter === f.key
+              statusFilter === f.key
                 ? 'bg-blue-600/20 border-blue-500/30 text-blue-400'
                 : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white/70'
             }`}
@@ -230,7 +257,7 @@ export default function StudentOpdrachtenOverzicht() {
             {f.label}
             {f.count !== undefined && (
               <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                filter === f.key ? 'bg-blue-500/20 text-blue-300' : 'bg-white/5 text-white/30'
+                statusFilter === f.key ? 'bg-blue-500/20 text-blue-300' : 'bg-white/5 text-white/30'
               }`}>
                 {f.count}
               </span>
@@ -255,6 +282,42 @@ export default function StudentOpdrachtenOverzicht() {
         </div>
       </div>
 
+      {/* Type filters */}
+      {beschikbareTypes.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-white/30 text-xs">Soort:</span>
+          <button
+            onClick={() => setTypeFilter('alles')}
+            className={`px-3 py-1 rounded-lg border text-xs transition-all ${
+              typeFilter === 'alles'
+                ? 'bg-white/15 border-white/25 text-white'
+                : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+            }`}
+          >
+            Alle soorten
+          </button>
+          {beschikbareTypes.map(t => (
+            <button
+              key={t}
+              onClick={() => setTypeFilter(t as TypeFilter)}
+              className={`px-3 py-1 rounded-lg border text-xs transition-all ${
+                typeFilter === t
+                  ? TYPE_FILTER_COLORS[t] || 'bg-white/15 border-white/25 text-white'
+                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+              }`}
+            >
+              {t.charAt(0).toUpperCase() + t.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Legenda */}
+      <div className="flex items-center gap-4 flex-wrap text-xs text-white/30">
+        <span className="flex items-center gap-1.5"><Star size={10} className="text-blue-400" /> Ingeleverd met cijfer = AI heeft nagekeken, wacht op docent</span>
+        <span className="flex items-center gap-1.5"><CheckCircle size={10} className="text-green-400" /> Nagekeken = docent heeft afgerond</span>
+      </div>
+
       {/* Lijst */}
       {loading ? (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex items-center justify-center">
@@ -266,10 +329,10 @@ export default function StudentOpdrachtenOverzicht() {
             <FileText size={28} className="text-blue-400" />
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">
-            {zoekterm || filter !== 'alles' ? 'Geen opdrachten gevonden' : 'Nog geen opdrachten'}
+            {zoekterm || statusFilter !== 'alles' || typeFilter !== 'alles' ? 'Geen opdrachten gevonden' : 'Nog geen opdrachten'}
           </h3>
           <p className="text-white/40 text-sm max-w-sm">
-            {zoekterm || filter !== 'alles'
+            {zoekterm || statusFilter !== 'alles' || typeFilter !== 'alles'
               ? 'Probeer een andere filter of zoekterm.'
               : 'Opdrachten van je docenten verschijnen hier zodra ze zijn aangemaakt.'}
           </p>
@@ -303,7 +366,6 @@ export default function StudentOpdrachtenOverzicht() {
                       {o.max_punten != null && (
                         <span className="text-white/25 text-xs">{o.max_punten}pt</span>
                       )}
-                      {/* Te laat badge */}
                       {o.te_laat && (
                         <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-400">
                           <AlertTriangle size={10} />
@@ -320,9 +382,7 @@ export default function StudentOpdrachtenOverzicht() {
 
                     {o.deadline && (
                       <p className={`text-xs mt-1.5 flex items-center gap-1 ${
-                        verlopen ? 'text-red-400/70'
-                        : nabij ? 'text-amber-400'
-                        : 'text-white/30'
+                        verlopen ? 'text-red-400/70' : nabij ? 'text-amber-400' : 'text-white/30'
                       }`}>
                         <Calendar size={10} />
                         {verlopen
