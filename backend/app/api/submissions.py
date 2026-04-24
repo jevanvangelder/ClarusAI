@@ -38,6 +38,11 @@ class InleverBody(BaseModel):
     chat_log: list
     max_punten: int
 
+class AfrondenBody(BaseModel):
+    submission_id: Optional[str] = None
+    assignment_id: Optional[str] = None
+    class_id: Optional[str] = None
+
 
 # ============ HELPERS ============
 
@@ -228,7 +233,7 @@ async def nakijken(body: NakijkBody):
             print(f"⚠️ Kon nakijk JSON niet parsen: {parse_err}")
             return {"raw": response, "error": "Kon JSON niet parsen"}
 
-        # Zorg dat lege antwoorden altijd 0 punten krijgen, ongeacht wat de AI zegt
+        # Zorg dat lege antwoorden altijd 0 punten krijgen
         for r in result.get("resultaten", []):
             orig = next((v for v in body.antwoorden if v.get("vraag_nummer") == r.get("vraag_nummer")), None)
             if orig and not orig.get("student_antwoord", "").strip():
@@ -327,6 +332,41 @@ async def inleveren(body: InleverBody):
             return result.data[0]
     except Exception as e:
         print(f"❌ INLEVEREN error: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/afronden")
+async def afronden(body: AfrondenBody):
+    try:
+        if body.submission_id:
+            # Eén leerling afronden
+            supabase.table("assignment_submissions").update({
+                "ai_nakijk_status": "afgerond",
+                "updated_at": datetime.now().isoformat(),
+            }).eq("id", body.submission_id).execute()
+            return {"status": "ok", "type": "leerling"}
+
+        elif body.assignment_id:
+            # Hele klas afronden
+            query = supabase.table("assignment_submissions").update({
+                "ai_nakijk_status": "afgerond",
+                "updated_at": datetime.now().isoformat(),
+            }).eq("assignment_id", body.assignment_id).eq("ai_nakijk_status", "done")
+
+            if body.class_id:
+                query = query.eq("class_id", body.class_id)
+
+            query.execute()
+            return {"status": "ok", "type": "klas"}
+
+        else:
+            raise HTTPException(status_code=400, detail="submission_id of assignment_id vereist")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ AFRONDEN error: {e}")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 

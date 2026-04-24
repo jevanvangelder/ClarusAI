@@ -31,7 +31,7 @@ interface Inzending {
   ingeleverd_op: string
   antwoorden: any[]
   te_laat: boolean
-  nakijk_status: string   // 'done' | 'afgerond'
+  nakijk_status: string
 }
 
 interface VraagStat {
@@ -52,7 +52,6 @@ interface KerninzichtData {
 type View = 'overzicht' | 'detail' | 'leerling'
 type TypeFilter = 'alles' | 'casus' | 'oefentoets' | 'huiswerk' | 'opdracht'
 
-// Bevestigings modal voor hele klas afronden
 function AfrondenKlasModal({ klasnaam, aantalStudenten, onBevestig, onAnnuleer, loading }: {
   klasnaam: string
   aantalStudenten: number
@@ -130,11 +129,9 @@ export default function Analyse() {
   const [kerninzicht, setKerninzicht] = useState<KerninzichtData | null>(null)
   const [loadingKerninzicht, setLoadingKerninzicht] = useState(false)
 
-  // Nakijken afronden - klas
   const [toonAfrondenModal, setToonAfrondenModal] = useState(false)
   const [loadingAfronden, setLoadingAfronden] = useState(false)
 
-  // Leerling detail
   const [selectedLeerling, setSelectedLeerling] = useState<Inzending | null>(null)
   const [aangepastePunten, setAangepastePunten] = useState<Record<number, number>>({})
   const [heeftWijzigingen, setHeeftWijzigingen] = useState(false)
@@ -211,7 +208,6 @@ export default function Analyse() {
         ? opdrData.vragen
         : JSON.parse(opdrData?.vragen || '[]')
 
-      // Deadline ophalen
       let deadline: string | null = null
       if (class_id) {
         const { data: acData } = await supabase
@@ -360,15 +356,17 @@ export default function Analyse() {
     }
   }
 
-  // Nakijken afronden voor één leerling
+  // Nakijken afronden voor één leerling — via backend (RLS bypass)
   const rondeAfLeerling = async () => {
     if (!selectedLeerling) return
     setLoadingAfrondenLeerling(true)
     try {
-      await supabase
-        .from('assignment_submissions')
-        .update({ ai_nakijk_status: 'afgerond' })
-        .eq('id', selectedLeerling.submission_id)
+      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission_id: selectedLeerling.submission_id }),
+      })
+      if (!res.ok) throw new Error(`API ${res.status}`)
 
       setSelectedLeerling(prev => prev ? { ...prev, nakijk_status: 'afgerond' } : prev)
       setInzendingen(prev => prev.map(iz =>
@@ -384,20 +382,20 @@ export default function Analyse() {
     }
   }
 
-  // Nakijken afronden voor hele klas
+  // Nakijken afronden voor hele klas — via backend (RLS bypass)
   const rondeAfKlas = async () => {
     if (!selectedOpdracht) return
     setLoadingAfronden(true)
     try {
-      let query = supabase
-        .from('assignment_submissions')
-        .update({ ai_nakijk_status: 'afgerond' })
-        .eq('assignment_id', selectedOpdracht.id)
-        .eq('ai_nakijk_status', 'done')
-
-      if (selectedClassId) query = query.eq('class_id', selectedClassId)
-
-      await query
+      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignment_id: selectedOpdracht.id,
+          class_id: selectedClassId || undefined,
+        }),
+      })
+      if (!res.ok) throw new Error(`API ${res.status}`)
 
       setInzendingen(prev => prev.map(iz =>
         iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz
@@ -437,13 +435,10 @@ export default function Analyse() {
     toast.success('Prompt geladen in de chatbot!')
   }
 
-  // Beschikbare types in de overzicht
   const beschikbareTypes = ['casus', 'oefentoets', 'huiswerk', 'opdracht'].filter(t =>
     opdrachten.some(o => o.type === t)
   )
   const gefilterdeOpdrachten = typeFilter === 'alles' ? opdrachten : opdrachten.filter(o => o.type === typeFilter)
-
-  // Aantal in detail view dat nog niet afgerond is
   const aantalNietAfgerond = inzendingen.filter(iz => iz.nakijk_status === 'done').length
   const geselecteerdeKlas = selectedOpdracht?.klassen.find(k => k.class_id === selectedClassId)
 
@@ -481,7 +476,6 @@ export default function Analyse() {
           </div>
         )}
 
-        {/* Nakijken afronden banner */}
         {!isAfgerond ? (
           <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-2">
@@ -513,14 +507,12 @@ export default function Analyse() {
               <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedLeerling.student_naam}</h2>
               {selectedLeerling.te_laat && (
                 <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-400">
-                  <AlertTriangle size={10} />
-                  Te laat
+                  <AlertTriangle size={10} />Te laat
                 </span>
               )}
               {isAfgerond && (
                 <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-green-500/10 border-green-500/20 text-green-400">
-                  <CheckCircle size={10} />
-                  Afgerond
+                  <CheckCircle size={10} />Afgerond
                 </span>
               )}
             </div>
@@ -684,7 +676,6 @@ export default function Analyse() {
               {geselecteerdeKlas ? geselecteerdeKlas.klasnaam : 'Alle klassen'} · {selectedOpdracht.type}
             </p>
           </div>
-          {/* Nakijken afronden voor hele klas */}
           {aantalNietAfgerond > 0 && (
             <button
               onClick={() => setToonAfrondenModal(true)}
@@ -905,7 +896,6 @@ export default function Analyse() {
         <p className="text-white/50 text-sm mt-1">Inzicht in de voortgang van jouw leerlingen</p>
       </div>
 
-      {/* Type filter */}
       {!loadingOpdrachten && beschikbareTypes.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-white/30 text-xs">Soort:</span>
