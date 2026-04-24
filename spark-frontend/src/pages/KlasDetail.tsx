@@ -36,11 +36,20 @@ interface Opdracht {
   title: string
   beschrijving: string | null
   deadline: string | null
+  type: string
+  max_punten: number
   is_active: boolean
   created_at: string
 }
 
 type Tab = 'leerlingen' | 'opdrachten' | 'instellingen'
+
+const TYPE_COLORS: Record<string, string> = {
+  huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
+  oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
+  opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+}
 
 export default function KlasDetail() {
   const { id } = useParams<{ id: string }>()
@@ -61,12 +70,6 @@ export default function KlasDetail() {
   const [editTags, setEditTags] = useState<string[]>([])
   const [editTagInput, setEditTagInput] = useState('')
   const [savingInstellingen, setSavingInstellingen] = useState(false)
-
-  const [opdrachtModalOpen, setOpdrachtModalOpen] = useState(false)
-  const [opdrachtTitel, setOpdrachtTitel] = useState('')
-  const [opdrachtBeschrijving, setOpdrachtBeschrijving] = useState('')
-  const [opdrachtDeadline, setOpdrachtDeadline] = useState('')
-  const [savingOpdracht, setSavingOpdracht] = useState(false)
 
   const [verwijderLeerlingId, setVerwijderLeerlingId] = useState<string | null>(null)
   const [archiverenModal, setArchiverenModal] = useState(false)
@@ -100,14 +103,33 @@ export default function KlasDetail() {
 
   const fetchOpdrachten = async () => {
     if (!id) return
+    // Haal opdrachten op via assignment_classes koppeltabel
     const { data, error } = await supabase
-      .from('assignments')
-      .select('*')
+      .from('assignment_classes')
+      .select(`
+        deadline,
+        assignments (
+          id, title, beschrijving, type, max_punten, is_active, created_at
+        )
+      `)
       .eq('class_id', id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-    if (error) { console.error(error); return }
-    setOpdrachten(data || [])
+    if (error) { console.error('Fout bij ophalen opdrachten:', error); return }
+
+    const opdrachtList: Opdracht[] = (data || [])
+      .filter((row: any) => row.assignments?.is_active)
+      .map((row: any) => ({
+        id: row.assignments.id,
+        title: row.assignments.title,
+        beschrijving: row.assignments.beschrijving,
+        deadline: row.deadline,
+        type: row.assignments.type || 'opdracht',
+        max_punten: row.assignments.max_punten || 0,
+        is_active: row.assignments.is_active,
+        created_at: row.assignments.created_at,
+      }))
+      .sort((a: Opdracht, b: Opdracht) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+
+    setOpdrachten(opdrachtList)
   }
 
   useEffect(() => {
@@ -168,38 +190,6 @@ export default function KlasDetail() {
     if (error) { toast.error('Fout bij archiveren'); return }
     toast.success('Klas gearchiveerd')
     navigate('/klassen')
-  }
-
-  const handleSaveOpdracht = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!opdrachtTitel.trim()) { toast.error('Titel is verplicht'); return }
-    setSavingOpdracht(true)
-    const { error } = await supabase.from('assignments').insert({
-      class_id: id,
-      created_by: user!.id,
-      title: opdrachtTitel.trim(),
-      beschrijving: opdrachtBeschrijving.trim() || null,
-      deadline: opdrachtDeadline || null,
-      is_active: true,
-    })
-    setSavingOpdracht(false)
-    if (error) { toast.error(error.message); return }
-    toast.success('Opdracht aangemaakt!')
-    setOpdrachtModalOpen(false)
-    setOpdrachtTitel('')
-    setOpdrachtBeschrijving('')
-    setOpdrachtDeadline('')
-    fetchOpdrachten()
-  }
-
-  const handleVerwijderOpdracht = async (opdrachtId: string) => {
-    const { error } = await supabase
-      .from('assignments')
-      .update({ is_active: false })
-      .eq('id', opdrachtId)
-    if (error) { toast.error('Fout bij verwijderen opdracht'); return }
-    toast.success('Opdracht verwijderd')
-    fetchOpdrachten()
   }
 
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -263,7 +253,6 @@ export default function KlasDetail() {
                 )}
               </div>
             </div>
-            {/* Klascode — mobiel-vriendelijk */}
             <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-lg px-2.5 py-1.5 shrink-0">
               <code className="text-xs font-mono text-blue-300 tracking-widest">{klas.code}</code>
               <button onClick={copyCode} className="text-white/30 hover:text-blue-400 transition-colors ml-1">
@@ -295,7 +284,7 @@ export default function KlasDetail() {
         </div>
       </div>
 
-      {/* Tabbladen — icons only op mobiel, tekst erbij op sm+ */}
+      {/* Tabs */}
       <div className="border-b border-white/10">
         <div className="flex gap-0">
           {tabs.map(tab => (
@@ -345,7 +334,6 @@ export default function KlasDetail() {
                       <p className="text-white text-sm font-medium truncate">{getDisplayName(leerling)}</p>
                       <p className="text-white/30 text-xs truncate">{leerling.email || ''}</p>
                     </div>
-                    {/* Datum verbergen op heel klein scherm */}
                     <p className="text-white/25 text-xs shrink-0 hidden sm:block">
                       {new Date(leerling.joined_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                     </p>
@@ -369,7 +357,7 @@ export default function KlasDetail() {
         <div className="space-y-3">
           <div className="flex justify-end">
             <button
-              onClick={() => setOpdrachtModalOpen(true)}
+              onClick={() => navigate('/opdrachten')}
               className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all"
             >
               <Plus size={16} /> Nieuwe opdracht
@@ -381,34 +369,38 @@ export default function KlasDetail() {
                 <FileText size={28} className="text-purple-400" />
               </div>
               <h3 className="text-lg font-semibold text-white mb-2">Nog geen opdrachten</h3>
-              <p className="text-white/40 text-sm">Maak een opdracht aan voor deze klas.</p>
+              <p className="text-white/40 text-sm">Wijs een opdracht toe aan deze klas via de Opdrachten-pagina.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {opdrachten.map(opdracht => (
-                <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 rounded-xl p-4 sm:p-5 group">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-white font-semibold text-sm sm:text-base">{opdracht.title}</h3>
-                      {opdracht.beschrijving && (
-                        <p className="text-white/40 text-sm mt-1 line-clamp-2">{opdracht.beschrijving}</p>
-                      )}
-                      {opdracht.deadline && (
-                        <p className="text-amber-400/70 text-xs mt-2 flex items-center gap-1">
-                          <Calendar size={11} />
-                          Deadline: {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}
-                        </p>
-                      )}
+              {opdrachten.map(opdracht => {
+                const typeColor = TYPE_COLORS[opdracht.type] || TYPE_COLORS.opdracht
+                const isVerlopen = opdracht.deadline ? new Date(opdracht.deadline) < new Date() : false
+                return (
+                  <div key={opdracht.id} className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 sm:p-5 transition-all">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded border ${typeColor}`}>{opdracht.type}</span>
+                          <span className="text-white/30 text-xs">{opdracht.max_punten}pt</span>
+                        </div>
+                        <h3 className="text-white font-semibold text-sm sm:text-base">{opdracht.title}</h3>
+                        {opdracht.beschrijving && (
+                          <p className="text-white/40 text-sm line-clamp-2">{opdracht.beschrijving}</p>
+                        )}
+                        {opdracht.deadline && (
+                          <p className={`text-xs mt-1 flex items-center gap-1 ${isVerlopen ? 'text-red-400/70' : 'text-amber-400/70'}`}>
+                            <Calendar size={11} />
+                            {isVerlopen ? 'Verlopen: ' : 'Deadline: '}
+                            {new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })}{' '}
+                            {new Date(opdracht.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <button
-                      onClick={() => handleVerwijderOpdracht(opdracht.id)}
-                      className="p-1.5 text-red-400/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all shrink-0 opacity-0 group-hover:opacity-100"
-                    >
-                      <Trash2 size={14} />
-                    </button>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>
@@ -498,49 +490,6 @@ export default function KlasDetail() {
                 Verwijderen
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: Opdracht aanmaken */}
-      {opdrachtModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl w-full max-w-md shadow-2xl">
-            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-white/10">
-              <h3 className="text-lg font-semibold text-white">Nieuwe opdracht</h3>
-              <button onClick={() => setOpdrachtModalOpen(false)} className="text-white/40 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <form onSubmit={handleSaveOpdracht} className="p-5 sm:p-6 space-y-4">
-              <div>
-                <label className="block text-sm text-white/60 mb-1.5">Titel <span className="text-red-400">*</span></label>
-                <input type="text" value={opdrachtTitel} onChange={e => setOpdrachtTitel(e.target.value)}
-                  placeholder="bijv. Hoofdstuk 3 samenvatting"
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-blue-500/50" />
-              </div>
-              <div>
-                <label className="block text-sm text-white/60 mb-1.5">Beschrijving</label>
-                <textarea value={opdrachtBeschrijving} onChange={e => setOpdrachtBeschrijving(e.target.value)}
-                  rows={3} placeholder="Optionele toelichting..."
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm placeholder:text-white/20 focus:outline-none focus:border-blue-500/50 resize-none" />
-              </div>
-              <div>
-                <label className="block text-sm text-white/60 mb-1.5">Deadline</label>
-                <input type="datetime-local" value={opdrachtDeadline} onChange={e => setOpdrachtDeadline(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500/50" />
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setOpdrachtModalOpen(false)}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-white/10 text-white/50 hover:text-white hover:bg-white/5 text-sm transition-all">
-                  Annuleren
-                </button>
-                <button type="submit" disabled={savingOpdracht}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm transition-all disabled:opacity-50">
-                  {savingOpdracht ? 'Opslaan...' : 'Aanmaken'}
-                </button>
-              </div>
-            </form>
           </div>
         </div>
       )}
