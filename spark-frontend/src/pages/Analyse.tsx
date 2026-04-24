@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, ArrowLeft, Users, TrendingUp, TrendingDown,
   Loader2, ChevronRight, Lightbulb, Brain, MessageSquare,
-  Clock
+  Clock, CheckCircle, XCircle, Edit3, Save
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -46,7 +46,7 @@ interface KerninzichtData {
   klasnaam: string
 }
 
-type View = 'overzicht' | 'detail'
+type View = 'overzicht' | 'detail' | 'leerling'
 
 export default function Analyse() {
   const { user } = useAuth()
@@ -64,6 +64,12 @@ export default function Analyse() {
 
   const [kerninzicht, setKerninzicht] = useState<KerninzichtData | null>(null)
   const [loadingKerninzicht, setLoadingKerninzicht] = useState(false)
+
+  // Leerling detail
+  const [selectedLeerling, setSelectedLeerling] = useState<Inzending | null>(null)
+  const [aangepastePunten, setAangepastePunten] = useState<Record<number, number>>({})
+  const [heeftWijzigingen, setHeeftWijzigingen] = useState(false)
+  const [savingPunten, setSavingPunten] = useState(false)
 
   useEffect(() => {
     const load = async () => {
@@ -209,6 +215,89 @@ export default function Analyse() {
     }
   }
 
+  const openLeerling = (leerling: Inzending) => {
+    setSelectedLeerling(leerling)
+    setAangepastePunten({})
+    setHeeftWijzigingen(false)
+    setView('leerling')
+  }
+
+  const setPunten = (vraagNummer: number, punten: number) => {
+    setAangepastePunten(prev => ({ ...prev, [vraagNummer]: punten }))
+    setHeeftWijzigingen(true)
+  }
+
+  const slaAangepastePuntenOp = async () => {
+    if (!selectedLeerling || !selectedOpdracht) return
+    setSavingPunten(true)
+    try {
+      // Haal huidige submission op
+      const { data: sub } = await supabase
+        .from('assignment_submissions')
+        .select('id, antwoorden')
+        .eq('assignment_id', selectedOpdracht.id)
+        .eq('student_id', selectedLeerling.student_id)
+        .single()
+
+      if (!sub) throw new Error('Inzending niet gevonden')
+
+      // Pas antwoorden aan met nieuwe punten
+      const nieuweAntwoorden = (sub.antwoorden || []).map((ant: any) => {
+        const aangepast = aangepastePunten[ant.vraag_nummer]
+        if (aangepast !== undefined && ant.nakijk) {
+          return {
+            ...ant,
+            nakijk: {
+              ...ant.nakijk,
+              punten_behaald: aangepast,
+              handmatig_aangepast: true,
+            },
+          }
+        }
+        return ant
+      })
+
+      // Bereken nieuw totaal
+      const nieuwTotaal = nieuweAntwoorden.reduce((sum: number, ant: any) => {
+        return sum + (ant.nakijk?.punten_behaald || 0)
+      }, 0)
+
+      const nieuwCijfer = Math.max(1, Math.min(10,
+        Math.round((1 + (nieuwTotaal / selectedOpdracht.max_punten) * 9) * 10) / 10
+      ))
+
+      await supabase
+        .from('assignment_submissions')
+        .update({
+          antwoorden: nieuweAntwoorden,
+          totaal_punten: nieuwTotaal,
+        })
+        .eq('id', sub.id)
+
+      // Update lokale state
+      setSelectedLeerling(prev => prev ? {
+        ...prev,
+        antwoorden: nieuweAntwoorden,
+        totaal_punten: nieuwTotaal,
+        cijfer: nieuwCijfer,
+      } : prev)
+
+      setInzendingen(prev => prev.map(iz =>
+        iz.student_id === selectedLeerling.student_id
+          ? { ...iz, totaal_punten: nieuwTotaal, cijfer: nieuwCijfer, antwoorden: nieuweAntwoorden }
+          : iz
+      ))
+
+      setAangepastePunten({})
+      setHeeftWijzigingen(false)
+      toast.success('Punten opgeslagen!')
+    } catch (err) {
+      toast.error('Opslaan mislukt')
+    } finally {
+      setSavingPunten(false)
+    }
+  }
+
   const genereerKerninzicht = async () => {
     if (!selectedOpdracht) return
     setLoadingKerninzicht(true)
@@ -244,6 +333,180 @@ export default function Analyse() {
     oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
     casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
     opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+  }
+
+  // ═══════════════════════════════
+  // LEERLING DETAIL VIEW
+  // ═══════════════════════════════
+  if (view === 'leerling' && selectedLeerling && selectedOpdracht) {
+    const huidigTotaal = selectedLeerling.antwoorden.reduce((sum: number, ant: any) => {
+      const aangepast = aangepastePunten[ant.vraag_nummer]
+      return sum + (aangepast !== undefined ? aangepast : (ant.nakijk?.punten_behaald || 0))
+    }, 0)
+    const huidigCijfer = Math.max(1, Math.min(10,
+      Math.round((1 + (huidigTotaal / selectedOpdracht.max_punten) * 9) * 10) / 10
+    ))
+
+    return (
+      <div className="space-y-5">
+        {/* Wijzigingen banner */}
+        {heeftWijzigingen && (
+          <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Edit3 size={14} className="text-blue-400" />
+              <span className="text-blue-400 text-sm">Je hebt punten aangepast — vergeet niet op te slaan.</span>
+            </div>
+            <button
+              onClick={slaAangepastePuntenOp}
+              disabled={savingPunten}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-lg transition-all"
+            >
+              {savingPunten ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+              Opslaan
+            </button>
+          </div>
+        )}
+
+        {/* Header */}
+        <div className="flex items-start gap-3">
+          <button onClick={() => setView('detail')} className="mt-1 text-white/50 hover:text-white shrink-0">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedLeerling.student_naam}</h2>
+            <p className="text-white/40 text-sm mt-0.5">
+              {selectedOpdracht.title} · Ingeleverd {new Date(selectedLeerling.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })}
+            </p>
+          </div>
+          <div className="text-right shrink-0">
+            <p className={`text-3xl font-bold ${huidigCijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
+              {huidigCijfer.toFixed(1)}
+            </p>
+            <p className="text-white/30 text-xs">{huidigTotaal}/{selectedOpdracht.max_punten}pt</p>
+          </div>
+        </div>
+
+        {/* Antwoorden per vraag */}
+        <div className="space-y-4">
+          {selectedLeerling.antwoorden.map((ant: any) => {
+            const nakijk = ant.nakijk
+            const maxPunten = ant.max_punten || 0
+            const huidigePunten = aangepastePunten[ant.vraag_nummer] !== undefined
+              ? aangepastePunten[ant.vraag_nummer]
+              : (nakijk?.punten_behaald ?? 0)
+            const isAangepast = aangepastePunten[ant.vraag_nummer] !== undefined
+            const isHandmatig = nakijk?.handmatig_aangepast
+
+            return (
+              <div key={ant.vraag_nummer} className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
+                {/* Vraag header */}
+                <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-white/30 text-xs">Vraag {ant.vraag_nummer}</span>
+                      <span className="text-white/20 text-xs">·</span>
+                      <span className="text-white/30 text-xs">{ant.type}</span>
+                      {(isAangepast || isHandmatig) && (
+                        <span className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                          Aangepast
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-white text-sm font-medium">{ant.vraag_tekst}</p>
+                  </div>
+                  <div className="shrink-0 flex items-center gap-1.5">
+                    {huidigePunten === maxPunten ? (
+                      <CheckCircle size={16} className="text-green-400" />
+                    ) : huidigePunten === 0 ? (
+                      <XCircle size={16} className="text-red-400" />
+                    ) : (
+                      <div className="w-4 h-4 rounded-full border-2 border-amber-400 flex items-center justify-center">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      </div>
+                    )}
+                    <span className={`text-sm font-bold ${
+                      huidigePunten === maxPunten ? 'text-green-400'
+                      : huidigePunten === 0 ? 'text-red-400'
+                      : 'text-amber-400'
+                    }`}>
+                      {huidigePunten}/{maxPunten}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  {/* Antwoord leerling */}
+                  <div>
+                    <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">Antwoord leerling</p>
+                    <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2">
+                      <p className="text-white/80 text-sm">{ant.student_antwoord || '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* AI feedback */}
+                  {nakijk?.feedback && (
+                    <div>
+                      <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">AI feedback</p>
+                      <div className="bg-green-500/5 border border-green-500/15 rounded-lg px-3 py-2">
+                        <p className="text-white/70 text-sm">{nakijk.feedback}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI beredenering */}
+                  {nakijk?.beredenering && (
+                    <div>
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <Brain size={11} className="text-purple-400" />
+                        <p className="text-purple-400 text-xs uppercase tracking-wider">Toelichting AI</p>
+                      </div>
+                      <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg px-3 py-2">
+                        <p className="text-white/60 text-sm italic">{nakijk.beredenering}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Punten aanpassen */}
+                  <div>
+                    <p className="text-white/30 text-xs mb-2 uppercase tracking-wider flex items-center gap-1.5">
+                      <Edit3 size={10} />
+                      Punten aanpassen
+                    </p>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {Array.from({ length: maxPunten + 1 }, (_, i) => i).map(p => (
+                        <button
+                          key={p}
+                          onClick={() => setPunten(ant.vraag_nummer, p)}
+                          className={`w-9 h-9 rounded-lg text-sm font-semibold transition-all border ${
+                            huidigePunten === p
+                              ? 'bg-blue-600 border-blue-500 text-white'
+                              : 'bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white'
+                          }`}
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Opslaan knop onderaan */}
+        {heeftWijzigingen && (
+          <button
+            onClick={slaAangepastePuntenOp}
+            disabled={savingPunten}
+            className="w-full flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-xl transition-all"
+          >
+            {savingPunten ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Wijzigingen opslaan — nieuw cijfer: {huidigCijfer.toFixed(1)}
+          </button>
+        )}
+      </div>
+    )
   }
 
   // ═══════════════════════════════
@@ -340,7 +603,7 @@ export default function Analyse() {
               </div>
             )}
 
-            {/* Leerlingentabel */}
+            {/* Leerlingentabel — nu klikbaar */}
             {inzendingen.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
                 <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10">
@@ -351,7 +614,11 @@ export default function Analyse() {
                 </div>
                 <div className="divide-y divide-white/5">
                   {inzendingen.map(iz => (
-                    <div key={iz.student_id} className="flex items-center gap-3 px-4 sm:px-5 py-3">
+                    <button
+                      key={iz.student_id}
+                      onClick={() => openLeerling(iz)}
+                      className="w-full flex items-center gap-3 px-4 sm:px-5 py-3 hover:bg-white/5 transition-all text-left"
+                    >
                       <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
                         <span className="text-blue-400 text-xs font-semibold">
                           {iz.student_naam?.[0]?.toUpperCase() || '?'}
@@ -363,13 +630,16 @@ export default function Analyse() {
                           {new Date(iz.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                         </p>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className={`text-lg font-bold ${iz.cijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
-                          {iz.cijfer.toFixed(1)}
-                        </span>
-                        <p className="text-white/30 text-xs">{iz.totaal_punten}/{selectedOpdracht.max_punten}pt</p>
+                      <div className="text-right shrink-0 flex items-center gap-3">
+                        <div>
+                          <span className={`text-lg font-bold ${iz.cijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
+                            {iz.cijfer.toFixed(1)}
+                          </span>
+                          <p className="text-white/30 text-xs">{iz.totaal_punten}/{selectedOpdracht.max_punten}pt</p>
+                        </div>
+                        <ChevronRight size={14} className="text-white/20" />
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
