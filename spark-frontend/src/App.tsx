@@ -21,6 +21,7 @@ import Admin from './pages/Admin'
 import Modules from './pages/Modules'
 import ChatApp from './ChatApp'
 import { useAuth } from './contexts/AuthContext'
+import { Toaster } from 'sonner'
 
 function OpdrachtenRoute() {
   const { role } = useAuth()
@@ -96,5 +97,10 @@ function AppRoutes() {
 }
 
 export default function App() {
-  return <AppRoutes />
+  return (
+    <>
+      <Toaster position="top-center" richColors />
+      <AppRoutes />
+    </>
+  )
 }
