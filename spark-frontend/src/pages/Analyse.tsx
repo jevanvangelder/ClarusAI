@@ -20,6 +20,7 @@ interface OpdrachtStat {
   aantal_ingeleverd: number
   gemiddelde_score: number
   gemiddeld_cijfer: number
+  te_beoordelen: number
 }
 
 interface Inzending {
@@ -51,6 +52,7 @@ interface KerninzichtData {
 
 type View = 'overzicht' | 'detail' | 'leerling'
 type TypeFilter = 'alles' | 'casus' | 'oefentoets' | 'huiswerk' | 'opdracht'
+type BeoordeelFilter = 'alles' | 'open'
 
 function AfrondenKlasModal({ klasnaam, aantalStudenten, onBevestig, onAnnuleer, loading }: {
   klasnaam: string
@@ -113,6 +115,7 @@ export default function Analyse() {
   const [opdrachten, setOpdrachten] = useState<OpdrachtStat[]>([])
   const [loadingOpdrachten, setLoadingOpdrachten] = useState(true)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
+  const [beoordeelFilter, setBeoordeelFilter] = useState<BeoordeelFilter>('alles')
 
   const [selectedOpdracht, setSelectedOpdracht] = useState<OpdrachtStat | null>(null)
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null)
@@ -157,7 +160,7 @@ export default function Analyse() {
 
           const { data: subs } = await supabase
             .from('assignment_submissions')
-            .select('totaal_punten')
+            .select('totaal_punten, ai_nakijk_status')
             .eq('assignment_id', o.id)
             .in('ai_nakijk_status', ['done', 'afgerond'])
             .not('ingeleverd_op', 'is', null)
@@ -166,6 +169,7 @@ export default function Analyse() {
           const scores = (subs || []).map(s => s.totaal_punten || 0)
           const gem_score = aantal > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / aantal) * 10) / 10 : 0
           const gem_cijfer = o.max_punten > 0 ? Math.round((1 + (gem_score / o.max_punten) * 9) * 10) / 10 : 0
+          const te_beoordelen = (subs || []).filter(s => s.ai_nakijk_status === 'done').length
 
           stats.push({
             id: o.id,
@@ -176,11 +180,11 @@ export default function Analyse() {
             aantal_ingeleverd: aantal,
             gemiddelde_score: gem_score,
             gemiddeld_cijfer: Math.max(1, Math.min(10, gem_cijfer)),
+            te_beoordelen,
           })
         }
         setOpdrachten(stats)
 
-        // Auto-open vanuit KlasDetail
         const pending = localStorage.getItem('clarus-analyse-open')
         if (pending) {
           localStorage.removeItem('clarus-analyse-open')
@@ -193,7 +197,6 @@ export default function Analyse() {
     load()
   }, [user])
 
-  // Zodra opdrachten geladen zijn én er een pendingOpen is, open de detail view
   useEffect(() => {
     if (!pendingOpen || opdrachten.length === 0) return
     const gevonden = opdrachten.find(o => o.id === pendingOpen.assignmentId)
@@ -358,7 +361,6 @@ export default function Analyse() {
           ? { ...iz, totaal_punten: nieuwTotaal, cijfer: nieuwCijfer, antwoorden: nieuweAntwoorden }
           : iz
       ))
-
       setAangepastePunten({})
       setHeeftWijzigingen(false)
       toast.success('Punten opgeslagen!')
@@ -376,7 +378,6 @@ export default function Analyse() {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20000)
-
       const res = await fetch(`${API_URL}/api/submissions/afronden`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -384,17 +385,13 @@ export default function Analyse() {
         signal: controller.signal,
       })
       clearTimeout(timeout)
-
       if (!res.ok) {
         const detail = await res.text().catch(() => `HTTP ${res.status}`)
         throw new Error(detail)
       }
-
       setSelectedLeerling(prev => prev ? { ...prev, nakijk_status: 'afgerond' } : prev)
       setInzendingen(prev => prev.map(iz =>
-        iz.submission_id === selectedLeerling.submission_id
-          ? { ...iz, nakijk_status: 'afgerond' }
-          : iz
+        iz.submission_id === selectedLeerling.submission_id ? { ...iz, nakijk_status: 'afgerond' } : iz
       ))
       toast.success('Nakijken afgerond! Leerling ziet nu "Nagekeken".', { id: toastId })
     } catch (err: any) {
@@ -415,7 +412,6 @@ export default function Analyse() {
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20000)
-
       const res = await fetch(`${API_URL}/api/submissions/afronden`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -426,12 +422,10 @@ export default function Analyse() {
         signal: controller.signal,
       })
       clearTimeout(timeout)
-
       if (!res.ok) {
         const detail = await res.text().catch(() => `HTTP ${res.status}`)
         throw new Error(detail)
       }
-
       setInzendingen(prev => prev.map(iz =>
         iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz
       ))
@@ -478,7 +472,12 @@ export default function Analyse() {
   const beschikbareTypes = ['casus', 'oefentoets', 'huiswerk', 'opdracht'].filter(t =>
     opdrachten.some(o => o.type === t)
   )
-  const gefilterdeOpdrachten = typeFilter === 'alles' ? opdrachten : opdrachten.filter(o => o.type === typeFilter)
+  const totaalTeBeoordelenOpen = opdrachten.reduce((sum, o) => sum + o.te_beoordelen, 0)
+  const gefilterdeOpdrachten = opdrachten.filter(o => {
+    const matchType = typeFilter === 'alles' || o.type === typeFilter
+    const matchBeoordeel = beoordeelFilter === 'alles' || o.te_beoordelen > 0
+    return matchType && matchBeoordeel
+  })
   const aantalNietAfgerond = inzendingen.filter(iz => iz.nakijk_status === 'done').length
   const geselecteerdeKlas = selectedOpdracht?.klassen.find(k => k.class_id === selectedClassId)
 
@@ -930,13 +929,37 @@ export default function Analyse() {
   // OVERZICHT VIEW
   // ═══════════════════════════════
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div>
         <h2 className="text-2xl font-bold text-white">Analyse</h2>
         <p className="text-white/50 text-sm mt-1">Inzicht in de voortgang van jouw leerlingen</p>
       </div>
 
-      {!loadingOpdrachten && beschikbareTypes.length > 0 && (
+      {/* Te beoordelen banner */}
+      {!loadingOpdrachten && totaalTeBeoordelenOpen > 0 && (
+        <button
+          onClick={() => setBeoordeelFilter(prev => prev === 'open' ? 'alles' : 'open')}
+          className={`w-full text-left rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap transition-all border ${
+            beoordeelFilter === 'open'
+              ? 'bg-amber-500/20 border-amber-500/40'
+              : 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Flag size={15} className="text-amber-400 shrink-0" />
+            <p className="text-amber-400 text-sm">
+              <span className="font-semibold">{totaalTeBeoordelenOpen} inzending{totaalTeBeoordelenOpen !== 1 ? 'en' : ''}</span> wacht{totaalTeBeoordelenOpen === 1 ? '' : 'en'} op beoordeling
+              {beoordeelFilter === 'open' && <span className="ml-2 text-amber-400/70">· filter actief</span>}
+            </p>
+          </div>
+          <span className="text-amber-400/70 text-xs shrink-0">
+            {beoordeelFilter === 'open' ? '✕ Filter wissen' : 'Klik om te filteren →'}
+          </span>
+        </button>
+      )}
+
+      {/* Filters */}
+      {!loadingOpdrachten && (beschikbareTypes.length > 0 || beoordeelFilter === 'open') && (
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-white/30 text-xs">Soort:</span>
           <button
@@ -990,6 +1013,11 @@ export default function Analyse() {
                         {o.type}
                       </span>
                       <span className="text-white/30 text-xs">{o.max_punten}pt</span>
+                      {o.te_beoordelen > 0 && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-amber-500/10 border-amber-500/20 text-amber-400">
+                          <Flag size={10} />{o.te_beoordelen} te beoordelen
+                        </span>
+                      )}
                     </div>
                     <h3 className="text-white font-semibold text-sm sm:text-base">{o.title}</h3>
                   </div>

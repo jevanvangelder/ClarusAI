@@ -51,7 +51,7 @@ interface Opdracht {
   klas_deadlines: KlasDeadline[]
   is_actief: boolean
   created_at: string
-  te_beoordelen?: number
+  te_beoordelen: number
 }
 
 interface Klas {
@@ -97,8 +97,7 @@ function AfbeeldingPreview({ src, className }: { src: string; className?: string
     return (
       <a href={src} target="_blank" rel="noopener noreferrer"
         className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 mt-1">
-        <ExternalLink size={11} />
-        Afbeelding bekijken (externe link)
+        <ExternalLink size={11} />Afbeelding bekijken (externe link)
       </a>
     )
   }
@@ -118,6 +117,7 @@ export default function Opdrachten() {
   const [zoekterm, setZoekterm] = useState('')
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('actief')
+  const [alleenTeBeoordelenFilter, setAlleenTeBeoordelenFilter] = useState(false)
 
   const [editTitel, setEditTitel] = useState('')
   const [editBeschrijving, setEditBeschrijving] = useState('')
@@ -149,7 +149,6 @@ export default function Opdrachten() {
 
   const fetchOpdrachten = async () => {
     if (!user) return
-    // Haal alle opdrachten op (actief én inactief) zodat we kunnen filteren
     const { data, error } = await supabase
       .from('assignments')
       .select(`id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)`)
@@ -173,7 +172,6 @@ export default function Opdrachten() {
       te_beoordelen: 0,
     }))
 
-    // Haal te_beoordelen per opdracht op
     const opdrachtIds = basis.map(o => o.id)
     if (opdrachtIds.length > 0) {
       const { data: subs } = await supabase
@@ -243,15 +241,11 @@ export default function Opdrachten() {
   }
 
   const clearDeadlineForKlas = (class_id: string) => {
-    setEditKlasDeadlines(prev =>
-      prev.map(kd => kd.class_id === class_id ? { ...kd, deadline: '' } : kd)
-    )
+    setEditKlasDeadlines(prev => prev.map(kd => kd.class_id === class_id ? { ...kd, deadline: '' } : kd))
   }
 
   const setDeadlineForKlas = (class_id: string, deadline: string) => {
-    setEditKlasDeadlines(prev =>
-      prev.map(kd => kd.class_id === class_id ? { ...kd, deadline } : kd)
-    )
+    setEditKlasDeadlines(prev => prev.map(kd => kd.class_id === class_id ? { ...kd, deadline } : kd))
   }
 
   const handleDragEnd = (result: DropResult) => {
@@ -311,6 +305,7 @@ export default function Opdrachten() {
           vragen: parseVragen(updated.vragen),
           is_actief: updated.is_active,
           created_at: updated.created_at,
+          te_beoordelen: selectedOpdracht.te_beoordelen,
           klas_deadlines: (updated.assignment_classes || []).map((ac: any) => ({
             class_id: ac.class_id,
             deadline: ac.deadline ? toDatetimeLocal(ac.deadline) : '',
@@ -318,7 +313,6 @@ export default function Opdrachten() {
         })
       }
     } catch (err: any) {
-      console.error('handleSaveChanges error:', err)
       toast.error(err.message || 'Opslaan mislukt')
     } finally {
       setSaving(false)
@@ -460,7 +454,6 @@ export default function Opdrachten() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>
-          {/* Chat links */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10">
               <span className="text-white/50 text-xs uppercase tracking-wider">💬 Spar met AI</span>
@@ -528,7 +521,7 @@ export default function Opdrachten() {
             <div className="p-3 border-t border-white/10 flex gap-2 items-end">
               <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*"
                 onChange={e => { if (e.target.files) setSparFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
-              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 mb-0.5" title="Bestand uploaden">
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70 mb-0.5">
                 <Paperclip size={16} />
               </button>
               <textarea
@@ -540,9 +533,7 @@ export default function Opdrachten() {
                   e.target.style.height = 'auto'
                   e.target.style.height = Math.min(e.target.scrollHeight, 5 * 24) + 'px'
                 }}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSparSend() }
-                }}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSparSend() } }}
                 onPaste={handlePaste}
                 placeholder={sparContext ? 'Stel een vraag, plak een afbeelding (Ctrl+V)...' : 'Beschrijf je opdracht of plak een afbeelding...'}
                 className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50 resize-none overflow-y-auto"
@@ -558,18 +549,14 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* Preview rechts */}
           <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
             <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
               <span className="text-white/50 text-xs uppercase tracking-wider">
                 📋 {sparContext ? 'Huidige opdracht' : 'Gegenereerde opdracht'}
               </span>
               {gegenereerdeOpdracht && (
-                <button
-                  onClick={handleOpslaanOpdracht}
-                  disabled={opslaan}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all"
-                >
+                <button onClick={handleOpslaanOpdracht} disabled={opslaan}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all">
                   {opslaan ? '⏳ Opslaan...' : sparContext ? '💾 Wijzigingen opslaan' : '💾 Opdracht opslaan'}
                 </button>
               )}
@@ -675,13 +662,9 @@ export default function Opdrachten() {
           <div>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
-              {klasDropdownOpen && (
-                <div className="fixed inset-0 z-40" onClick={() => setKlasDropdownOpen(false)} />
-              )}
-              <button
-                onClick={() => setKlasDropdownOpen(prev => !prev)}
-                className="relative z-50 flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all"
-              >
+              {klasDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setKlasDropdownOpen(false)} />}
+              <button onClick={() => setKlasDropdownOpen(prev => !prev)}
+                className="relative z-50 flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all">
                 <span className="flex-1 text-left">
                   {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen —'
                     : `${geselecteerdeKlasIds.length} klas${geselecteerdeKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}
@@ -721,18 +704,15 @@ export default function Opdrachten() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <Calendar size={13} className="text-white/30" />
-                        <input
-                          type="datetime-local"
-                          value={kd.deadline}
+                        <input type="datetime-local" value={kd.deadline}
                           onChange={e => setDeadlineForKlas(kd.class_id, e.target.value)}
-                          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500/50"
-                        />
+                          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs focus:outline-none focus:border-blue-500/50" />
                         {kd.deadline && (
-                          <button onClick={() => clearDeadlineForKlas(kd.class_id)} title="Deadline wissen" className="text-white/30 hover:text-white/60 transition-colors">
+                          <button onClick={() => clearDeadlineForKlas(kd.class_id)} className="text-white/30 hover:text-white/60 transition-colors">
                             <X size={13} />
                           </button>
                         )}
-                        <button onClick={() => toggleKlas(kd.class_id)} title="Klas verwijderen uit selectie" className="text-red-400/50 hover:text-red-400 transition-colors ml-1">
+                        <button onClick={() => toggleKlas(kd.class_id)} className="text-red-400/50 hover:text-red-400 transition-colors ml-1">
                           <Trash size={13} />
                         </button>
                       </div>
@@ -813,8 +793,7 @@ export default function Opdrachten() {
                                       {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
                                         <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
                                           className="flex items-center gap-1 text-xs text-blue-400/60 hover:text-blue-400 truncate max-w-xs">
-                                          <ExternalLink size={10} />
-                                          <span className="truncate">{v.afbeelding}</span>
+                                          <ExternalLink size={10} /><span className="truncate">{v.afbeelding}</span>
                                         </a>
                                       )}
                                       <div className="flex items-center gap-2">
@@ -863,8 +842,7 @@ export default function Opdrachten() {
                       {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
                         <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-1 text-xs text-blue-400/50 hover:text-blue-400 truncate max-w-xs">
-                          <ExternalLink size={10} />
-                          <span className="truncate">{v.afbeelding}</span>
+                          <ExternalLink size={10} /><span className="truncate">{v.afbeelding}</span>
                         </a>
                       )}
                     </div>
@@ -899,10 +877,11 @@ export default function Opdrachten() {
   const actieveOpdrachten = opdrachten.filter(o => o.is_actief)
   const inactieveOpdrachten = opdrachten.filter(o => !o.is_actief)
   const huidigeLijst = activeFilter === 'actief' ? actieveOpdrachten : inactieveOpdrachten
-
   const beschikbareTypes = OPDRACHT_TYPES.filter(t => huidigeLijst.some(o => o.type === t))
+  const totaalTeBeoordelenActief = actieveOpdrachten.reduce((sum, o) => sum + (o.te_beoordelen || 0), 0)
 
   const gefilterdeOpdrachten = huidigeLijst.filter(o => {
+    if (alleenTeBeoordelenFilter && (o.te_beoordelen || 0) === 0) return false
     const matchType = typeFilter === 'alles' || o.type === typeFilter
     const term = zoekterm.toLowerCase().trim()
     const matchZoek = !term || (
@@ -916,8 +895,6 @@ export default function Opdrachten() {
     )
     return matchType && matchZoek
   })
-
-  const totaalTeBeoordelenActief = actieveOpdrachten.reduce((sum, o) => sum + (o.te_beoordelen || 0), 0)
 
   return (
     <div className="space-y-5">
@@ -940,27 +917,40 @@ export default function Opdrachten() {
         )}
       </div>
 
-      {/* Te beoordelen banner */}
+      {/* Te beoordelen banner — klikbaar */}
       {totaalTeBeoordelenActief > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+        <button
+          onClick={() => {
+            setActiveFilter('actief')
+            setTypeFilter('alles')
+            setZoekterm('')
+            setAlleenTeBeoordelenFilter(prev => !prev)
+          }}
+          className={`w-full text-left rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap transition-all border ${
+            alleenTeBeoordelenFilter
+              ? 'bg-amber-500/20 border-amber-500/40'
+              : 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15'
+          }`}
+        >
           <div className="flex items-center gap-2">
             <Flag size={15} className="text-amber-400 shrink-0" />
             <p className="text-amber-400 text-sm">
               <span className="font-semibold">{totaalTeBeoordelenActief} inzending{totaalTeBeoordelenActief !== 1 ? 'en' : ''}</span> wacht{totaalTeBeoordelenActief === 1 ? '' : 'en'} op beoordeling
+              {alleenTeBeoordelenFilter && <span className="ml-2 text-amber-400/70">· filter actief</span>}
             </p>
           </div>
-          <button onClick={() => { /* navigate to analyse */ }} className="text-amber-400/70 hover:text-amber-400 text-xs underline underline-offset-2 transition-colors shrink-0">
-            Bekijk in Analyse →
-          </button>
-        </div>
+          <span className="text-amber-400/70 text-xs shrink-0">
+            {alleenTeBeoordelenFilter ? '✕ Filter wissen' : 'Klik om te filteren →'}
+          </span>
+        </button>
       )}
 
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
-        {/* Actief / Inactief tabs */}
+        {/* Actief / Archief tabs */}
         <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5">
           <button
-            onClick={() => { setActiveFilter('actief'); setTypeFilter('alles') }}
+            onClick={() => { setActiveFilter('actief'); setTypeFilter('alles'); setAlleenTeBeoordelenFilter(false) }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeFilter === 'actief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
             }`}
@@ -971,7 +961,7 @@ export default function Opdrachten() {
             </span>
           </button>
           <button
-            onClick={() => { setActiveFilter('inactief'); setTypeFilter('alles') }}
+            onClick={() => { setActiveFilter('inactief'); setTypeFilter('alles'); setAlleenTeBeoordelenFilter(false) }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeFilter === 'inactief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
             }`}
@@ -990,9 +980,7 @@ export default function Opdrachten() {
             <button
               onClick={() => setTypeFilter('alles')}
               className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
-                typeFilter === 'alles'
-                  ? 'bg-white/15 border-white/25 text-white'
-                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                typeFilter === 'alles' ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
               }`}
             >
               Alle soorten
@@ -1075,7 +1063,6 @@ export default function Opdrachten() {
                 <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
                 <p className="text-white/20 text-xs">{parseVragen(opdracht.vragen).length} vragen</p>
 
-                {/* Te beoordelen badge */}
                 {teBeoor > 0 && (
                   <div className="flex items-center gap-1.5 text-amber-400 text-xs">
                     <Flag size={11} />
