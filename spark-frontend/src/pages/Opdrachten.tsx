@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil,
-  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink, Flag, Clock
+  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink, Flag, Clock, MoreVertical, Archive
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
@@ -118,6 +118,10 @@ export default function Opdrachten() {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>('actief')
   const [alleenTeBeoordelenFilter, setAlleenTeBeoordelenFilter] = useState(false)
+
+  // Three-dots menu state
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
+  const [detailMenuOpen, setDetailMenuOpen] = useState(false)
 
   const [editTitel, setEditTitel] = useState('')
   const [editBeschrijving, setEditBeschrijving] = useState('')
@@ -420,13 +424,36 @@ export default function Opdrachten() {
     }
   }
 
-  const handleDelete = async (opdracht: Opdracht) => {
-    if (!confirm(`Weet je zeker dat je "${opdracht.titel}" wilt verwijderen?`)) return
+  // Archiveren: zet is_active op false
+  const handleArchiveer = async (opdracht: Opdracht) => {
+    setOpenMenuId(null)
+    setDetailMenuOpen(false)
     const { error } = await supabase.from('assignments').update({ is_active: false }).eq('id', opdracht.id)
-    if (error) { toast.error('Verwijderen mislukt'); return }
+    if (error) { toast.error('Archiveren mislukt'); return }
     toast.success('Opdracht gearchiveerd')
     await fetchOpdrachten()
-    setView('overzicht')
+    if (view === 'detail') setView('overzicht')
+  }
+
+  // Definitief verwijderen: daadwerkelijk uit de DB
+  const handleDefinitielVerwijderen = async (opdracht: Opdracht) => {
+    setOpenMenuId(null)
+    setDetailMenuOpen(false)
+    if (!confirm(`Weet je zeker dat je "${opdracht.titel}" definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return
+    const { error } = await supabase.from('assignments').delete().eq('id', opdracht.id)
+    if (error) { toast.error('Verwijderen mislukt'); return }
+    toast.success('Opdracht definitief verwijderd')
+    await fetchOpdrachten()
+    if (view === 'detail') setView('overzicht')
+  }
+
+  // Terugzetten uit archief
+  const handleTerugzetten = async (opdracht: Opdracht) => {
+    setOpenMenuId(null)
+    const { error } = await supabase.from('assignments').update({ is_active: true }).eq('id', opdracht.id)
+    if (error) { toast.error('Terugzetten mislukt'); return }
+    toast.success('Opdracht teruggezet naar actief')
+    await fetchOpdrachten()
   }
 
   const eerstvolgendeDeadline = (kd: KlasDeadline[]) => {
@@ -435,7 +462,7 @@ export default function Opdrachten() {
     return new Date(Math.min(...toekomstig.map(d => d.getTime())))
   }
 
-  // ═══════════════════════════════
+  // ═════════════════���═════════════
   // SPAR VIEW
   // ═══════════════════════════════
   if (view === 'spar') {
@@ -608,6 +635,8 @@ export default function Opdrachten() {
 
     return (
       <div className="space-y-4">
+        {detailMenuOpen && <div className="fixed inset-0 z-40" onClick={() => setDetailMenuOpen(false)} />}
+
         <div className="flex items-center gap-3 flex-wrap">
           <button onClick={() => setView('overzicht')} className="text-white/50 hover:text-white">
             <ArrowLeft size={20} />
@@ -629,10 +658,44 @@ export default function Opdrachten() {
               className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
               <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
             </button>
-            <button onClick={() => handleDelete(selectedOpdracht)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all">
-              <Trash size={14} /> Verwijderen
-            </button>
+            {/* Three-dots menu */}
+            <div className="relative">
+              <button
+                onClick={() => setDetailMenuOpen(prev => !prev)}
+                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/50 hover:text-white transition-all"
+              >
+                <MoreVertical size={15} />
+              </button>
+              {detailMenuOpen && (
+                <div className="absolute right-0 top-full mt-1 w-52 bg-[#1a1f3d] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                  {selectedOpdracht.is_actief ? (
+                    <button
+                      onClick={() => handleArchiveer(selectedOpdracht)}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                    >
+                      <Archive size={14} className="text-white/40" />
+                      Archiveren
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleTerugzetten(selectedOpdracht)}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                    >
+                      <Archive size={14} className="text-blue-400" />
+                      Terugzetten naar actief
+                    </button>
+                  )}
+                  <div className="h-px bg-white/10 mx-2" />
+                  <button
+                    onClick={() => handleDefinitielVerwijderen(selectedOpdracht)}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-red-500/10 text-red-400/70 hover:text-red-400 text-sm transition-colors text-left"
+                  >
+                    <Trash size={14} />
+                    Definitief verwijderen
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -746,7 +809,7 @@ export default function Opdrachten() {
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
             <button
               onClick={() => { if (!editingVragen) setEditVragen(parseVragen(selectedOpdracht.vragen)); setEditingVragen(prev => !prev) }}
-              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white'}`}>
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingVragen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white/80'}`}>
               <Pencil size={12} /> {editingVragen ? 'Stoppen met bewerken' : 'Vragen bewerken'}
             </button>
           </div>
@@ -770,7 +833,7 @@ export default function Opdrachten() {
                                   <span className="text-white/40 text-xs shrink-0">#{v.nummer}</span>
                                   <textarea value={v.vraag}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[36px]" rows={2} />
+                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[36px]" rows={1} />
                                   <input type="number" min={0} value={v.punten}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
                                     className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none text-center" />
@@ -898,6 +961,9 @@ export default function Opdrachten() {
 
   return (
     <div className="space-y-5">
+      {/* Overlay voor menu's */}
+      {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
+
       {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
@@ -917,7 +983,7 @@ export default function Opdrachten() {
         )}
       </div>
 
-      {/* Te beoordelen banner — klikbaar */}
+      {/* Te beoordelen banner */}
       {totaalTeBeoordelenActief > 0 && (
         <button
           onClick={() => {
@@ -1044,53 +1110,97 @@ export default function Opdrachten() {
             const deadline = eerstvolgendeDeadline(opdracht.klas_deadlines)
             const aantalKlassen = opdracht.klas_deadlines.length
             const teBeoor = opdracht.te_beoordelen || 0
+            const isMenuOpen = openMenuId === opdracht.id
             return (
-              <div key={opdracht.id}
-                onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
-                className={`bg-[#0f1029] border rounded-xl p-5 cursor-pointer transition-all group space-y-2 ${
-                  !opdracht.is_actief ? 'border-white/5 opacity-60 hover:opacity-80' : 'border-white/10 hover:border-white/20'
-                }`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
-                    {!opdracht.is_actief && (
-                      <span className="text-xs px-2 py-0.5 rounded border text-white/30 bg-white/5 border-white/10">archief</span>
-                    )}
+              <div key={opdracht.id} className="relative">
+                <div
+                  onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
+                  className={`bg-[#0f1029] border rounded-xl p-5 cursor-pointer transition-all group space-y-2 ${
+                    !opdracht.is_actief ? 'border-white/5 opacity-60 hover:opacity-80' : 'border-white/10 hover:border-white/20'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
+                      {!opdracht.is_actief && (
+                        <span className="text-xs px-2 py-0.5 rounded border text-white/30 bg-white/5 border-white/10">archief</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <span className="text-xs text-white/30">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
+                      {/* Three-dots menu knop */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : opdracht.id) }}
+                        className="p-1 rounded-md text-white/20 hover:text-white/60 hover:bg-white/10 transition-all"
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <span className="text-xs text-white/30 shrink-0">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
+                  <h3 className="text-white font-semibold">{opdracht.titel}</h3>
+                  <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
+                  <p className="text-white/20 text-xs">{parseVragen(opdracht.vragen).length} vragen</p>
+
+                  {teBeoor > 0 && (
+                    <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+                      <Flag size={11} />
+                      <span>{teBeoor} te beoordelen</span>
+                    </div>
+                  )}
+
+                  {aantalKlassen > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {opdracht.klas_deadlines.slice(0, 3).map(kd => {
+                        const k = klassen.find(k => k.id === kd.class_id)
+                        return k ? (
+                          <span key={kd.class_id} className="text-xs text-blue-400/60 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded">
+                            📚 {k.name}
+                          </span>
+                        ) : null
+                      })}
+                      {aantalKlassen > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{aantalKlassen - 3} meer</span>}
+                    </div>
+                  )}
+
+                  {deadline && (
+                    <p className="text-amber-400/70 text-xs flex items-center gap-1">
+                      <Clock size={11} />
+                      {deadline.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {deadline.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  )}
+                  <div className="pt-1 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
                 </div>
-                <h3 className="text-white font-semibold">{opdracht.titel}</h3>
-                <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
-                <p className="text-white/20 text-xs">{parseVragen(opdracht.vragen).length} vragen</p>
 
-                {teBeoor > 0 && (
-                  <div className="flex items-center gap-1.5 text-amber-400 text-xs">
-                    <Flag size={11} />
-                    <span>{teBeoor} te beoordelen</span>
+                {/* Dropdown menu */}
+                {isMenuOpen && (
+                  <div className="absolute top-12 right-4 w-52 bg-[#1a1f3d] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                    {opdracht.is_actief ? (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleArchiveer(opdracht) }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                      >
+                        <Archive size={14} className="text-white/40" />
+                        Archiveren
+                      </button>
+                    ) : (
+                      <button
+                        onClick={e => { e.stopPropagation(); handleTerugzetten(opdracht) }}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                      >
+                        <Archive size={14} className="text-blue-400" />
+                        Terugzetten naar actief
+                      </button>
+                    )}
+                    <div className="h-px bg-white/10 mx-2" />
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDefinitielVerwijderen(opdracht) }}
+                      className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-red-500/10 text-red-400/70 hover:text-red-400 text-sm transition-colors text-left"
+                    >
+                      <Trash size={14} />
+                      Definitief verwijderen
+                    </button>
                   </div>
                 )}
-
-                {aantalKlassen > 0 && (
-                  <div className="flex flex-wrap gap-1 pt-1">
-                    {opdracht.klas_deadlines.slice(0, 3).map(kd => {
-                      const k = klassen.find(k => k.id === kd.class_id)
-                      return k ? (
-                        <span key={kd.class_id} className="text-xs text-blue-400/60 bg-blue-500/5 border border-blue-500/10 px-1.5 py-0.5 rounded">
-                          📚 {k.name}
-                        </span>
-                      ) : null
-                    })}
-                    {aantalKlassen > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{aantalKlassen - 3} meer</span>}
-                  </div>
-                )}
-
-                {deadline && (
-                  <p className="text-amber-400/70 text-xs flex items-center gap-1">
-                    <Clock size={11} />
-                    {deadline.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {deadline.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                )}
-                <div className="pt-1 text-white/20 text-xs group-hover:text-white/40 transition-colors">Klik om te openen →</div>
               </div>
             )
           })}

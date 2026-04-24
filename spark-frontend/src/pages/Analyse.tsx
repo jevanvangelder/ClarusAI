@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { supabase } from '@/lib/supabase'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, ArrowLeft, Users, TrendingUp, TrendingDown,
   Loader2, ChevronRight, Lightbulb, Brain, MessageSquare,
-  Clock, CheckCircle, XCircle, Edit3, Save, AlertTriangle, Flag
+  Clock, CheckCircle, XCircle, Edit3, Save, AlertTriangle, Flag,
+  MoreVertical, Archive, Trash
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -21,6 +22,7 @@ interface OpdrachtStat {
   gemiddelde_score: number
   gemiddeld_cijfer: number
   te_beoordelen: number
+  is_actief: boolean
 }
 
 interface Inzending {
@@ -53,6 +55,7 @@ interface KerninzichtData {
 type View = 'overzicht' | 'detail' | 'leerling'
 type TypeFilter = 'alles' | 'casus' | 'oefentoets' | 'huiswerk' | 'opdracht'
 type BeoordeelFilter = 'alles' | 'open'
+type ActiveFilter = 'actief' | 'archief'
 
 function AfrondenKlasModal({ klasnaam, aantalStudenten, onBevestig, onAnnuleer, loading }: {
   klasnaam: string
@@ -116,6 +119,8 @@ export default function Analyse() {
   const [loadingOpdrachten, setLoadingOpdrachten] = useState(true)
   const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
   const [beoordeelFilter, setBeoordeelFilter] = useState<BeoordeelFilter>('alles')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('actief')
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
   const [selectedOpdracht, setSelectedOpdracht] = useState<OpdrachtStat | null>(null)
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null)
@@ -137,65 +142,64 @@ export default function Analyse() {
 
   const [pendingOpen, setPendingOpen] = useState<{ assignmentId: string; classId: string } | null>(null)
 
-  useEffect(() => {
-    const load = async () => {
-      if (!user) return
-      setLoadingOpdrachten(true)
-      try {
-        const { data: opdr } = await supabase
-          .from('assignments')
-          .select('id, title, type, max_punten, vragen, assignment_classes(class_id, classes(id, name))')
-          .eq('created_by', user.id)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
+  const loadOpdrachten = async () => {
+    if (!user) return
+    setLoadingOpdrachten(true)
+    try {
+      const { data: opdr } = await supabase
+        .from('assignments')
+        .select('id, title, type, max_punten, vragen, is_active, assignment_classes(class_id, classes(id, name))')
+        .eq('created_by', user.id)
+        .order('created_at', { ascending: false })
 
-        if (!opdr) return
+      if (!opdr) return
 
-        const stats: OpdrachtStat[] = []
-        for (const o of opdr) {
-          const klassen = (o.assignment_classes || []).map((ac: any) => ({
-            class_id: ac.class_id,
-            klasnaam: ac.classes?.name || 'Onbekend',
-          }))
+      const stats: OpdrachtStat[] = []
+      for (const o of opdr) {
+        const klassen = (o.assignment_classes || []).map((ac: any) => ({
+          class_id: ac.class_id,
+          klasnaam: ac.classes?.name || 'Onbekend',
+        }))
 
-          const { data: subs } = await supabase
-            .from('assignment_submissions')
-            .select('totaal_punten, ai_nakijk_status')
-            .eq('assignment_id', o.id)
-            .in('ai_nakijk_status', ['done', 'afgerond'])
-            .not('ingeleverd_op', 'is', null)
+        const { data: subs } = await supabase
+          .from('assignment_submissions')
+          .select('totaal_punten, ai_nakijk_status')
+          .eq('assignment_id', o.id)
+          .in('ai_nakijk_status', ['done', 'afgerond'])
+          .not('ingeleverd_op', 'is', null)
 
-          const aantal = subs?.length || 0
-          const scores = (subs || []).map(s => s.totaal_punten || 0)
-          const gem_score = aantal > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / aantal) * 10) / 10 : 0
-          const gem_cijfer = o.max_punten > 0 ? Math.round((1 + (gem_score / o.max_punten) * 9) * 10) / 10 : 0
-          const te_beoordelen = (subs || []).filter(s => s.ai_nakijk_status === 'done').length
+        const aantal = subs?.length || 0
+        const scores = (subs || []).map(s => s.totaal_punten || 0)
+        const gem_score = aantal > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / aantal) * 10) / 10 : 0
+        const gem_cijfer = o.max_punten > 0 ? Math.round((1 + (gem_score / o.max_punten) * 9) * 10) / 10 : 0
+        const te_beoordelen = (subs || []).filter(s => s.ai_nakijk_status === 'done').length
 
-          stats.push({
-            id: o.id,
-            title: o.title,
-            type: o.type,
-            max_punten: o.max_punten,
-            klassen,
-            aantal_ingeleverd: aantal,
-            gemiddelde_score: gem_score,
-            gemiddeld_cijfer: Math.max(1, Math.min(10, gem_cijfer)),
-            te_beoordelen,
-          })
-        }
-        setOpdrachten(stats)
-
-        const pending = localStorage.getItem('clarus-analyse-open')
-        if (pending) {
-          localStorage.removeItem('clarus-analyse-open')
-          setPendingOpen(JSON.parse(pending))
-        }
-      } finally {
-        setLoadingOpdrachten(false)
+        stats.push({
+          id: o.id,
+          title: o.title,
+          type: o.type,
+          max_punten: o.max_punten,
+          klassen,
+          aantal_ingeleverd: aantal,
+          gemiddelde_score: gem_score,
+          gemiddeld_cijfer: Math.max(1, Math.min(10, gem_cijfer)),
+          te_beoordelen,
+          is_actief: o.is_active,
+        })
       }
+      setOpdrachten(stats)
+
+      const pending = localStorage.getItem('clarus-analyse-open')
+      if (pending) {
+        localStorage.removeItem('clarus-analyse-open')
+        setPendingOpen(JSON.parse(pending))
+      }
+    } finally {
+      setLoadingOpdrachten(false)
     }
-    load()
-  }, [user])
+  }
+
+  useEffect(() => { loadOpdrachten() }, [user])
 
   useEffect(() => {
     if (!pendingOpen || opdrachten.length === 0) return
@@ -206,6 +210,33 @@ export default function Analyse() {
     }
   }, [pendingOpen, opdrachten])
 
+  // ── Archief acties ──────────────────────────────────────
+  const handleArchiveer = async (opdracht: OpdrachtStat) => {
+    setOpenMenuId(null)
+    const { error } = await supabase.from('assignments').update({ is_active: false }).eq('id', opdracht.id)
+    if (error) { toast.error('Archiveren mislukt'); return }
+    toast.success('Opdracht gearchiveerd')
+    await loadOpdrachten()
+  }
+
+  const handleTerugzetten = async (opdracht: OpdrachtStat) => {
+    setOpenMenuId(null)
+    const { error } = await supabase.from('assignments').update({ is_active: true }).eq('id', opdracht.id)
+    if (error) { toast.error('Terugzetten mislukt'); return }
+    toast.success('Opdracht teruggezet naar actief')
+    await loadOpdrachten()
+  }
+
+  const handleDefinitielVerwijderen = async (opdracht: OpdrachtStat) => {
+    setOpenMenuId(null)
+    if (!confirm(`Weet je zeker dat je "${opdracht.title}" definitief wilt verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return
+    const { error } = await supabase.from('assignments').delete().eq('id', opdracht.id)
+    if (error) { toast.error('Verwijderen mislukt'); return }
+    toast.success('Opdracht definitief verwijderd')
+    await loadOpdrachten()
+  }
+
+  // ── Detail laden ────────────────────────────────────────
   const openDetail = async (opdracht: OpdrachtStat, class_id?: string) => {
     setSelectedOpdracht(opdracht)
     setSelectedClassId(class_id || null)
@@ -243,12 +274,10 @@ export default function Analyse() {
         .not('ingeleverd_op', 'is', null)
 
       if (class_id) query = query.eq('class_id', class_id)
-
       const { data: subs } = await query
 
       const student_ids = [...new Set((subs || []).map(s => s.student_id))]
       let namenMap: Record<string, string> = {}
-
       if (student_ids.length > 0) {
         try {
           const res = await fetch(`${API_URL}/api/analyse/student-namen`, {
@@ -266,9 +295,7 @@ export default function Analyse() {
         const cijfer = opdracht.max_punten > 0
           ? Math.max(1, Math.min(10, Math.round((1 + (s.totaal_punten / opdracht.max_punten) * 9) * 10) / 10))
           : 0
-        const te_laat = deadline
-          ? new Date(s.ingeleverd_op) > new Date(deadline)
-          : false
+        const te_laat = deadline ? new Date(s.ingeleverd_op) > new Date(deadline) : false
         return {
           submission_id: s.id,
           student_id: s.student_id,
@@ -336,7 +363,6 @@ export default function Analyse() {
         .select('id, antwoorden')
         .eq('id', selectedLeerling.submission_id)
         .single()
-
       if (!sub) throw new Error('Inzending niet gevonden')
 
       const nieuweAntwoorden = (sub.antwoorden || []).map((ant: any) => {
@@ -346,12 +372,10 @@ export default function Analyse() {
         }
         return ant
       })
-
       const nieuwTotaal = nieuweAntwoorden.reduce((sum: number, ant: any) => sum + (ant.nakijk?.punten_behaald || 0), 0)
       const nieuwCijfer = Math.max(1, Math.min(10, Math.round((1 + (nieuwTotaal / selectedOpdracht.max_punten) * 9) * 10) / 10))
 
-      await supabase
-        .from('assignment_submissions')
+      await supabase.from('assignment_submissions')
         .update({ antwoorden: nieuweAntwoorden, totaal_punten: nieuwTotaal })
         .eq('id', sub.id)
 
@@ -364,7 +388,7 @@ export default function Analyse() {
       setAangepastePunten({})
       setHeeftWijzigingen(false)
       toast.success('Punten opgeslagen!')
-    } catch (err) {
+    } catch {
       toast.error('Opslaan mislukt')
     } finally {
       setSavingPunten(false)
@@ -385,10 +409,7 @@ export default function Analyse() {
         signal: controller.signal,
       })
       clearTimeout(timeout)
-      if (!res.ok) {
-        const detail = await res.text().catch(() => `HTTP ${res.status}`)
-        throw new Error(detail)
-      }
+      if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`))
       setSelectedLeerling(prev => prev ? { ...prev, nakijk_status: 'afgerond' } : prev)
       setInzendingen(prev => prev.map(iz =>
         iz.submission_id === selectedLeerling.submission_id ? { ...iz, nakijk_status: 'afgerond' } : iz
@@ -415,20 +436,12 @@ export default function Analyse() {
       const res = await fetch(`${API_URL}/api/submissions/afronden`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignment_id: selectedOpdracht.id,
-          class_id: selectedClassId || undefined,
-        }),
+        body: JSON.stringify({ assignment_id: selectedOpdracht.id, class_id: selectedClassId || undefined }),
         signal: controller.signal,
       })
       clearTimeout(timeout)
-      if (!res.ok) {
-        const detail = await res.text().catch(() => `HTTP ${res.status}`)
-        throw new Error(detail)
-      }
-      setInzendingen(prev => prev.map(iz =>
-        iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz
-      ))
+      if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`))
+      setInzendingen(prev => prev.map(iz => iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz))
       setToonAfrondenModal(false)
       toast.success('Nakijken afgerond voor de hele klas!', { id: toastId })
     } catch (err: any) {
@@ -455,7 +468,7 @@ export default function Analyse() {
       })
       if (!res.ok) throw new Error(`API ${res.status}`)
       setKerninzicht(await res.json())
-    } catch (err) {
+    } catch {
       toast.error('Kerninzicht genereren mislukt')
     } finally {
       setLoadingKerninzicht(false)
@@ -469,11 +482,13 @@ export default function Analyse() {
     toast.success('Prompt geladen in de chatbot!')
   }
 
-  const beschikbareTypes = ['casus', 'oefentoets', 'huiswerk', 'opdracht'].filter(t =>
-    opdrachten.some(o => o.type === t)
-  )
-  const totaalTeBeoordelenOpen = opdrachten.reduce((sum, o) => sum + o.te_beoordelen, 0)
-  const gefilterdeOpdrachten = opdrachten.filter(o => {
+  // ── Filter logica ────────────────────────────────────────
+  const actieveOpdrachten = opdrachten.filter(o => o.is_actief)
+  const archiefOpdrachten = opdrachten.filter(o => !o.is_actief)
+  const huidigeLijst = activeFilter === 'actief' ? actieveOpdrachten : archiefOpdrachten
+  const beschikbareTypes = ['casus', 'oefentoets', 'huiswerk', 'opdracht'].filter(t => huidigeLijst.some(o => o.type === t))
+  const totaalTeBeoordelenOpen = actieveOpdrachten.reduce((sum, o) => sum + o.te_beoordelen, 0)
+  const gefilterdeOpdrachten = huidigeLijst.filter(o => {
     const matchType = typeFilter === 'alles' || o.type === typeFilter
     const matchBeoordeel = beoordeelFilter === 'alles' || o.te_beoordelen > 0
     return matchType && matchBeoordeel
@@ -482,7 +497,7 @@ export default function Analyse() {
   const geselecteerdeKlas = selectedOpdracht?.klassen.find(k => k.class_id === selectedClassId)
 
   // ═══════════════════════════════
-  // LEERLING DETAIL VIEW
+  // LEERLING VIEW
   // ═══════════════════════════════
   if (view === 'leerling' && selectedLeerling && selectedOpdracht) {
     const huidigTotaal = selectedLeerling.antwoorden.reduce((sum: number, ant: any) => {
@@ -521,11 +536,8 @@ export default function Analyse() {
               <Flag size={14} className="text-amber-400 shrink-0" />
               <p className="text-amber-400 text-sm">Nakijken is nog niet officieel afgerond. De leerling ziet dit als "Ingeleverd".</p>
             </div>
-            <button
-              onClick={rondeAfLeerling}
-              disabled={loadingAfrondenLeerling || heeftWijzigingen}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all shrink-0"
-            >
+            <button onClick={rondeAfLeerling} disabled={loadingAfrondenLeerling || heeftWijzigingen}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-xs font-medium rounded-lg transition-all shrink-0">
               {loadingAfrondenLeerling ? <Loader2 size={12} className="animate-spin" /> : <CheckCircle size={12} />}
               Nakijken afronden
             </button>
@@ -560,9 +572,7 @@ export default function Analyse() {
             </p>
           </div>
           <div className="text-right shrink-0">
-            <p className={`text-3xl font-bold ${huidigCijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
-              {huidigCijfer.toFixed(1)}
-            </p>
+            <p className={`text-3xl font-bold ${huidigCijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>{huidigCijfer.toFixed(1)}</p>
             <p className="text-white/30 text-xs">{huidigTotaal}/{selectedOpdracht.max_punten}pt</p>
           </div>
         </div>
@@ -608,7 +618,6 @@ export default function Analyse() {
                     </span>
                   </div>
                 </div>
-
                 <div className="p-4 space-y-3">
                   <div>
                     <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">Antwoord leerling</p>
@@ -637,8 +646,7 @@ export default function Analyse() {
                   )}
                   <div>
                     <p className="text-white/30 text-xs mb-2 uppercase tracking-wider flex items-center gap-1.5">
-                      <Edit3 size={10} />
-                      Punten aanpassen
+                      <Edit3 size={10} />Punten aanpassen
                     </p>
                     <div className="flex items-center gap-2 flex-wrap">
                       {Array.from({ length: maxPunten + 1 }, (_, i) => i).map(p => (
@@ -713,15 +721,13 @@ export default function Analyse() {
             <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedOpdracht.title}</h2>
             <p className="text-white/40 text-sm mt-0.5">
               {geselecteerdeKlas ? geselecteerdeKlas.klasnaam : 'Alle klassen'} · {selectedOpdracht.type}
+              {!selectedOpdracht.is_actief && <span className="ml-2 text-white/30">(archief)</span>}
             </p>
           </div>
           {aantalNietAfgerond > 0 && (
-            <button
-              onClick={() => setToonAfrondenModal(true)}
-              className="flex items-center gap-1.5 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/30 text-green-400 text-xs font-medium rounded-lg transition-all shrink-0"
-            >
-              <Flag size={13} />
-              Nakijken afronden ({aantalNietAfgerond})
+            <button onClick={() => setToonAfrondenModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/30 text-green-400 text-xs font-medium rounded-lg transition-all shrink-0">
+              <Flag size={13} />Nakijken afronden ({aantalNietAfgerond})
             </button>
           )}
         </div>
@@ -752,8 +758,7 @@ export default function Analyse() {
             {vraagStats.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 sm:p-5 space-y-3">
                 <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-                  <BarChart3 size={14} className="text-white/40" />
-                  Score per vraag
+                  <BarChart3 size={14} className="text-white/40" />Score per vraag
                 </h3>
                 <div className="space-y-2">
                   {vraagStats.map(v => (
@@ -784,14 +789,11 @@ export default function Analyse() {
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
                 <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10 flex items-center justify-between">
                   <h3 className="text-white font-semibold text-sm flex items-center gap-2">
-                    <Users size={14} className="text-white/40" />
-                    Leerlingen ({inzendingen.length})
+                    <Users size={14} className="text-white/40" />Leerlingen ({inzendingen.length})
                   </h3>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-green-400">{inzendingen.filter(iz => iz.nakijk_status === 'afgerond').length} afgerond</span>
-                    {aantalNietAfgerond > 0 && (
-                      <span className="text-xs text-amber-400">{aantalNietAfgerond} wacht</span>
-                    )}
+                    {aantalNietAfgerond > 0 && <span className="text-xs text-amber-400">{aantalNietAfgerond} wacht</span>}
                   </div>
                 </div>
                 <div className="divide-y divide-white/5">
@@ -825,9 +827,7 @@ export default function Analyse() {
                       </div>
                       <div className="text-right shrink-0 flex items-center gap-3">
                         <div>
-                          <span className={`text-lg font-bold ${iz.cijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>
-                            {iz.cijfer.toFixed(1)}
-                          </span>
+                          <span className={`text-lg font-bold ${iz.cijfer >= 5.5 ? 'text-green-400' : 'text-red-400'}`}>{iz.cijfer.toFixed(1)}</span>
                           <p className="text-white/30 text-xs">{iz.totaal_punten}/{selectedOpdracht.max_punten}pt</p>
                         </div>
                         <ChevronRight size={14} className="text-white/20" />
@@ -871,9 +871,7 @@ export default function Analyse() {
                     </div>
                   )}
                   {!loadingKerninzicht && !kerninzicht && (
-                    <p className="text-white/25 text-sm text-center py-4">
-                      Klik op "Genereer kerninzicht" om een AI-analyse te starten.
-                    </p>
+                    <p className="text-white/25 text-sm text-center py-4">Klik op "Genereer kerninzicht" om een AI-analyse te starten.</p>
                   )}
                   {kerninzicht && !loadingKerninzicht && (
                     <div className="space-y-4 sm:space-y-5">
@@ -930,13 +928,16 @@ export default function Analyse() {
   // ═══════════════════════════════
   return (
     <div className="space-y-5">
+      {/* Overlay voor menu's */}
+      {openMenuId && <div className="fixed inset-0 z-40" onClick={() => setOpenMenuId(null)} />}
+
       <div>
         <h2 className="text-2xl font-bold text-white">Analyse</h2>
         <p className="text-white/50 text-sm mt-1">Inzicht in de voortgang van jouw leerlingen</p>
       </div>
 
-      {/* Te beoordelen banner */}
-      {!loadingOpdrachten && totaalTeBeoordelenOpen > 0 && (
+      {/* Te beoordelen banner — alleen bij actief tab */}
+      {!loadingOpdrachten && activeFilter === 'actief' && totaalTeBeoordelenOpen > 0 && (
         <button
           onClick={() => setBeoordeelFilter(prev => prev === 'open' ? 'alles' : 'open')}
           className={`w-full text-left rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap transition-all border ${
@@ -959,35 +960,60 @@ export default function Analyse() {
       )}
 
       {/* Filters */}
-      {!loadingOpdrachten && (beschikbareTypes.length > 0 || beoordeelFilter === 'open') && (
+      {!loadingOpdrachten && (
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-white/30 text-xs">Soort:</span>
-          <button
-            onClick={() => setTypeFilter('alles')}
-            className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
-              typeFilter === 'alles'
-                ? 'bg-white/15 border-white/25 text-white'
-                : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
-            }`}
-          >
-            Alle soorten
-          </button>
-          {beschikbareTypes.map(t => (
+          {/* Actief / Archief tabs */}
+          <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5">
             <button
-              key={t}
-              onClick={() => setTypeFilter(t as TypeFilter)}
-              className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
-                typeFilter === t
-                  ? TYPE_FILTER_COLORS[t] || 'bg-white/15 border-white/25 text-white'
-                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+              onClick={() => { setActiveFilter('actief'); setTypeFilter('alles'); setBeoordeelFilter('alles') }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeFilter === 'actief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
               }`}
             >
-              {t.charAt(0).toUpperCase() + t.slice(1)}
+              Actief
+              <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeFilter === 'actief' ? 'bg-blue-500/30 text-blue-300' : 'bg-white/10 text-white/30'}`}>
+                {actieveOpdrachten.length}
+              </span>
             </button>
-          ))}
+            <button
+              onClick={() => { setActiveFilter('archief'); setTypeFilter('alles'); setBeoordeelFilter('alles') }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                activeFilter === 'archief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+              }`}
+            >
+              Archief
+              <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeFilter === 'archief' ? 'bg-white/20 text-white/60' : 'bg-white/10 text-white/30'}`}>
+                {archiefOpdrachten.length}
+              </span>
+            </button>
+          </div>
+
+          {/* Type filters */}
+          {beschikbareTypes.length > 0 && (
+            <>
+              <div className="w-px h-5 bg-white/10" />
+              <button
+                onClick={() => setTypeFilter('alles')}
+                className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                  typeFilter === 'alles' ? 'bg-white/15 border-white/25 text-white' : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                }`}
+              >
+                Alle soorten
+              </button>
+              {beschikbareTypes.map(t => (
+                <button key={t} onClick={() => setTypeFilter(t as TypeFilter)}
+                  className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                    typeFilter === t ? TYPE_FILTER_COLORS[t] : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                  }`}>
+                  {t.charAt(0).toUpperCase() + t.slice(1)}
+                </button>
+              ))}
+            </>
+          )}
         </div>
       )}
 
+      {/* Lijst */}
       {loadingOpdrachten ? (
         <div className="flex items-center justify-center h-40">
           <Loader2 className="animate-spin text-white/40" size={28} />
@@ -997,15 +1023,18 @@ export default function Analyse() {
           <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
             <BarChart3 size={28} className="text-blue-400" />
           </div>
-          <h3 className="text-lg font-semibold text-white mb-2">Nog geen data beschikbaar</h3>
-          <p className="text-white/40 text-sm max-w-sm">Analyses verschijnen hier zodra leerlingen opdrachten hebben ingeleverd.</p>
+          <h3 className="text-lg font-semibold text-white mb-2">Geen data beschikbaar</h3>
+          <p className="text-white/40 text-sm max-w-sm">
+            {activeFilter === 'archief' ? 'Geen gearchiveerde opdrachten gevonden.' : 'Analyses verschijnen hier zodra leerlingen opdrachten hebben ingeleverd.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-4">
           {gefilterdeOpdrachten.map(o => {
             const heeftData = o.aantal_ingeleverd > 0
+            const isMenuOpen = openMenuId === o.id
             return (
-              <div key={o.id} className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
+              <div key={o.id} className={`bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden ${!o.is_actief ? 'opacity-70' : ''}`}>
                 <div className="px-4 sm:px-5 py-4 flex items-start sm:items-center gap-3 sm:gap-4 flex-wrap">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -1021,7 +1050,8 @@ export default function Analyse() {
                     </div>
                     <h3 className="text-white font-semibold text-sm sm:text-base">{o.title}</h3>
                   </div>
-                  <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+
+                  <div className="flex items-center gap-3 sm:gap-6 shrink-0">
                     <div className="text-center">
                       <p className="text-white/30 text-xs mb-0.5">Ingeleverd</p>
                       <p className="text-white font-semibold">{o.aantal_ingeleverd}</p>
@@ -1034,6 +1064,45 @@ export default function Analyse() {
                         </p>
                       </div>
                     )}
+
+                    {/* Three-dots menu */}
+                    <div className="relative">
+                      <button
+                        onClick={e => { e.stopPropagation(); setOpenMenuId(isMenuOpen ? null : o.id) }}
+                        className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/40 hover:text-white transition-all"
+                      >
+                        <MoreVertical size={14} />
+                      </button>
+                      {isMenuOpen && (
+                        <div className="absolute right-0 top-full mt-1 w-52 bg-[#1a1f3d] border border-white/10 rounded-xl shadow-xl z-50 overflow-hidden">
+                          {o.is_actief ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleArchiveer(o) }}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                            >
+                              <Archive size={14} className="text-white/40" />
+                              Archiveren
+                            </button>
+                          ) : (
+                            <button
+                              onClick={e => { e.stopPropagation(); handleTerugzetten(o) }}
+                              className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-white/5 text-white/70 hover:text-white text-sm transition-colors text-left"
+                            >
+                              <Archive size={14} className="text-blue-400" />
+                              Terugzetten naar actief
+                            </button>
+                          )}
+                          <div className="h-px bg-white/10 mx-2" />
+                          <button
+                            onClick={e => { e.stopPropagation(); handleDefinitielVerwijderen(o) }}
+                            className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-red-500/10 text-red-400/70 hover:text-red-400 text-sm transition-colors text-left"
+                          >
+                            <Trash size={14} />
+                            Definitief verwijderen
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
