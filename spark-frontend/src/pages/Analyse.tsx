@@ -356,31 +356,28 @@ export default function Analyse() {
     }
   }
 
-  // Nakijken afronden voor één leerling — via backend API (RLS bypass)
+  // ─── Nakijken afronden voor één leerling ───────────────────────────────────
+  // Render (gratis tier) slaapt na 15 min — eerste aanroep kan 30-60s duren.
+  // Daarom: toast.loading direct zichtbaar + AbortController timeout van 20s.
   const rondeAfLeerling = async () => {
     if (!selectedLeerling) return
     setLoadingAfrondenLeerling(true)
+    const toastId = toast.loading('Nakijken afronden... (even geduld, server wordt opgestart)')
     try {
-      // Probeer via backend API
-      let gelukt = false
-      try {
-        const res = await fetch(`${API_URL}/api/submissions/afronden`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ submission_id: selectedLeerling.submission_id }),
-        })
-        if (res.ok) gelukt = true
-      } catch {
-        // Backend nog niet beschikbaar, fallback naar Supabase
-      }
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 20000)
 
-      // Fallback: directe Supabase update
-      if (!gelukt) {
-        const { error } = await supabase
-          .from('assignment_submissions')
-          .update({ ai_nakijk_status: 'afgerond' })
-          .eq('id', selectedLeerling.submission_id)
-        if (error) throw error
+      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ submission_id: selectedLeerling.submission_id }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => `HTTP ${res.status}`)
+        throw new Error(detail)
       }
 
       setSelectedLeerling(prev => prev ? { ...prev, nakijk_status: 'afgerond' } : prev)
@@ -389,56 +386,55 @@ export default function Analyse() {
           ? { ...iz, nakijk_status: 'afgerond' }
           : iz
       ))
-      toast.success('Nakijken afgerond! Leerling ziet nu "Nagekeken".')
-    } catch (err) {
-      console.error('Afronden mislukt:', err)
-      toast.error('Afronden mislukt — controleer je rechten in Supabase.')
+      toast.success('Nakijken afgerond! Leerling ziet nu "Nagekeken".', { id: toastId })
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        toast.error('Server reageert te langzaam. Wacht 30 seconden en probeer opnieuw.', { id: toastId })
+      } else {
+        toast.error(`Afronden mislukt: ${err.message || 'onbekende fout'}`, { id: toastId })
+      }
     } finally {
       setLoadingAfrondenLeerling(false)
     }
   }
 
-  // Nakijken afronden voor hele klas — via backend API (RLS bypass)
+  // ─── Nakijken afronden voor hele klas ─────────────────────────────────────
   const rondeAfKlas = async () => {
     if (!selectedOpdracht) return
     setLoadingAfronden(true)
+    const toastId = toast.loading('Nakijken afronden... (even geduld, server wordt opgestart)')
     try {
-      // Probeer via backend API
-      let gelukt = false
-      try {
-        const res = await fetch(`${API_URL}/api/submissions/afronden`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            assignment_id: selectedOpdracht.id,
-            class_id: selectedClassId || undefined,
-          }),
-        })
-        if (res.ok) gelukt = true
-      } catch {
-        // Backend nog niet beschikbaar, fallback naar Supabase
-      }
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), 20000)
 
-      // Fallback: directe Supabase update
-      if (!gelukt) {
-        let q = supabase
-          .from('assignment_submissions')
-          .update({ ai_nakijk_status: 'afgerond' })
-          .eq('assignment_id', selectedOpdracht.id)
-          .eq('ai_nakijk_status', 'done')
-        if (selectedClassId) q = q.eq('class_id', selectedClassId)
-        const { error } = await q
-        if (error) throw error
+      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignment_id: selectedOpdracht.id,
+          class_id: selectedClassId || undefined,
+        }),
+        signal: controller.signal,
+      })
+      clearTimeout(timeout)
+
+      if (!res.ok) {
+        const detail = await res.text().catch(() => `HTTP ${res.status}`)
+        throw new Error(detail)
       }
 
       setInzendingen(prev => prev.map(iz =>
         iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz
       ))
       setToonAfrondenModal(false)
-      toast.success('Nakijken afgerond voor de hele klas!')
-    } catch (err) {
-      console.error('Klas afronden mislukt:', err)
-      toast.error('Afronden mislukt — controleer je rechten in Supabase.')
+      toast.success('Nakijken afgerond voor de hele klas!', { id: toastId })
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        toast.error('Server reageert te langzaam. Wacht 30 seconden en probeer opnieuw.', { id: toastId })
+      } else {
+        toast.error(`Afronden mislukt: ${err.message || 'onbekende fout'}`, { id: toastId })
+      }
+      setToonAfrondenModal(false)
     } finally {
       setLoadingAfronden(false)
     }
