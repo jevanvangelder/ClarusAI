@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil,
-  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink
+  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink, Flag, Clock
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
@@ -16,6 +16,12 @@ const TYPE_COLORS: Record<string, string> = {
   oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
   casus:      'text-orange-400 bg-orange-500/10 border-orange-500/20',
   opdracht:   'text-green-400 bg-green-500/10 border-green-500/20',
+}
+const TYPE_FILTER_COLORS: Record<string, string> = {
+  huiswerk:   'bg-blue-500/15 border-blue-500/30 text-blue-400',
+  oefentoets: 'bg-purple-500/15 border-purple-500/30 text-purple-400',
+  casus:      'bg-orange-500/15 border-orange-500/30 text-orange-400',
+  opdracht:   'bg-green-500/15 border-green-500/30 text-green-400',
 }
 const getTypeColor = (type: string) => TYPE_COLORS[type] || 'text-blue-400 bg-blue-500/10 border-blue-500/20'
 
@@ -45,6 +51,7 @@ interface Opdracht {
   klas_deadlines: KlasDeadline[]
   is_actief: boolean
   created_at: string
+  te_beoordelen?: number
 }
 
 interface Klas {
@@ -62,6 +69,8 @@ interface SparMessage {
 }
 
 type View = 'overzicht' | 'spar' | 'detail'
+type TypeFilter = 'alles' | 'huiswerk' | 'oefentoets' | 'casus' | 'opdracht'
+type ActiveFilter = 'actief' | 'inactief'
 
 const parseVragen = (vragen: any): Vraag[] => {
   if (!vragen) return []
@@ -81,11 +90,9 @@ const toDatetimeLocal = (iso: string | null): string => {
   } catch { return '' }
 }
 
-// ── Afbeelding preview component ──────────────────────────────────────────────
 function AfbeeldingPreview({ src, className }: { src: string; className?: string }) {
   const [broken, setBroken] = useState(false)
   const isUrl = src.startsWith('http://') || src.startsWith('https://')
-
   if (broken && isUrl) {
     return (
       <a href={src} target="_blank" rel="noopener noreferrer"
@@ -95,14 +102,10 @@ function AfbeeldingPreview({ src, className }: { src: string; className?: string
       </a>
     )
   }
-
   return (
-    <img
-      src={src}
-      alt="Vraag afbeelding"
+    <img src={src} alt="Vraag afbeelding"
       className={className || 'mt-2 w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5'}
-      onError={() => setBroken(true)}
-    />
+      onError={() => setBroken(true)} />
   )
 }
 
@@ -113,6 +116,8 @@ export default function Opdrachten() {
   const [selectedOpdracht, setSelectedOpdracht] = useState<Opdracht | null>(null)
   const [klassen, setKlassen] = useState<Klas[]>([])
   const [zoekterm, setZoekterm] = useState('')
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('alles')
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>('actief')
 
   const [editTitel, setEditTitel] = useState('')
   const [editBeschrijving, setEditBeschrijving] = useState('')
@@ -144,14 +149,15 @@ export default function Opdrachten() {
 
   const fetchOpdrachten = async () => {
     if (!user) return
+    // Haal alle opdrachten op (actief én inactief) zodat we kunnen filteren
     const { data, error } = await supabase
       .from('assignments')
       .select(`id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)`)
       .eq('created_by', user.id)
-      .eq('is_active', true)
       .order('created_at', { ascending: false })
     if (error) { console.error('fetchOpdrachten error:', error); return }
-    setOpdrachten((data || []).map((o: any) => ({
+
+    const basis = (data || []).map((o: any) => ({
       id: o.id,
       titel: o.title,
       beschrijving: o.beschrijving || '',
@@ -164,7 +170,25 @@ export default function Opdrachten() {
         class_id: ac.class_id,
         deadline: ac.deadline ? toDatetimeLocal(ac.deadline) : '',
       })),
-    })))
+      te_beoordelen: 0,
+    }))
+
+    // Haal te_beoordelen per opdracht op
+    const opdrachtIds = basis.map(o => o.id)
+    if (opdrachtIds.length > 0) {
+      const { data: subs } = await supabase
+        .from('assignment_submissions')
+        .select('assignment_id')
+        .in('assignment_id', opdrachtIds)
+        .eq('ai_nakijk_status', 'done')
+        .not('ingeleverd_op', 'is', null)
+
+      const telMap: Record<string, number> = {}
+      ;(subs || []).forEach(s => { telMap[s.assignment_id] = (telMap[s.assignment_id] || 0) + 1 })
+      basis.forEach(o => { o.te_beoordelen = telMap[o.id] || 0 })
+    }
+
+    setOpdrachten(basis)
   }
 
   const fetchKlassen = async () => {
@@ -406,8 +430,8 @@ export default function Opdrachten() {
     if (!confirm(`Weet je zeker dat je "${opdracht.titel}" wilt verwijderen?`)) return
     const { error } = await supabase.from('assignments').update({ is_active: false }).eq('id', opdracht.id)
     if (error) { toast.error('Verwijderen mislukt'); return }
-    toast.success('Opdracht verwijderd')
-    setOpdrachten(prev => prev.filter(o => o.id !== opdracht.id))
+    toast.success('Opdracht gearchiveerd')
+    await fetchOpdrachten()
     setView('overzicht')
   }
 
@@ -648,16 +672,11 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          {/* ── Klas dropdown met overlay-fix ── */}
           <div>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
-              {/* Transparante overlay: sluit dropdown bij klik buiten het dropdown-menu zelf */}
               {klasDropdownOpen && (
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setKlasDropdownOpen(false)}
-                />
+                <div className="fixed inset-0 z-40" onClick={() => setKlasDropdownOpen(false)} />
               )}
               <button
                 onClick={() => setKlasDropdownOpen(prev => !prev)}
@@ -877,10 +896,16 @@ export default function Opdrachten() {
   // ═══════════════════════════════
   // OVERZICHT
   // ═══════════════════════════════
-  const gefilterdeOpdrachten = opdrachten.filter(o => {
+  const actieveOpdrachten = opdrachten.filter(o => o.is_actief)
+  const inactieveOpdrachten = opdrachten.filter(o => !o.is_actief)
+  const huidigeLijst = activeFilter === 'actief' ? actieveOpdrachten : inactieveOpdrachten
+
+  const beschikbareTypes = OPDRACHT_TYPES.filter(t => huidigeLijst.some(o => o.type === t))
+
+  const gefilterdeOpdrachten = huidigeLijst.filter(o => {
+    const matchType = typeFilter === 'alles' || o.type === typeFilter
     const term = zoekterm.toLowerCase().trim()
-    if (!term) return true
-    return (
+    const matchZoek = !term || (
       o.titel.toLowerCase().includes(term) ||
       o.beschrijving.toLowerCase().includes(term) ||
       o.type.toLowerCase().includes(term) ||
@@ -889,10 +914,14 @@ export default function Opdrachten() {
         return k?.name.toLowerCase().includes(term) || k?.vak?.toLowerCase().includes(term)
       })
     )
+    return matchType && matchZoek
   })
 
+  const totaalTeBeoordelenActief = actieveOpdrachten.reduce((sum, o) => sum + (o.te_beoordelen || 0), 0)
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold text-white">Opdrachten</h2>
@@ -902,32 +931,102 @@ export default function Opdrachten() {
               : 'Jouw openstaande en voltooide opdrachten'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
-            <input
-              type="text"
-              value={zoekterm}
-              onChange={e => setZoekterm(e.target.value)}
-              placeholder="Zoek op titel, type of klas..."
-              className="bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-blue-500/50 w-64"
-            />
-            {zoekterm && (
-              <button onClick={() => setZoekterm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors">
-                <X size={13} />
-              </button>
-            )}
+        {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+          <button
+            onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all whitespace-nowrap">
+            <Plus size={16} /> Nieuwe opdracht aanmaken
+          </button>
+        )}
+      </div>
+
+      {/* Te beoordelen banner */}
+      {totaalTeBeoordelenActief > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Flag size={15} className="text-amber-400 shrink-0" />
+            <p className="text-amber-400 text-sm">
+              <span className="font-semibold">{totaalTeBeoordelenActief} inzending{totaalTeBeoordelenActief !== 1 ? 'en' : ''}</span> wacht{totaalTeBeoordelenActief === 1 ? '' : 'en'} op beoordeling
+            </p>
           </div>
-          {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+          <button onClick={() => { /* navigate to analyse */ }} className="text-amber-400/70 hover:text-amber-400 text-xs underline underline-offset-2 transition-colors shrink-0">
+            Bekijk in Analyse →
+          </button>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Actief / Inactief tabs */}
+        <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5">
+          <button
+            onClick={() => { setActiveFilter('actief'); setTypeFilter('alles') }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeFilter === 'actief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            Actief
+            <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeFilter === 'actief' ? 'bg-blue-500/30 text-blue-300' : 'bg-white/10 text-white/30'}`}>
+              {actieveOpdrachten.length}
+            </span>
+          </button>
+          <button
+            onClick={() => { setActiveFilter('inactief'); setTypeFilter('alles') }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeFilter === 'inactief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
+            }`}
+          >
+            Archief
+            <span className={`px-1.5 py-0.5 rounded-full text-xs ${activeFilter === 'inactief' ? 'bg-white/20 text-white/60' : 'bg-white/10 text-white/30'}`}>
+              {inactieveOpdrachten.length}
+            </span>
+          </button>
+        </div>
+
+        {/* Type filters */}
+        {beschikbareTypes.length > 0 && (
+          <>
+            <div className="w-px h-5 bg-white/10" />
             <button
-              onClick={() => { setSparMessages([]); setGegenereerdeOpdracht(null); setSparContext(''); setSelectedOpdracht(null); setView('spar') }}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg transition-all whitespace-nowrap">
-              <Plus size={16} /> Nieuwe opdracht aanmaken
+              onClick={() => setTypeFilter('alles')}
+              className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                typeFilter === 'alles'
+                  ? 'bg-white/15 border-white/25 text-white'
+                  : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+              }`}
+            >
+              Alle soorten
+            </button>
+            {beschikbareTypes.map(t => (
+              <button key={t} onClick={() => setTypeFilter(t as TypeFilter)}
+                className={`px-3 py-1.5 rounded-lg border text-xs transition-all ${
+                  typeFilter === t ? TYPE_FILTER_COLORS[t] : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white/60'
+                }`}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </button>
+            ))}
+          </>
+        )}
+
+        {/* Zoekbalk */}
+        <div className="relative ml-auto">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/30" />
+          <input
+            type="text"
+            value={zoekterm}
+            onChange={e => setZoekterm(e.target.value)}
+            placeholder="Zoek opdracht..."
+            className="bg-white/5 border border-white/10 rounded-lg pl-9 pr-8 py-2 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-blue-500/50 w-52"
+          />
+          {zoekterm && (
+            <button onClick={() => setZoekterm('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white transition-colors">
+              <X size={13} />
             </button>
           )}
         </div>
       </div>
 
+      {/* Lijst */}
       {opdrachten.length === 0 ? (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
           <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
@@ -949,24 +1048,41 @@ export default function Opdrachten() {
             <Search size={24} className="text-white/30" />
           </div>
           <h3 className="text-lg font-semibold text-white mb-2">Geen opdrachten gevonden</h3>
-          <p className="text-white/40 text-sm">Probeer een andere zoekterm.</p>
+          <p className="text-white/40 text-sm">Probeer een andere zoekterm of filter.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {gefilterdeOpdrachten.map(opdracht => {
             const deadline = eerstvolgendeDeadline(opdracht.klas_deadlines)
             const aantalKlassen = opdracht.klas_deadlines.length
+            const teBeoor = opdracht.te_beoordelen || 0
             return (
               <div key={opdracht.id}
                 onClick={() => { setSelectedOpdracht(opdracht); setView('detail') }}
-                className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-5 cursor-pointer transition-all group space-y-2">
-                <div className="flex items-start justify-between">
-                  <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
-                  <span className="text-xs text-white/30">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
+                className={`bg-[#0f1029] border rounded-xl p-5 cursor-pointer transition-all group space-y-2 ${
+                  !opdracht.is_actief ? 'border-white/5 opacity-60 hover:opacity-80' : 'border-white/10 hover:border-white/20'
+                }`}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-xs px-2 py-0.5 rounded border ${getTypeColor(opdracht.type)}`}>{opdracht.type}</span>
+                    {!opdracht.is_actief && (
+                      <span className="text-xs px-2 py-0.5 rounded border text-white/30 bg-white/5 border-white/10">archief</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-white/30 shrink-0">{berekenMaxPunten(parseVragen(opdracht.vragen))}pt</span>
                 </div>
                 <h3 className="text-white font-semibold">{opdracht.titel}</h3>
                 <p className="text-white/40 text-xs line-clamp-2">{opdracht.beschrijving}</p>
                 <p className="text-white/20 text-xs">{parseVragen(opdracht.vragen).length} vragen</p>
+
+                {/* Te beoordelen badge */}
+                {teBeoor > 0 && (
+                  <div className="flex items-center gap-1.5 text-amber-400 text-xs">
+                    <Flag size={11} />
+                    <span>{teBeoor} te beoordelen</span>
+                  </div>
+                )}
+
                 {aantalKlassen > 0 && (
                   <div className="flex flex-wrap gap-1 pt-1">
                     {opdracht.klas_deadlines.slice(0, 3).map(kd => {
@@ -980,9 +1096,10 @@ export default function Opdrachten() {
                     {aantalKlassen > 3 && <span className="text-xs text-white/30 px-1.5 py-0.5">+{aantalKlassen - 3} meer</span>}
                   </div>
                 )}
+
                 {deadline && (
                   <p className="text-amber-400/70 text-xs flex items-center gap-1">
-                    <Calendar size={11} />
+                    <Clock size={11} />
                     {deadline.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} · {deadline.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 )}
