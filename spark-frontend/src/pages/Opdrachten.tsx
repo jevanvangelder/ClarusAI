@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil,
-  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search
+  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
@@ -79,6 +79,32 @@ const toDatetimeLocal = (iso: string | null): string => {
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
   } catch { return '' }
+}
+
+// ── Afbeelding preview component ──────────────────────────────────────────────
+// Toont de afbeelding als die laadt, anders een link naar de URL
+function AfbeeldingPreview({ src, className }: { src: string; className?: string }) {
+  const [broken, setBroken] = useState(false)
+  const isUrl = src.startsWith('http://') || src.startsWith('https://')
+
+  if (broken && isUrl) {
+    return (
+      <a href={src} target="_blank" rel="noopener noreferrer"
+        className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 underline underline-offset-2 mt-1">
+        <ExternalLink size={11} />
+        Afbeelding bekijken (externe link)
+      </a>
+    )
+  }
+
+  return (
+    <img
+      src={src}
+      alt="Vraag afbeelding"
+      className={className || 'mt-2 w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5'}
+      onError={() => setBroken(true)}
+    />
+  )
 }
 
 export default function Opdrachten() {
@@ -257,6 +283,28 @@ export default function Opdrachten() {
       toast.success('Opdracht opgeslagen!')
       setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false)
       await fetchOpdrachten()
+      // Herlaad selectedOpdracht zodat de detail-view de nieuwe vragen (incl. afbeeldingen) toont
+      const { data: updated } = await supabase
+        .from('assignments')
+        .select('id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)')
+        .eq('id', selectedOpdracht.id)
+        .single()
+      if (updated) {
+        setSelectedOpdracht({
+          id: updated.id,
+          titel: updated.title,
+          beschrijving: updated.beschrijving || '',
+          type: updated.type || 'opdracht',
+          max_punten: updated.max_punten || 0,
+          vragen: parseVragen(updated.vragen),
+          is_actief: updated.is_active,
+          created_at: updated.created_at,
+          klas_deadlines: (updated.assignment_classes || []).map((ac: any) => ({
+            class_id: ac.class_id,
+            deadline: ac.deadline ? toDatetimeLocal(ac.deadline) : '',
+          })),
+        })
+      }
     } catch (err: any) {
       console.error('handleSaveChanges error:', err)
       toast.error(err.message || 'Opslaan mislukt')
@@ -273,7 +321,6 @@ export default function Opdrachten() {
     setView('spar')
   }
 
-  // ✅ FIX: gebruik indexOf ipv startsWith zodat tekst vóór OPDRACHT_UPDATE ook werkt
   const parseAIResponse = (text: string) => {
     const PREFIX = 'OPDRACHT_UPDATE:'
     const idx = text.indexOf(PREFIX)
@@ -542,9 +589,7 @@ export default function Opdrachten() {
                         <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                       </div>
                       {v.afbeelding && (
-                        <img src={v.afbeelding} alt={`Afbeelding bij vraag ${v.nummer}`}
-                          className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
-                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                        <AfbeeldingPreview src={v.afbeelding} />
                       )}
                       {v.opties && v.opties.length > 0 && (
                         <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
@@ -751,14 +796,30 @@ export default function Opdrachten() {
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
                                     className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-green-500/50" />
                                 </div>
-                                <div className="flex items-center gap-2">
+
+                                {/* ── Afbeelding sectie in edit mode ── */}
+                                <div className="space-y-1.5">
                                   {v.afbeelding ? (
-                                    <div className="relative inline-block">
-                                      <img src={v.afbeelding} alt="vraag afbeelding" className="max-h-20 rounded border border-white/10" />
-                                      <button onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, afbeelding: undefined } : q))}
-                                        className="absolute top-0.5 right-0.5 bg-black/60 rounded-full p-0.5 text-white hover:bg-red-500 transition-all">
-                                        <X size={10} />
-                                      </button>
+                                    <div className="space-y-1.5">
+                                      <AfbeeldingPreview src={v.afbeelding} className="max-h-40 w-auto max-w-full rounded-lg border border-white/10 object-contain bg-white/5" />
+                                      {/* Toon URL als het een externe link is */}
+                                      {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
+                                        <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
+                                          className="flex items-center gap-1 text-xs text-blue-400/60 hover:text-blue-400 truncate max-w-xs">
+                                          <ExternalLink size={10} />
+                                          <span className="truncate">{v.afbeelding}</span>
+                                        </a>
+                                      )}
+                                      <div className="flex items-center gap-2">
+                                        <button onClick={() => vraagAfbeeldingRefs.current[i]?.click()}
+                                          className="flex items-center gap-1 px-2 py-1 bg-white/5 border border-white/20 hover:border-white/40 rounded text-white/40 hover:text-white/70 text-xs transition-all">
+                                          <Image size={11} /> Vervangen
+                                        </button>
+                                        <button onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, afbeelding: undefined } : q))}
+                                          className="flex items-center gap-1 px-2 py-1 bg-red-500/10 border border-red-500/20 hover:border-red-500/40 rounded text-red-400/60 hover:text-red-400 text-xs transition-all">
+                                          <X size={11} /> Verwijderen
+                                        </button>
+                                      </div>
                                     </div>
                                   ) : (
                                     <button onClick={() => vraagAfbeeldingRefs.current[i]?.click()}
@@ -782,6 +843,7 @@ export default function Opdrachten() {
               </Droppable>
             </DragDropContext>
           ) : (
+            // ── Read-only view ──
             <div className="space-y-3">
               {huidigeVragen.map((v, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
@@ -790,8 +852,16 @@ export default function Opdrachten() {
                     <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                   </div>
                   {v.afbeelding && (
-                    <img src={v.afbeelding} alt="vraag" className="mt-2 w-full max-h-36 object-cover rounded-lg border border-white/10"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                    <div className="mt-2 space-y-1">
+                      <AfbeeldingPreview src={v.afbeelding} className="w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5" />
+                      {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
+                        <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
+                          className="flex items-center gap-1 text-xs text-blue-400/50 hover:text-blue-400 truncate max-w-xs">
+                          <ExternalLink size={10} />
+                          <span className="truncate">{v.afbeelding}</span>
+                        </a>
+                      )}
+                    </div>
                   )}
                   {v.opties && v.opties.length > 0 && (
                     <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
