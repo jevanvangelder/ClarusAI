@@ -37,7 +37,7 @@ interface Antwoord {
   type: string
   max_punten: number
   correct_antwoord?: string
-  nakijk?: { punten_behaald: number; feedback: string; beredenering?: string }
+  nakijk?: { punten_behaald: number; feedback: string; beredenering?: string; niet_ingevuld?: boolean }
 }
 
 interface TutorMessage {
@@ -129,7 +129,6 @@ export default function StudentOpdrachtDetail() {
   const [toonOpenVragenModal, setToonOpenVragenModal] = useState(false)
   const [aantalOpenVragen, setAantalOpenVragen] = useState(0)
 
-  // ✅ Houdt bij of de leerling bewust opnieuw is begonnen — overleeft tab-switch NIET (dat is precies wat we willen)
   const [opnieuwBezig, setOpnieuwBezig] = useState(false)
 
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([])
@@ -194,7 +193,6 @@ export default function StudentOpdrachtDetail() {
         setAntwoorden(antwoordMap)
         setTutorMessages(subData.chat_log || [])
 
-        // ✅ Alleen nagekeken view tonen als NIET bewust opnieuw begonnen
         if (!opnieuwBezig && subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
           const resultaten = (subData.antwoorden || [])
             .filter((a: any) => a.nakijk)
@@ -204,6 +202,7 @@ export default function StudentOpdrachtDetail() {
               max_punten: a.max_punten,
               feedback: a.nakijk.feedback,
               beredenering: a.nakijk.beredenering,
+              niet_ingevuld: a.nakijk.niet_ingevuld || !a.student_antwoord?.trim(),
             }))
           const totaal = subData.totaal_punten ?? resultaten.reduce((sum: number, r: any) => sum + (r.punten_behaald || 0), 0)
           setNakijkResultaat({
@@ -214,7 +213,6 @@ export default function StudentOpdrachtDetail() {
           })
           setStatus('nagekeken')
         }
-        // Als opnieuwBezig=true: gewoon status 'bezig' laten, antwoorden wél laden (voortgang)
       }
 
       setLoading(false)
@@ -222,7 +220,6 @@ export default function StudentOpdrachtDetail() {
     load()
   }, [assignmentId, user, classId, opnieuwBezig])
 
-  // Auto-save elke 30 seconden
   useEffect(() => {
     if (status !== 'bezig' || !opdracht) return
     const interval = setInterval(() => saveDraft(false), 30000)
@@ -335,8 +332,22 @@ export default function StudentOpdrachtDetail() {
         body: JSON.stringify({ submission_id: sub.id, antwoorden: antwoordenMetCorrect }),
       })
       const nakijkData = await nakijkRes.json()
-      setNakijkResultaat({ ...sub, ...nakijkData, antwoorden: antwoordenMetCorrect })
-      // ✅ Na inleveren: niet meer opnieuw bezig
+
+      // Voeg niet_ingevuld toe op basis van leeg antwoord
+      const resultatenMetVlag = (nakijkData.resultaten || []).map((r: any) => {
+        const origAnt = antwoordenMetCorrect.find(a => a.vraag_nummer === r.vraag_nummer)
+        return {
+          ...r,
+          niet_ingevuld: !origAnt?.student_antwoord?.trim(),
+        }
+      })
+
+      setNakijkResultaat({
+        ...sub,
+        ...nakijkData,
+        resultaten: resultatenMetVlag,
+        antwoorden: antwoordenMetCorrect,
+      })
       setOpnieuwBezig(false)
       setStatus('nagekeken')
       toast.success('Nakijken klaar! Bekijk je resultaten.')
@@ -450,7 +461,8 @@ export default function StudentOpdrachtDetail() {
             const r = resultaten.find((res: any) => res.vraag_nummer === v.nummer)
             const ant = (nakijkResultaat.antwoorden || []).find((a: any) => a.vraag_nummer === v.nummer)
             const behaald = r?.punten_behaald ?? 0
-            const goed = r ? behaald === v.punten : false
+            const nietIngevuld = r?.niet_ingevuld || !ant?.student_antwoord?.trim()
+            const goed = !nietIngevuld && r ? behaald === v.punten : false
             const isOpen = v.type === 'open'
 
             return (
@@ -462,12 +474,16 @@ export default function StudentOpdrachtDetail() {
                   <span className={`shrink-0 text-sm font-bold ${
                     goed ? 'text-green-400' : behaald > 0 ? 'text-amber-400' : 'text-red-400'
                   }`}>
-                    {r?.punten_behaald ?? '?'}/{v.punten}pt
+                    {/* Toon ? als niet ingevuld, anders de behaalde punten */}
+                    {nietIngevuld ? '?' : behaald}/{v.punten}pt
                   </span>
                 </div>
                 <p className="text-white/50 text-xs mb-1">
                   <span className="text-white/30">Jouw antwoord: </span>
-                  {ant?.student_antwoord || <em className="text-white/20">Geen antwoord</em>}
+                  {ant?.student_antwoord?.trim()
+                    ? ant.student_antwoord
+                    : <em className="text-white/20">Geen antwoord</em>
+                  }
                 </p>
                 {r?.feedback && (
                   <p className="text-white/40 text-xs italic mt-1">💡 {r.feedback}</p>
@@ -490,7 +506,6 @@ export default function StudentOpdrachtDetail() {
           </button>
           <button
             onClick={() => {
-              // ✅ Zet opnieuwBezig aan → herlaad useEffect → laadt data maar toont NIET nagekeken view
               setAntwoorden({})
               setTutorMessages([])
               setNakijkResultaat(null)
@@ -561,7 +576,7 @@ export default function StudentOpdrachtDetail() {
             <button
               onClick={() => saveDraft(true)}
               disabled={opslaan}
-              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1"
+              className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-xs rounded-lg transition-all disabled:opacity-40 flex items-center gap-1.5"
             >
               {opslaan ? <Loader2 size={12} className="animate-spin" /> : '💾'}
               {opslaan ? 'Opslaan...' : 'Opslaan'}

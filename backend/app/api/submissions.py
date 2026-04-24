@@ -163,11 +163,13 @@ async def nakijken(body: NakijkBody):
     try:
         vragen_tekst = ""
         for v in body.antwoorden:
+            student_antwoord = v.get('student_antwoord', '').strip()
+            antwoord_label = student_antwoord if student_antwoord else "NIET INGEVULD"
             vragen_tekst += (
                 f"\nVraag {v['vraag_nummer']} (type: {v.get('type', 'open')}, max: {v['max_punten']}pt):\n"
                 f"  Vraag: {v['vraag_tekst']}\n"
                 f"  Correct antwoord: {v.get('correct_antwoord', '')}\n"
-                f"  Student antwoord: {v['student_antwoord']}\n"
+                f"  Student antwoord: {antwoord_label}\n"
             )
 
         system_prompt = (
@@ -176,16 +178,20 @@ async def nakijken(body: NakijkBody):
             "- Meerkeuze/waar-onwaar: exact goed = volle punten, anders 0. Geen halve punten.\n"
             "- Open vragen: beoordeel op inhoudelijke juistheid, niet op exacte woordkeuze.\n"
             "  Gedeeltelijk correcte antwoorden krijgen proportioneel punten.\n\n"
+            "LEGE ANTWOORDEN — VERPLICHTE REGEL:\n"
+            "- Als het student antwoord 'NIET INGEVULD' is, geef dan ALTIJD 0 punten.\n"
+            "- Vermeld in de feedback (voor leerling) dat deze vraag niet beantwoord is en geef een hint.\n"
+            "- Vermeld in de feedback_docent dat de leerling deze vraag niet heeft beantwoord.\n\n"
             "SCHRIJFPERSPECTIEF — VERPLICHT:\n"
             "Genereer voor elk antwoord TWEE versies van de feedback:\n"
             "1. 'feedback' → voor de LEERLING: gebruik 'je/jouw', bemoedigend en persoonlijk.\n"
-            "   Voorbeeld: 'Je hebt de centrale rol goed beschreven!'\n"
+            "   Bij leeg antwoord: 'Je hebt deze vraag niet beantwoord. Probeer de [onderwerp] te bestuderen.'\n"
             "2. 'feedback_docent' → voor de DOCENT: gebruik 'de leerling/het antwoord', objectief.\n"
-            "   Voorbeeld: 'De leerling beschrijft de centrale rol correct.'\n"
+            "   Bij leeg antwoord: 'De leerling heeft deze vraag niet beantwoord.'\n"
             "3. 'beredenering' → voor de LEERLING (alleen open vragen): gebruik 'je/jouw', max 2 zinnen.\n"
-            "   Voorbeeld: 'Je noemt de juiste feiten, maar de uitleg mist diepgang.'\n"
+            "   Bij leeg antwoord: kort waarom dit onderwerp belangrijk is om te leren.\n"
             "4. 'beredenering_docent' → voor de DOCENT (alleen open vragen): gebruik 'de leerling/het antwoord', max 2 zinnen.\n"
-            "   Voorbeeld: 'Het antwoord bevat de kernfeiten maar mist analytische diepgang.'\n\n"
+            "   Bij leeg antwoord: wat de leerling had moeten beschrijven.\n\n"
             "UITVOER FORMAT (verplicht exacte JSON, geen tekst eromheen):\n"
             '{\n'
             '  "resultaten": [\n'
@@ -193,6 +199,7 @@ async def nakijken(body: NakijkBody):
             '      "vraag_nummer": 1,\n'
             '      "punten_behaald": 2,\n'
             '      "max_punten": 2,\n'
+            '      "niet_ingevuld": false,\n'
             '      "feedback": "Je hebt dit perfect beantwoord!",\n'
             '      "feedback_docent": "De leerling beantwoordt de vraag correct en volledig.",\n'
             '      "beredenering": "Je noemt alle kernpunten en legt de samenhang goed uit.",\n'
@@ -221,8 +228,16 @@ async def nakijken(body: NakijkBody):
             print(f"⚠️ Kon nakijk JSON niet parsen: {parse_err}")
             return {"raw": response, "error": "Kon JSON niet parsen"}
 
+        # Zorg dat lege antwoorden altijd 0 punten krijgen, ongeacht wat de AI zegt
+        for r in result.get("resultaten", []):
+            orig = next((v for v in body.antwoorden if v.get("vraag_nummer") == r.get("vraag_nummer")), None)
+            if orig and not orig.get("student_antwoord", "").strip():
+                r["punten_behaald"] = 0
+                r["niet_ingevuld"] = True
+
         try:
-            totaal = result.get("totaal_punten", 0)
+            totaal = sum(r.get("punten_behaald", 0) for r in result.get("resultaten", []))
+            result["totaal_punten"] = totaal
             supabase.table("assignment_submissions").update({
                 "totaal_punten": totaal,
                 "ai_nakijk_status": "done",
