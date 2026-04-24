@@ -231,7 +231,6 @@ export default function Analyse() {
     if (!selectedLeerling || !selectedOpdracht) return
     setSavingPunten(true)
     try {
-      // Haal huidige submission op
       const { data: sub } = await supabase
         .from('assignment_submissions')
         .select('id, antwoorden')
@@ -241,7 +240,6 @@ export default function Analyse() {
 
       if (!sub) throw new Error('Inzending niet gevonden')
 
-      // Pas antwoorden aan met nieuwe punten
       const nieuweAntwoorden = (sub.antwoorden || []).map((ant: any) => {
         const aangepast = aangepastePunten[ant.vraag_nummer]
         if (aangepast !== undefined && ant.nakijk) {
@@ -257,7 +255,6 @@ export default function Analyse() {
         return ant
       })
 
-      // Bereken nieuw totaal
       const nieuwTotaal = nieuweAntwoorden.reduce((sum: number, ant: any) => {
         return sum + (ant.nakijk?.punten_behaald || 0)
       }, 0)
@@ -274,7 +271,6 @@ export default function Analyse() {
         })
         .eq('id', sub.id)
 
-      // Update lokale state
       setSelectedLeerling(prev => prev ? {
         ...prev,
         antwoorden: nieuweAntwoorden,
@@ -397,6 +393,10 @@ export default function Analyse() {
             const isAangepast = aangepastePunten[ant.vraag_nummer] !== undefined
             const isHandmatig = nakijk?.handmatig_aangepast
 
+            // Gebruik docent-versie van feedback en beredenering
+            const feedbackDocent = nakijk?.feedback_docent || nakijk?.feedback
+            const beredeningDocent = nakijk?.beredenering_docent || nakijk?.beredenering
+
             return (
               <div key={ant.vraag_nummer} className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
                 {/* Vraag header */}
@@ -443,25 +443,25 @@ export default function Analyse() {
                     </div>
                   </div>
 
-                  {/* AI feedback */}
-                  {nakijk?.feedback && (
+                  {/* AI feedback — docent versie */}
+                  {feedbackDocent && (
                     <div>
                       <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">AI feedback</p>
                       <div className="bg-green-500/5 border border-green-500/15 rounded-lg px-3 py-2">
-                        <p className="text-white/70 text-sm">{nakijk.feedback}</p>
+                        <p className="text-white/70 text-sm">{feedbackDocent}</p>
                       </div>
                     </div>
                   )}
 
-                  {/* AI beredenering */}
-                  {nakijk?.beredenering && (
+                  {/* AI beredenering — docent versie */}
+                  {beredeningDocent && (
                     <div>
                       <div className="flex items-center gap-1.5 mb-1">
                         <Brain size={11} className="text-purple-400" />
                         <p className="text-purple-400 text-xs uppercase tracking-wider">Toelichting AI</p>
                       </div>
                       <div className="bg-purple-500/5 border border-purple-500/15 rounded-lg px-3 py-2">
-                        <p className="text-white/60 text-sm italic">{nakijk.beredenering}</p>
+                        <p className="text-white/60 text-sm italic">{beredeningDocent}</p>
                       </div>
                     </div>
                   )}
@@ -603,7 +603,7 @@ export default function Analyse() {
               </div>
             )}
 
-            {/* Leerlingentabel — nu klikbaar */}
+            {/* Leerlingentabel — klikbaar */}
             {inzendingen.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
                 <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10">
