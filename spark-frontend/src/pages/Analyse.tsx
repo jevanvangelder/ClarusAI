@@ -356,17 +356,32 @@ export default function Analyse() {
     }
   }
 
-  // Nakijken afronden voor één leerling — via backend (RLS bypass)
+  // Nakijken afronden voor één leerling — via backend API (RLS bypass)
   const rondeAfLeerling = async () => {
     if (!selectedLeerling) return
     setLoadingAfrondenLeerling(true)
     try {
-      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ submission_id: selectedLeerling.submission_id }),
-      })
-      if (!res.ok) throw new Error(`API ${res.status}`)
+      // Probeer via backend API
+      let gelukt = false
+      try {
+        const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ submission_id: selectedLeerling.submission_id }),
+        })
+        if (res.ok) gelukt = true
+      } catch {
+        // Backend nog niet beschikbaar, fallback naar Supabase
+      }
+
+      // Fallback: directe Supabase update
+      if (!gelukt) {
+        const { error } = await supabase
+          .from('assignment_submissions')
+          .update({ ai_nakijk_status: 'afgerond' })
+          .eq('id', selectedLeerling.submission_id)
+        if (error) throw error
+      }
 
       setSelectedLeerling(prev => prev ? { ...prev, nakijk_status: 'afgerond' } : prev)
       setInzendingen(prev => prev.map(iz =>
@@ -376,26 +391,45 @@ export default function Analyse() {
       ))
       toast.success('Nakijken afgerond! Leerling ziet nu "Nagekeken".')
     } catch (err) {
-      toast.error('Afronden mislukt')
+      console.error('Afronden mislukt:', err)
+      toast.error('Afronden mislukt — controleer je rechten in Supabase.')
     } finally {
       setLoadingAfrondenLeerling(false)
     }
   }
 
-  // Nakijken afronden voor hele klas — via backend (RLS bypass)
+  // Nakijken afronden voor hele klas — via backend API (RLS bypass)
   const rondeAfKlas = async () => {
     if (!selectedOpdracht) return
     setLoadingAfronden(true)
     try {
-      const res = await fetch(`${API_URL}/api/submissions/afronden`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          assignment_id: selectedOpdracht.id,
-          class_id: selectedClassId || undefined,
-        }),
-      })
-      if (!res.ok) throw new Error(`API ${res.status}`)
+      // Probeer via backend API
+      let gelukt = false
+      try {
+        const res = await fetch(`${API_URL}/api/submissions/afronden`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            assignment_id: selectedOpdracht.id,
+            class_id: selectedClassId || undefined,
+          }),
+        })
+        if (res.ok) gelukt = true
+      } catch {
+        // Backend nog niet beschikbaar, fallback naar Supabase
+      }
+
+      // Fallback: directe Supabase update
+      if (!gelukt) {
+        let q = supabase
+          .from('assignment_submissions')
+          .update({ ai_nakijk_status: 'afgerond' })
+          .eq('assignment_id', selectedOpdracht.id)
+          .eq('ai_nakijk_status', 'done')
+        if (selectedClassId) q = q.eq('class_id', selectedClassId)
+        const { error } = await q
+        if (error) throw error
+      }
 
       setInzendingen(prev => prev.map(iz =>
         iz.nakijk_status === 'done' ? { ...iz, nakijk_status: 'afgerond' } : iz
@@ -403,7 +437,8 @@ export default function Analyse() {
       setToonAfrondenModal(false)
       toast.success('Nakijken afgerond voor de hele klas!')
     } catch (err) {
-      toast.error('Afronden mislukt')
+      console.error('Klas afronden mislukt:', err)
+      toast.error('Afronden mislukt — controleer je rechten in Supabase.')
     } finally {
       setLoadingAfronden(false)
     }
