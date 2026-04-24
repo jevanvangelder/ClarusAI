@@ -194,6 +194,11 @@ export default function StudentOpdrachtDetail() {
         setTutorMessages(subData.chat_log || [])
 
         if (!opnieuwBezig && subData.ingeleverd_op && subData.ai_nakijk_status === 'done') {
+          const deadline = ac?.deadline || null
+          const te_laat = deadline
+            ? new Date(subData.ingeleverd_op) > new Date(deadline)
+            : false
+
           const resultaten = (subData.antwoorden || [])
             .filter((a: any) => a.nakijk)
             .map((a: any) => ({
@@ -210,6 +215,7 @@ export default function StudentOpdrachtDetail() {
             resultaten,
             totaal_punten: totaal,
             antwoorden: subData.antwoorden,
+            te_laat,
           })
           setStatus('nagekeken')
         }
@@ -326,6 +332,11 @@ export default function StudentOpdrachtDetail() {
       setStatus('ingeleverd')
       toast.success('Opdracht ingeleverd! AI is aan het nakijken...')
 
+      // Bereken of te laat
+      const te_laat = opdracht.deadline
+        ? new Date(sub.ingeleverd_op || new Date()) > new Date(opdracht.deadline)
+        : false
+
       const nakijkRes = await fetch(`${API_URL}/api/submissions/nakijken`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -333,7 +344,6 @@ export default function StudentOpdrachtDetail() {
       })
       const nakijkData = await nakijkRes.json()
 
-      // Voeg niet_ingevuld toe op basis van leeg antwoord
       const resultatenMetVlag = (nakijkData.resultaten || []).map((r: any) => {
         const origAnt = antwoordenMetCorrect.find(a => a.vraag_nummer === r.vraag_nummer)
         return {
@@ -347,6 +357,7 @@ export default function StudentOpdrachtDetail() {
         ...nakijkData,
         resultaten: resultatenMetVlag,
         antwoorden: antwoordenMetCorrect,
+        te_laat,
       })
       setOpnieuwBezig(false)
       setStatus('nagekeken')
@@ -446,6 +457,19 @@ export default function StudentOpdrachtDetail() {
           <h2 className="text-2xl font-bold text-white">{opdracht.title}</h2>
         </div>
 
+        {/* Te laat banner */}
+        {nakijkResultaat.te_laat && (
+          <div className="bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 flex items-center gap-3">
+            <AlertTriangle size={16} className="text-red-400 shrink-0" />
+            <div>
+              <p className="text-red-400 text-sm font-medium">Te laat ingeleverd</p>
+              <p className="text-red-400/60 text-xs">
+                De deadline was {opdracht.deadline ? new Date(opdracht.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '–'}. Je opdracht is wel nagekeken.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 text-center">
           <div className={`text-6xl font-bold mb-2 ${pct >= 55 ? 'text-green-400' : 'text-red-400'}`}>
             {cijferTekst}
@@ -474,7 +498,6 @@ export default function StudentOpdrachtDetail() {
                   <span className={`shrink-0 text-sm font-bold ${
                     goed ? 'text-green-400' : behaald > 0 ? 'text-amber-400' : 'text-red-400'
                   }`}>
-                    {/* Toon ? als niet ingevuld, anders de behaalde punten */}
                     {nietIngevuld ? '?' : behaald}/{v.punten}pt
                   </span>
                 </div>

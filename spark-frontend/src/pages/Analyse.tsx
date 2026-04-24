@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   BarChart3, ArrowLeft, Users, TrendingUp, TrendingDown,
   Loader2, ChevronRight, Lightbulb, Brain, MessageSquare,
-  Clock, CheckCircle, XCircle, Edit3, Save
+  Clock, CheckCircle, XCircle, Edit3, Save, AlertTriangle
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -29,6 +29,7 @@ interface Inzending {
   cijfer: number
   ingeleverd_op: string
   antwoorden: any[]
+  te_laat: boolean
 }
 
 interface VraagStat {
@@ -141,6 +142,18 @@ export default function Analyse() {
         ? opdrData.vragen
         : JSON.parse(opdrData?.vragen || '[]')
 
+      // Haal deadline op voor deze klas
+      let deadline: string | null = null
+      if (class_id) {
+        const { data: acData } = await supabase
+          .from('assignment_classes')
+          .select('deadline')
+          .eq('assignment_id', opdracht.id)
+          .eq('class_id', class_id)
+          .maybeSingle()
+        deadline = acData?.deadline || null
+      }
+
       let query = supabase
         .from('assignment_submissions')
         .select('student_id, totaal_punten, antwoorden, ingeleverd_op')
@@ -172,6 +185,9 @@ export default function Analyse() {
         const cijfer = opdracht.max_punten > 0
           ? Math.max(1, Math.min(10, Math.round((1 + (s.totaal_punten / opdracht.max_punten) * 9) * 10) / 10))
           : 0
+        const te_laat = deadline
+          ? new Date(s.ingeleverd_op) > new Date(deadline)
+          : false
         return {
           student_id: s.student_id,
           student_naam: namenMap[s.student_id] || 'Onbekend',
@@ -179,6 +195,7 @@ export default function Analyse() {
           cijfer,
           ingeleverd_op: s.ingeleverd_op,
           antwoorden: s.antwoorden || [],
+          te_laat,
         }
       }).sort((a, b) => b.cijfer - a.cijfer)
 
@@ -345,7 +362,6 @@ export default function Analyse() {
 
     return (
       <div className="space-y-5">
-        {/* Wijzigingen banner */}
         {heeftWijzigingen && (
           <div className="bg-blue-600/20 border border-blue-500/30 rounded-xl px-4 py-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -363,13 +379,28 @@ export default function Analyse() {
           </div>
         )}
 
-        {/* Header */}
+        {/* Te laat banner */}
+        {selectedLeerling.te_laat && (
+          <div className="bg-red-500/10 border border-red-500/25 rounded-xl px-4 py-3 flex items-center gap-3">
+            <AlertTriangle size={14} className="text-red-400 shrink-0" />
+            <p className="text-red-400 text-sm">Deze leerling heeft de opdracht <strong>te laat ingeleverd</strong>.</p>
+          </div>
+        )}
+
         <div className="flex items-start gap-3">
           <button onClick={() => setView('detail')} className="mt-1 text-white/50 hover:text-white shrink-0">
             <ArrowLeft size={20} />
           </button>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedLeerling.student_naam}</h2>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-bold text-white leading-tight">{selectedLeerling.student_naam}</h2>
+              {selectedLeerling.te_laat && (
+                <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-400">
+                  <AlertTriangle size={10} />
+                  Te laat
+                </span>
+              )}
+            </div>
             <p className="text-white/40 text-sm mt-0.5">
               {selectedOpdracht.title} · Ingeleverd {new Date(selectedLeerling.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long' })}
             </p>
@@ -382,7 +413,6 @@ export default function Analyse() {
           </div>
         </div>
 
-        {/* Antwoorden per vraag */}
         <div className="space-y-4">
           {selectedLeerling.antwoorden.map((ant: any) => {
             const nakijk = ant.nakijk
@@ -392,14 +422,11 @@ export default function Analyse() {
               : (nakijk?.punten_behaald ?? 0)
             const isAangepast = aangepastePunten[ant.vraag_nummer] !== undefined
             const isHandmatig = nakijk?.handmatig_aangepast
-
-            // Gebruik docent-versie van feedback en beredenering
             const feedbackDocent = nakijk?.feedback_docent || nakijk?.feedback
             const beredeningDocent = nakijk?.beredenering_docent || nakijk?.beredenering
 
             return (
               <div key={ant.vraag_nummer} className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
-                {/* Vraag header */}
                 <div className="px-4 py-3 border-b border-white/10 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
@@ -435,7 +462,6 @@ export default function Analyse() {
                 </div>
 
                 <div className="p-4 space-y-3">
-                  {/* Antwoord leerling */}
                   <div>
                     <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">Antwoord leerling</p>
                     <div className="bg-white/5 border border-white/10 rounded-lg px-3 py-2">
@@ -443,7 +469,6 @@ export default function Analyse() {
                     </div>
                   </div>
 
-                  {/* AI feedback — docent versie */}
                   {feedbackDocent && (
                     <div>
                       <p className="text-white/30 text-xs mb-1 uppercase tracking-wider">AI feedback</p>
@@ -453,7 +478,6 @@ export default function Analyse() {
                     </div>
                   )}
 
-                  {/* AI beredenering — docent versie */}
                   {beredeningDocent && (
                     <div>
                       <div className="flex items-center gap-1.5 mb-1">
@@ -466,7 +490,6 @@ export default function Analyse() {
                     </div>
                   )}
 
-                  {/* Punten aanpassen */}
                   <div>
                     <p className="text-white/30 text-xs mb-2 uppercase tracking-wider flex items-center gap-1.5">
                       <Edit3 size={10} />
@@ -494,7 +517,6 @@ export default function Analyse() {
           })}
         </div>
 
-        {/* Opslaan knop onderaan */}
         {heeftWijzigingen && (
           <button
             onClick={slaAangepastePuntenOp}
@@ -526,7 +548,6 @@ export default function Analyse() {
 
     return (
       <div className="space-y-5">
-        {/* Header */}
         <div className="flex items-start gap-3">
           <button onClick={() => setView('overzicht')} className="mt-1 text-white/50 hover:text-white shrink-0">
             <ArrowLeft size={20} />
@@ -545,7 +566,6 @@ export default function Analyse() {
           </div>
         ) : (
           <>
-            {/* Statistieken balk */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
                 { label: 'Ingeleverd', value: totaalIngeleverd.toString(), icon: Users, color: 'text-blue-400' },
@@ -563,7 +583,6 @@ export default function Analyse() {
               ))}
             </div>
 
-            {/* Per vraag scorebalk */}
             {vraagStats.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl p-4 sm:p-5 space-y-3">
                 <h3 className="text-white font-semibold text-sm flex items-center gap-2">
@@ -603,7 +622,7 @@ export default function Analyse() {
               </div>
             )}
 
-            {/* Leerlingentabel — klikbaar */}
+            {/* Leerlingentabel */}
             {inzendingen.length > 0 && (
               <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
                 <div className="px-4 sm:px-5 py-3 sm:py-4 border-b border-white/10">
@@ -625,7 +644,15 @@ export default function Analyse() {
                         </span>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-white text-sm font-medium truncate">{iz.student_naam}</p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-white text-sm font-medium truncate">{iz.student_naam}</p>
+                          {iz.te_laat && (
+                            <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-400 shrink-0">
+                              <AlertTriangle size={9} />
+                              Te laat
+                            </span>
+                          )}
+                        </div>
                         <p className="text-white/30 text-xs">
                           {new Date(iz.ingeleverd_op).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                         </p>
@@ -684,13 +711,11 @@ export default function Analyse() {
                       <span className="text-sm">AI analyseert de klasresultaten...</span>
                     </div>
                   )}
-
                   {!loadingKerninzicht && !kerninzicht && (
                     <p className="text-white/25 text-sm text-center py-4">
                       Klik op "Genereer kerninzicht" om een AI-analyse te starten van de prestaties van {geselecteerdeKlas?.klasnaam || 'de klas'}.
                     </p>
                   )}
-
                   {kerninzicht && !loadingKerninzicht && (
                     <div className="space-y-4 sm:space-y-5">
                       <div className="space-y-2">
@@ -702,7 +727,6 @@ export default function Analyse() {
                           <p className="text-white/75 text-sm leading-relaxed">{kerninzicht.kerninzicht}</p>
                         </div>
                       </div>
-
                       {kerninzicht.vervolgvoorstel && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">
@@ -714,7 +738,6 @@ export default function Analyse() {
                           </div>
                         </div>
                       )}
-
                       {kerninzicht.chat_prompt && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2">

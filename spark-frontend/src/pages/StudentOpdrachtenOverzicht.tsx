@@ -23,6 +23,7 @@ interface OpdrachtRij {
   nagekeken: boolean
   totaal_punten: number | null
   cijfer: number | null
+  te_laat: boolean
 }
 
 type Filter = 'alles' | 'open' | 'ingeleverd' | 'nagekeken'
@@ -102,6 +103,9 @@ export default function StudentOpdrachtenOverzicht() {
           ? Math.max(1, Math.min(10, Math.round((1 + (totaal / a.max_punten) * 9) * 10) / 10))
           : null
 
+        // Controleer of te laat ingeleverd
+        const te_laat = ingeleverd && !!ac.deadline && new Date(sub.ingeleverd_op) > new Date(ac.deadline)
+
         rijen.push({
           id: a.id,
           class_id: ac.class_id,
@@ -118,6 +122,7 @@ export default function StudentOpdrachtenOverzicht() {
           nagekeken,
           totaal_punten: totaal,
           cijfer,
+          te_laat,
         })
       }
 
@@ -297,6 +302,13 @@ export default function StudentOpdrachtenOverzicht() {
                       )}
                       {o.max_punten != null && (
                         <span className="text-white/25 text-xs">{o.max_punten}pt</span>
+                      )}
+                      {/* Te laat badge */}
+                      {o.te_laat && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border bg-red-500/10 border-red-500/20 text-red-400">
+                          <AlertTriangle size={10} />
+                          Te laat ingeleverd
+                        </span>
                       )}
                     </div>
 
