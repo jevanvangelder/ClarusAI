@@ -37,7 +37,7 @@ interface StudentStats {
   openstaande_opdrachten: number | null
   eerstvolgende_deadline: { dagen: number; opdracht_naam: string } | null
   voltooide_deze_maand: number | null
-  punten_deze_week: number | null
+  definitieve_punten_deze_week: number | null
 }
 
 export default function Dashboard() {
@@ -53,7 +53,7 @@ export default function Dashboard() {
     openstaande_opdrachten: null,
     eerstvolgende_deadline: null,
     voltooide_deze_maand: null,
-    punten_deze_week: null,
+    definitieve_punten_deze_week: null,
   })
 
   const getGreeting = () => {
@@ -140,7 +140,7 @@ export default function Dashboard() {
       let openstaande_opdrachten = 0
       let eerstvolgende_deadline: { dagen: number; opdracht_naam: string } | null = null
       let voltooide_deze_maand = 0
-      let punten_deze_week = 0
+      let definitieve_punten_deze_week = 0
 
       if (klasIds.length > 0) {
         // Haal alle opdrachten op die aan deze klassen zijn toegewezen
@@ -185,11 +185,11 @@ export default function Dashboard() {
             s => s.ingeleverd_op && new Date(s.ingeleverd_op) >= maandStart
           ).length
 
-          // Punten deze week (afgeronde opdrachten waarvan updated_at binnen 7 dagen)
+          // Definitieve punten deze week (alleen 'afgerond' = door docent nagekeken)
           const weekGeleden = new Date()
           weekGeleden.setDate(weekGeleden.getDate() - 7)
 
-          punten_deze_week = (submissions || [])
+          definitieve_punten_deze_week = (submissions || [])
             .filter(s => s.ai_nakijk_status === 'afgerond' && s.updated_at && new Date(s.updated_at) >= weekGeleden)
             .reduce((sum, s) => sum + (s.totaal_punten || 0), 0)
 
@@ -214,7 +214,7 @@ export default function Dashboard() {
         openstaande_opdrachten,
         eerstvolgende_deadline,
         voltooide_deze_maand,
-        punten_deze_week,
+        definitieve_punten_deze_week,
       })
     }
 
@@ -370,18 +370,18 @@ export default function Dashboard() {
       icon: CheckCircle,
       color: 'text-green-400',
       subtext: studentStats.voltooide_deze_maand !== null
-        ? studentStats.voltooide_deze_maand > 0 ? 'Top! Ga zo door 💪' : 'Start je eerste opdracht'
+        ? studentStats.voltooide_deze_maand > 0 ? 'Top! Ga zo door 💪' : 'Start je eerste'
         : 'Laden...',
       onClick: () => navigate('/opdrachten'),
     },
     {
-      label: 'Punten deze week',
-      value: studentStats.punten_deze_week,
+      label: 'Definitieve punten deze week',
+      value: studentStats.definitieve_punten_deze_week,
       icon: Award,
-      color: studentStats.punten_deze_week !== null && studentStats.punten_deze_week > 0 ? 'text-blue-400' : 'text-white/40',
-      subtext: studentStats.punten_deze_week !== null && studentStats.punten_deze_week > 0
+      color: studentStats.definitieve_punten_deze_week !== null && studentStats.definitieve_punten_deze_week > 0 ? 'text-blue-400' : 'text-white/40',
+      subtext: studentStats.definitieve_punten_deze_week !== null && studentStats.definitieve_punten_deze_week > 0
         ? 'Nieuw behaald! 🎉'
-        : 'Nog geen nieuwe punten',
+        : 'Nog geen nieuwe',
       onClick: () => navigate('/opdrachten'),
     },
   ]
@@ -417,7 +417,7 @@ export default function Dashboard() {
             <button
               key={stat.label}
               onClick={stat.onClick}
-              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 text-left transition-all group"
+              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 text-left transition-all group min-h-[112px] flex flex-col"
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-white/40 text-xs leading-tight">{stat.label}</span>
@@ -426,12 +426,12 @@ export default function Dashboard() {
               {stat.value === null ? (
                 <>
                   <div className="h-7 w-8 bg-white/5 rounded animate-pulse mb-1" />
-                  <p className="text-xs text-white/20 mt-1 hidden sm:block">Laden...</p>
+                  <p className="text-xs text-white/20 mt-auto hidden sm:block">Laden...</p>
                 </>
               ) : (
                 <>
                   <p className={`text-xl sm:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-white/25 mt-1 hidden sm:block group-hover:text-white/40 transition-colors">
+                  <p className="text-xs text-white/25 mt-auto hidden sm:block group-hover:text-white/40 transition-colors">
                     {stat.subtext}
                   </p>
                 </>
@@ -448,7 +448,7 @@ export default function Dashboard() {
             <button
               key={stat.label}
               onClick={stat.onClick}
-              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 text-left transition-all group"
+              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 text-left transition-all group min-h-[112px] flex flex-col"
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="text-white/40 text-xs leading-tight">{stat.label}</span>
@@ -457,12 +457,12 @@ export default function Dashboard() {
               {stat.value === null ? (
                 <>
                   <div className="h-7 w-8 bg-white/5 rounded animate-pulse mb-1" />
-                  <p className="text-xs text-white/20 mt-1 hidden sm:block">Laden...</p>
+                  <p className="text-xs text-white/20 mt-auto hidden sm:block">Laden...</p>
                 </>
               ) : (
                 <>
                   <p className={`text-xl sm:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-                  <p className="text-xs text-white/25 mt-1 hidden sm:block group-hover:text-white/40 transition-colors">
+                  <p className="text-xs text-white/25 mt-auto hidden sm:block group-hover:text-white/40 transition-colors">
                     {stat.subtext}
                   </p>
                 </>
