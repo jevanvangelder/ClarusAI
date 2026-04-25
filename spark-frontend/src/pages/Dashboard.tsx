@@ -11,6 +11,8 @@ import {
   Flag,
   Clock,
   Inbox,
+  CheckCircle,
+  Award,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
@@ -31,6 +33,13 @@ interface DocentStats {
   ingeleverd_vandaag: number | null
 }
 
+interface StudentStats {
+  openstaande_opdrachten: number | null
+  eerstvolgende_deadline: { dagen: number; opdracht_naam: string } | null
+  voltooide_deze_maand: number | null
+  punten_deze_week: number | null
+}
+
 export default function Dashboard() {
   const { user, profile, role } = useAuth()
   const navigate = useNavigate()
@@ -39,6 +48,12 @@ export default function Dashboard() {
     actieve_opdrachten: null,
     deadline_deze_week: null,
     ingeleverd_vandaag: null,
+  })
+  const [studentStats, setStudentStats] = useState<StudentStats>({
+    openstaande_opdrachten: null,
+    eerstvolgende_deadline: null,
+    voltooide_deze_maand: null,
+    punten_deze_week: null,
   })
 
   const getGreeting = () => {
@@ -108,6 +123,102 @@ export default function Dashboard() {
     }
 
     loadStats()
+  }, [user, role])
+
+  useEffect(() => {
+    const loadStudentStats = async () => {
+      if (!user || role !== 'student') return
+
+      // 1. Openstaande opdrachten (toegewezen via class membership, nog niet ingeleverd)
+      const { data: klassenData } = await supabase
+        .from('class_members')
+        .select('class_id')
+        .eq('student_id', user.id)
+
+      const klasIds = (klassenData || []).map(k => k.class_id)
+
+      let openstaande_opdrachten = 0
+      let eerstvolgende_deadline: { dagen: number; opdracht_naam: string } | null = null
+      let voltooide_deze_maand = 0
+      let punten_deze_week = 0
+
+      if (klasIds.length > 0) {
+        // Haal alle opdrachten op die aan deze klassen zijn toegewezen
+        const { data: acData } = await supabase
+          .from('assignment_classes')
+          .select('assignment_id, deadline, assignments!inner(id, title, is_active)')
+          .in('class_id', klasIds)
+
+        const toegewezenOpdrachten = (acData || [])
+          .filter((ac: any) => ac.assignments?.is_active)
+          .map((ac: any) => ({
+            id: ac.assignments?.id || '',
+            title: ac.assignments?.title || 'Opdracht',
+            deadline: ac.deadline,
+          }))
+
+        const opdrachtIds = toegewezenOpdrachten.map(o => o.id).filter(Boolean)
+
+        if (opdrachtIds.length > 0) {
+          // Haal alle submissions van deze student op
+          const { data: submissions } = await supabase
+            .from('assignment_submissions')
+            .select('assignment_id, ingeleverd_op, totaal_punten, updated_at, ai_nakijk_status')
+            .eq('student_id', user.id)
+            .in('assignment_id', opdrachtIds)
+
+          const ingeleverdIds = new Set(
+            (submissions || [])
+              .filter(s => s.ingeleverd_op)
+              .map(s => s.assignment_id)
+          )
+
+          // Openstaande = nog niet ingeleverd
+          openstaande_opdrachten = toegewezenOpdrachten.filter(o => !ingeleverdIds.has(o.id)).length
+
+          // Voltooide deze maand
+          const maandStart = new Date()
+          maandStart.setDate(1)
+          maandStart.setHours(0, 0, 0, 0)
+
+          voltooide_deze_maand = (submissions || []).filter(
+            s => s.ingeleverd_op && new Date(s.ingeleverd_op) >= maandStart
+          ).length
+
+          // Punten deze week (afgeronde opdrachten waarvan updated_at binnen 7 dagen)
+          const weekGeleden = new Date()
+          weekGeleden.setDate(weekGeleden.getDate() - 7)
+
+          punten_deze_week = (submissions || [])
+            .filter(s => s.ai_nakijk_status === 'afgerond' && s.updated_at && new Date(s.updated_at) >= weekGeleden)
+            .reduce((sum, s) => sum + (s.totaal_punten || 0), 0)
+
+          // Eerstvolgende deadline
+          const nu = new Date()
+          const toekomstigeDeadlines = toegewezenOpdrachten
+            .filter(o => !ingeleverdIds.has(o.id) && o.deadline)
+            .map(o => ({
+              dagen: Math.ceil((new Date(o.deadline!).getTime() - nu.getTime()) / (1000 * 60 * 60 * 24)),
+              opdracht_naam: o.title,
+            }))
+            .filter(d => d.dagen >= 0)
+            .sort((a, b) => a.dagen - b.dagen)
+
+          if (toekomstigeDeadlines.length > 0) {
+            eerstvolgende_deadline = toekomstigeDeadlines[0]
+          }
+        }
+      }
+
+      setStudentStats({
+        openstaande_opdrachten,
+        eerstvolgende_deadline,
+        voltooide_deze_maand,
+        punten_deze_week,
+      })
+    }
+
+    loadStudentStats()
   }, [user, role])
 
   const getQuickActions = (): QuickAction[] => {
@@ -230,6 +341,51 @@ export default function Dashboard() {
     },
   ]
 
+  const studentStatCards = [
+    {
+      label: 'Te maken',
+      value: studentStats.openstaande_opdrachten,
+      icon: FileText,
+      color: studentStats.openstaande_opdrachten !== null && studentStats.openstaande_opdrachten > 0 ? 'text-amber-400' : 'text-green-400',
+      subtext: studentStats.openstaande_opdrachten !== null
+        ? studentStats.openstaande_opdrachten > 0 ? '→ Bekijk opdrachten' : '✓ Alles af!'
+        : 'Laden...',
+      onClick: () => navigate('/opdrachten'),
+    },
+    {
+      label: 'Eerstvolgende deadline',
+      value: studentStats.eerstvolgende_deadline?.dagen ?? null,
+      icon: Clock,
+      color: studentStats.eerstvolgende_deadline
+        ? studentStats.eerstvolgende_deadline.dagen < 3 ? 'text-red-400' : 'text-amber-400'
+        : 'text-white/40',
+      subtext: studentStats.eerstvolgende_deadline
+        ? `${studentStats.eerstvolgende_deadline.dagen} ${studentStats.eerstvolgende_deadline.dagen === 1 ? 'dag' : 'dagen'}`
+        : 'Geen deadlines',
+      onClick: () => navigate('/opdrachten'),
+    },
+    {
+      label: 'Afgerond deze maand',
+      value: studentStats.voltooide_deze_maand,
+      icon: CheckCircle,
+      color: 'text-green-400',
+      subtext: studentStats.voltooide_deze_maand !== null
+        ? studentStats.voltooide_deze_maand > 0 ? 'Top! Ga zo door 💪' : 'Start je eerste opdracht'
+        : 'Laden...',
+      onClick: () => navigate('/opdrachten'),
+    },
+    {
+      label: 'Punten deze week',
+      value: studentStats.punten_deze_week,
+      icon: Award,
+      color: studentStats.punten_deze_week !== null && studentStats.punten_deze_week > 0 ? 'text-blue-400' : 'text-white/40',
+      subtext: studentStats.punten_deze_week !== null && studentStats.punten_deze_week > 0
+        ? 'Nieuw behaald! 🎉'
+        : 'Nog geen nieuwe punten',
+      onClick: () => navigate('/opdrachten'),
+    },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Welkom sectie */}
@@ -254,10 +410,41 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Stat cards — alleen voor docenten en hoger */}
+      {/* Stat cards — voor docenten */}
       {(role === 'admin' || role === 'school_admin' || role === 'teacher') && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           {docentStatCards.map(stat => (
+            <button
+              key={stat.label}
+              onClick={stat.onClick}
+              className="bg-[#0f1029] border border-white/10 hover:border-white/20 rounded-xl p-4 text-left transition-all group"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-white/40 text-xs leading-tight">{stat.label}</span>
+                <stat.icon size={16} className={stat.color} />
+              </div>
+              {stat.value === null ? (
+                <>
+                  <div className="h-7 w-8 bg-white/5 rounded animate-pulse mb-1" />
+                  <p className="text-xs text-white/20 mt-1 hidden sm:block">Laden...</p>
+                </>
+              ) : (
+                <>
+                  <p className={`text-xl sm:text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                  <p className="text-xs text-white/25 mt-1 hidden sm:block group-hover:text-white/40 transition-colors">
+                    {stat.subtext}
+                  </p>
+                </>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Stat cards — voor studenten */}
+      {role === 'student' && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {studentStatCards.map(stat => (
             <button
               key={stat.label}
               onClick={stat.onClick}
