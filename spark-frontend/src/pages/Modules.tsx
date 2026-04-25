@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { BookOpen, ArrowLeft, Send, Pencil, Trash } from 'lucide-react'
+import { BookOpen, ArrowLeft, Send, Pencil, Trash, Paperclip, X } from 'lucide-react'
 import { ModuleModal } from '@/components/modulemodal'
 import { fetchModules, createModule, updateModule, deleteModule } from '@/services/api'
 import type { Module } from '@/types/module'
@@ -10,6 +10,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 interface TestMessage {
   role: 'user' | 'assistant'
   content: string
+  imageUrl?: string
 }
 
 export default function Modules() {
@@ -22,6 +23,14 @@ export default function Modules() {
   const [testMessages, setTestMessages] = useState<TestMessage[]>([])
   const [testInput, setTestInput] = useState('')
   const [testLoading, setTestLoading] = useState(false)
+  const [testFiles, setTestFiles] = useState<File[]>([])
+  const [testPastedImages, setTestPastedImages] = useState<{ file: File; previewUrl: string }[]>([])
+  const [uploadingImage, setUploadingImage] = useState(false)
+
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const chatEndRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [testMessages])
 
   useEffect(() => {
     if (!user) return
@@ -36,6 +45,21 @@ export default function Modules() {
       })))
     })
   }, [user])
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault()
+        const file = items[i].getAsFile()
+        if (!file) continue
+        const previewUrl = URL.createObjectURL(file)
+        const namedFile = new File([file], `geplakt-${Date.now()}.png`, { type: file.type })
+        setTestPastedImages(prev => [...prev, { file: namedFile, previewUrl }])
+      }
+    }
+  }, [])
 
   const handleSave = async (data: Omit<Module, 'id' | 'createdAt' | 'enabled'>) => {
     if (!user) return
@@ -76,29 +100,61 @@ export default function Modules() {
     setSelectedModule(mod)
     setTestMessages([])
     setTestInput('')
+    setTestFiles([])
+    setTestPastedImages([])
   }
 
   const handleTestSend = async () => {
-    if (!testInput.trim() || !selectedModule) return
-    const userMsg: TestMessage = { role: 'user', content: testInput.trim() }
+    const heeftFiles = testFiles.length > 0 || testPastedImages.length > 0
+    if (!testInput.trim() && !heeftFiles) return
+    if (!selectedModule) return
+
+    const userMsg: TestMessage = {
+      role: 'user',
+      content: testInput.trim() || '📎 Afbeelding meegestuurd',
+      imageUrl: testPastedImages.length > 0 ? testPastedImages[0].previewUrl : undefined
+    }
     const newMessages = [...testMessages, userMsg]
     setTestMessages(newMessages)
     setTestInput('')
     setTestLoading(true)
 
     try {
-      const res = await fetch(`${API_URL}/api/chat/send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          content: userMsg.content,
-          messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-          active_module_prompts: [selectedModule.prompt],
-        }),
-      })
-      const data = await res.json()
-      setTestMessages(prev => [...prev, { role: 'assistant', content: data.message }])
+      let rawResponse: string
+      const alleFiles = [...testFiles, ...testPastedImages.map(p => p.file)]
+      
+      if (alleFiles.length > 0) {
+        setUploadingImage(true)
+        const formData = new FormData()
+        formData.append('content', userMsg.content)
+        formData.append('messages', JSON.stringify(newMessages.slice(0, -1).map(m => ({ role: m.role, content: m.content }))))
+        formData.append('active_module_prompts', JSON.stringify([selectedModule.prompt]))
+        alleFiles.forEach(f => formData.append('files', f))
+        
+        const res = await fetch(`${API_URL}/api/chat/send-with-files`, {
+          method: 'POST',
+          body: formData
+        })
+        setUploadingImage(false)
+        rawResponse = (await res.json()).message
+        setTestFiles([])
+        setTestPastedImages([])
+      } else {
+        const res = await fetch(`${API_URL}/api/chat/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: userMsg.content,
+            messages: newMessages.map(m => ({ role: m.role, content: m.content })),
+            active_module_prompts: [selectedModule.prompt],
+          }),
+        })
+        rawResponse = (await res.json()).message
+      }
+      
+      setTestMessages(prev => [...prev, { role: 'assistant', content: rawResponse }])
     } catch (e) {
+      setUploadingImage(false)
       setTestMessages(prev => [...prev, { role: 'assistant', content: '❌ Fout bij ophalen antwoord.' }])
     } finally {
       setTestLoading(false)
@@ -154,30 +210,54 @@ export default function Modules() {
                       ? 'bg-blue-600 text-white'
                       : 'bg-white/5 border border-white/10 text-white/80'
                   }`}>
+                    {msg.imageUrl && <img src={msg.imageUrl} alt="geplakt" className="max-h-32 rounded-lg mb-2 border border-white/20" />}
                     {msg.content}
                   </div>
                 </div>
               ))}
-              {testLoading && (
+              {(testLoading || uploadingImage) && (
                 <div className="flex justify-start">
                   <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
-                    Aan het typen...
+                    {uploadingImage ? '⬆️ Afbeelding uploaden...' : 'Aan het typen...'}
                   </div>
                 </div>
               )}
+              <div ref={chatEndRef} />
             </div>
+            {(testFiles.length > 0 || testPastedImages.length > 0) && (
+              <div className="px-3 pt-2 flex flex-wrap gap-2">
+                {testFiles.map((f, i) => (
+                  <div key={`file-${i}`} className="flex items-center gap-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-xs text-white/60">
+                    📎 {f.name}
+                    <button onClick={() => setTestFiles(prev => prev.filter((_, j) => j !== i))} className="ml-1 text-red-400">×</button>
+                  </div>
+                ))}
+                {testPastedImages.map((p, i) => (
+                  <div key={`paste-${i}`} className="relative">
+                    <img src={p.previewUrl} alt="geplakt" className="h-16 w-auto rounded border border-white/20 object-cover" />
+                    <button onClick={() => setTestPastedImages(prev => prev.filter((_, j) => j !== i))} className="absolute -top-1 -right-1 bg-red-500 rounded-full w-4 h-4 flex items-center justify-center text-white text-xs">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="p-3 border-t border-white/10 flex gap-2">
+              <input type="file" ref={fileInputRef} className="hidden" multiple accept="image/*,application/pdf,.doc,.docx"
+                onChange={e => { if (e.target.files) setTestFiles(prev => [...prev, ...Array.from(e.target.files!)]) }} />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 text-white/40 hover:text-white/70">
+                <Paperclip size={16} />
+              </button>
               <input
                 type="text"
                 value={testInput}
                 onChange={e => setTestInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTestSend()}
-                placeholder="Test je module..."
+                onPaste={handlePaste}
+                placeholder="Test je module, plak afbeelding (Ctrl+V)..."
                 className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/30 outline-none focus:border-blue-500/50"
               />
               <button
                 onClick={handleTestSend}
-                disabled={testLoading || !testInput.trim()}
+                disabled={testLoading || (!testInput.trim() && testFiles.length === 0 && testPastedImages.length === 0)}
                 className="p-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-lg transition-all"
               >
                 <Send size={16} />
