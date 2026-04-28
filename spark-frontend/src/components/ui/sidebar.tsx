@@ -19,7 +19,6 @@ export default function Sidebar() {
   const navigate = useNavigate()
   const { role, user } = useAuth()
   
-  // Sidebar staat (ingeklapt of niet)
   const [isCollapsed, setIsCollapsed] = useState(() => {
     const saved = localStorage.getItem('sidebarCollapsed')
     return saved === 'true'
@@ -55,7 +54,7 @@ export default function Sidebar() {
         isCollapsed ? 'w-16' : 'w-64'
       }`}
     >
-      {/* Header met logo en toggle */}
+      {/* Header */}
       <div className="p-4 border-b border-white/10 flex items-center justify-between">
         {!isCollapsed && (
           <Link to="/dashboard" className="flex items-center gap-2">
@@ -67,7 +66,9 @@ export default function Sidebar() {
         )}
         <button
           onClick={() => setIsCollapsed(prev => !prev)}
-          className="p-2 hover:bg-white/5 rounded-lg transition-colors text-white/50 hover:text-white"
+          className={`p-2 hover:bg-white/5 rounded-lg transition-colors text-white/50 hover:text-white ${
+            isCollapsed ? 'mx-auto' : ''
+          }`}
           title={isCollapsed ? 'Uitklappen' : 'Inklappen'}
         >
           {isCollapsed ? <Menu size={20} /> : <X size={20} />}
@@ -75,7 +76,7 @@ export default function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {filteredNavItems.map(item => {
           const Icon = item.icon
           const active = isActive(item.path)
@@ -88,13 +89,12 @@ export default function Sidebar() {
                 active 
                   ? 'bg-blue-500/10 text-blue-400' 
                   : 'text-white/60 hover:bg-white/5 hover:text-white'
-              }`}
+              } ${isCollapsed ? 'justify-center' : ''}`}
               title={isCollapsed ? item.label : ''}
             >
               <Icon size={20} className="shrink-0" />
               {!isCollapsed && <span className="text-sm font-medium">{item.label}</span>}
               
-              {/* Tooltip bij ingeklapte staat */}
               {isCollapsed && (
                 <div className="absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
                   {item.label}
@@ -105,7 +105,7 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* User info & settings */}
+      {/* Bottom section */}
       <div className="p-3 border-t border-white/10 space-y-1">
         <Link
           to="/instellingen"
@@ -113,7 +113,7 @@ export default function Sidebar() {
             isActive('/instellingen')
               ? 'bg-blue-500/10 text-blue-400'
               : 'text-white/60 hover:bg-white/5 hover:text-white'
-          }`}
+          } ${isCollapsed ? 'justify-center' : ''}`}
           title={isCollapsed ? 'Instellingen' : ''}
         >
           <Settings size={20} className="shrink-0" />
@@ -127,7 +127,9 @@ export default function Sidebar() {
 
         <button
           onClick={handleLogout}
-          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400/60 hover:bg-red-500/10 hover:text-red-400 transition-all group relative"
+          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-400/60 hover:bg-red-500/10 hover:text-red-400 transition-all group relative ${
+            isCollapsed ? 'justify-center' : ''
+          }`}
           title={isCollapsed ? 'Uitloggen' : ''}
         >
           <LogOut size={20} className="shrink-0" />
@@ -139,7 +141,6 @@ export default function Sidebar() {
           )}
         </button>
 
-        {/* User info (alleen als uitgeklapt) */}
         {!isCollapsed && user && (
           <div className="mt-3 pt-3 border-t border-white/10">
             <div className="flex items-center gap-3 px-3 py-2">
