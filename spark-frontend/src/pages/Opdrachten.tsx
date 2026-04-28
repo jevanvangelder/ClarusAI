@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import {
   FileText, ArrowLeft, Send, Paperclip, Plus, Trash, Pencil,
-  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink, Flag, Clock, MoreVertical, Archive
+  ChevronDown, Check, MessageSquarePlus, Image, X, GripVertical, Calendar, Search, ExternalLink, Flag, Clock, MoreVertical, Archive, BookOpen
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
@@ -25,6 +25,14 @@ const TYPE_FILTER_COLORS: Record<string, string> = {
 }
 const getTypeColor = (type: string) => TYPE_COLORS[type] || 'text-blue-400 bg-blue-500/10 border-blue-500/20'
 
+// 🆕 Nieuwe interface voor casus info
+interface CasusInfo {
+  id: string
+  titel: string
+  tekst: string
+  volgorde: number
+}
+
 interface Vraag {
   nummer: number
   vraag: string
@@ -34,6 +42,7 @@ interface Vraag {
   antwoord: string
   toelichting: string
   afbeelding?: string
+  casus_id?: string  // 🆕 Koppeling naar casus
 }
 
 interface KlasDeadline {
@@ -48,6 +57,7 @@ interface Opdracht {
   type: string
   max_punten: number
   vragen: Vraag[]
+  casussen?: CasusInfo[]  // 🆕 Array van casussen
   klas_deadlines: KlasDeadline[]
   is_actief: boolean
   created_at: string
@@ -78,8 +88,25 @@ const parseVragen = (vragen: any): Vraag[] => {
   if (Array.isArray(vragen)) return vragen
   return []
 }
+
+// 🆕 Helper voor casussen parsen
+const parseCasussen = (casussen: any): CasusInfo[] => {
+  if (!casussen) return []
+  if (typeof casussen === 'string') { try { return JSON.parse(casussen) } catch { return [] } }
+  if (Array.isArray(casussen)) return casussen
+  return []
+}
+
 const berekenMaxPunten = (vragen: Vraag[]) => vragen.reduce((acc, v) => acc + (Number(v.punten) || 0), 0)
 const leegVraag = (nummer: number): Vraag => ({ nummer, vraag: '', type: 'open', punten: 1, opties: [], antwoord: '', toelichting: '' })
+
+// 🆕 Helper voor nieuwe casus maken
+const leeggeCasus = (volgorde: number): CasusInfo => ({
+  id: `casus-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  titel: `Casus ${volgorde}`,
+  tekst: '',
+  volgorde
+})
 
 const toDatetimeLocal = (iso: string | null): string => {
   if (!iso) return ''
@@ -131,6 +158,8 @@ export default function Opdrachten() {
   const [editingBeschrijving, setEditingBeschrijving] = useState(false)
   const [editingVragen, setEditingVragen] = useState(false)
   const [editVragen, setEditVragen] = useState<Vraag[]>([])
+  const [editCasussen, setEditCasussen] = useState<CasusInfo[]>([])  // 🆕 State voor casussen
+  const [editingCasussen, setEditingCasussen] = useState(false)  // 🆕 Edit mode voor casussen
   const [saving, setSaving] = useState(false)
   const [klasDropdownOpen, setKlasDropdownOpen] = useState(false)
   const vraagAfbeeldingRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -155,7 +184,7 @@ export default function Opdrachten() {
     if (!user) return
     const { data, error } = await supabase
       .from('assignments')
-      .select(`id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)`)
+      .select(`id, title, beschrijving, type, max_punten, vragen, casussen, is_active, created_at, assignment_classes(class_id, deadline)`)
       .eq('created_by', user.id)
       .order('created_at', { ascending: false })
     if (error) { console.error('fetchOpdrachten error:', error); return }
@@ -167,6 +196,7 @@ export default function Opdrachten() {
       type: o.type || 'opdracht',
       max_punten: o.max_punten || 0,
       vragen: parseVragen(o.vragen),
+      casussen: parseCasussen(o.casussen),  // 🆕 Parse casussen
       is_actief: o.is_active,
       created_at: o.created_at,
       klas_deadlines: (o.assignment_classes || []).map((ac: any) => ({
@@ -192,8 +222,7 @@ export default function Opdrachten() {
 
     setOpdrachten(basis)
   }
-
-  const fetchKlassen = async () => {
+    const fetchKlassen = async () => {
     if (!user) return
     const { data, error } = await supabase
       .from('classes')
@@ -216,8 +245,10 @@ export default function Opdrachten() {
       setEditType(selectedOpdracht.type || 'opdracht')
       setEditKlasDeadlines(selectedOpdracht.klas_deadlines || [])
       setEditVragen(parseVragen(selectedOpdracht.vragen))
+      setEditCasussen(parseCasussen(selectedOpdracht.casussen) || [])  // 🆕 Load casussen
       setEditingVragen(false)
       setEditingBeschrijving(false)
+      setEditingCasussen(false)  // 🆕 Reset casus edit mode
     }
   }, [selectedOpdracht])
 
@@ -274,10 +305,18 @@ export default function Opdrachten() {
     setSaving(true)
     try {
       const vragenToSave = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
+      const casussenToSave = editingCasussen ? editCasussen : parseCasussen(selectedOpdracht.casussen)  // 🆕 Save casussen
       const autoMaxPunten = berekenMaxPunten(vragenToSave)
       const { error: assignErr } = await supabase
         .from('assignments')
-        .update({ title: editTitel, beschrijving: editBeschrijving, type: editType, max_punten: autoMaxPunten, vragen: vragenToSave })
+        .update({ 
+          title: editTitel, 
+          beschrijving: editBeschrijving, 
+          type: editType, 
+          max_punten: autoMaxPunten, 
+          vragen: vragenToSave,
+          casussen: casussenToSave  // 🆕 Update casussen
+        })
         .eq('id', selectedOpdracht.id)
       if (assignErr) throw assignErr
       await supabase.from('assignment_classes').delete().eq('assignment_id', selectedOpdracht.id)
@@ -292,11 +331,11 @@ export default function Opdrachten() {
         if (acErr) throw acErr
       }
       toast.success('Opdracht opgeslagen!')
-      setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false)
+      setEditingTitel(false); setEditingVragen(false); setEditingBeschrijving(false); setEditingCasussen(false)
       await fetchOpdrachten()
       const { data: updated } = await supabase
         .from('assignments')
-        .select('id, title, beschrijving, type, max_punten, vragen, is_active, created_at, assignment_classes(class_id, deadline)')
+        .select('id, title, beschrijving, type, max_punten, vragen, casussen, is_active, created_at, assignment_classes(class_id, deadline)')
         .eq('id', selectedOpdracht.id)
         .single()
       if (updated) {
@@ -307,6 +346,7 @@ export default function Opdrachten() {
           type: updated.type || 'opdracht',
           max_punten: updated.max_punten || 0,
           vragen: parseVragen(updated.vragen),
+          casussen: parseCasussen(updated.casussen),  // 🆕 Update state
           is_actief: updated.is_active,
           created_at: updated.created_at,
           te_beoordelen: selectedOpdracht.te_beoordelen,
@@ -324,9 +364,23 @@ export default function Opdrachten() {
   }
 
   const handleVervolgSpar = (opdracht: Opdracht) => {
-    const context = JSON.stringify({ titel: opdracht.titel, beschrijving: opdracht.beschrijving, type: opdracht.type, max_punten: opdracht.max_punten, vragen: parseVragen(opdracht.vragen) })
+    const context = JSON.stringify({ 
+      titel: opdracht.titel, 
+      beschrijving: opdracht.beschrijving, 
+      type: opdracht.type, 
+      max_punten: opdracht.max_punten, 
+      vragen: parseVragen(opdracht.vragen),
+      casussen: parseCasussen(opdracht.casussen)  // 🆕 Include casussen in context
+    })
     setSparContext(context)
-    setGegenereerdeOpdracht({ titel: opdracht.titel, beschrijving: opdracht.beschrijving, type: opdracht.type, max_punten: opdracht.max_punten, vragen: parseVragen(opdracht.vragen) })
+    setGegenereerdeOpdracht({ 
+      titel: opdracht.titel, 
+      beschrijving: opdracht.beschrijving, 
+      type: opdracht.type, 
+      max_punten: opdracht.max_punten, 
+      vragen: parseVragen(opdracht.vragen),
+      casussen: parseCasussen(opdracht.casussen)  // 🆕
+    })
     setSparMessages([{ role: 'assistant', content: `Ik heb de opdracht **"${opdracht.titel}"** geladen. Wat wil je aanpassen of uitbreiden?` }])
     setView('spar')
   }
@@ -396,18 +450,34 @@ export default function Opdrachten() {
     setOpslaan(true)
     try {
       const vragen = parseVragen(gegenereerdeOpdracht.vragen)
+      const casussen = parseCasussen(gegenereerdeOpdracht.casussen)  // 🆕
       const autoMaxPunten = berekenMaxPunten(vragen)
       if (selectedOpdracht && sparContext) {
         const { error } = await supabase
           .from('assignments')
-          .update({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving, type: gegenereerdeOpdracht.type || 'opdracht', max_punten: autoMaxPunten, vragen })
+          .update({ 
+            title: gegenereerdeOpdracht.titel, 
+            beschrijving: gegenereerdeOpdracht.beschrijving, 
+            type: gegenereerdeOpdracht.type || 'opdracht', 
+            max_punten: autoMaxPunten, 
+            vragen,
+            casussen  // 🆕
+          })
           .eq('id', selectedOpdracht.id)
           .select()
         if (error) throw error
       } else {
         const { error } = await supabase
           .from('assignments')
-          .insert({ title: gegenereerdeOpdracht.titel, beschrijving: gegenereerdeOpdracht.beschrijving || '', type: gegenereerdeOpdracht.type || 'opdracht', max_punten: autoMaxPunten, vragen, created_by: user.id, is_active: true })
+          .insert({ 
+            title: gegenereerdeOpdracht.titel, 
+            beschrijving: gegenereerdeOpdracht.beschrijving || '', 
+            type: gegenereerdeOpdracht.type || 'opdracht', 
+            max_punten: autoMaxPunten, 
+            vragen, 
+            casussen,  // 🆕
+            created_by: user.id 
+          })
           .select()
         if (error) throw error
       }
@@ -461,8 +531,7 @@ export default function Opdrachten() {
     if (toekomstig.length === 0) return null
     return new Date(Math.min(...toekomstig.map(d => d.getTime())))
   }
-
-  // ═════════════════���═════════════
+    // ═══════════════════════════════
   // SPAR VIEW
   // ═══════════════════════════════
   if (view === 'spar') {
@@ -624,12 +693,12 @@ export default function Opdrachten() {
       </div>
     )
   }
-
-  // ═══════════════════════════════
+    // ═══════════════════════════════
   // DETAIL VIEW
   // ═══════════════════════════════
   if (view === 'detail' && selectedOpdracht) {
     const huidigeVragen = editingVragen ? editVragen : parseVragen(selectedOpdracht.vragen)
+    const huidigeCasussen = editingCasussen ? editCasussen : parseCasussen(selectedOpdracht.casussen)  // 🆕
     const autoMaxPunten = berekenMaxPunten(huidigeVragen)
     const geselecteerdeKlasIds = editKlasDeadlines.map(kd => kd.class_id)
 
@@ -722,14 +791,14 @@ export default function Opdrachten() {
             </div>
           </div>
 
-                    <div>
+          <div>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
               {klasDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setKlasDropdownOpen(false)} />}
               <button onClick={() => setKlasDropdownOpen(prev => !prev)}
                 className="relative z-50 flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all">
                 <span className="flex-1 text-left">
-                  {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen ��'
+                  {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen —'
                     : `${geselecteerdeKlasIds.length} klas${geselecteerdeKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}
                 </span>
                 <ChevronDown size={14} className={`transition-transform ${klasDropdownOpen ? 'rotate-180' : ''}`} />
@@ -804,6 +873,69 @@ export default function Opdrachten() {
           )}
         </div>
 
+        {/* 🆕 CASUSSEN SECTIE */}
+        <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BookOpen size={16} className="text-orange-400" />
+              <span className="text-white/60 text-sm">{huidigeCasussen.length} casus{huidigeCasussen.length !== 1 ? 'sen' : ''}</span>
+            </div>
+            <button
+              onClick={() => { if (!editingCasussen) setEditCasussen(parseCasussen(selectedOpdracht.casussen) || []); setEditingCasussen(prev => !prev) }}
+              className={`flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg border transition-all ${editingCasussen ? 'bg-white/10 border-white/20 text-white' : 'bg-white/5 border-white/10 text-white/50 hover:text-white/80'}`}>
+              <Pencil size={12} /> {editingCasussen ? 'Stoppen met bewerken' : 'Casussen bewerken'}
+            </button>
+          </div>
+
+          {editingCasussen ? (
+            <div className="space-y-3">
+              {editCasussen.map((casus, i) => (
+                <div key={casus.id} className="bg-white/5 border border-white/10 rounded-lg p-4 space-y-2">
+                  <div className="flex items-center gap-2 justify-between">
+                    <input 
+                      value={casus.titel}
+                      onChange={e => setEditCasussen(prev => prev.map((c, j) => j === i ? { ...c, titel: e.target.value } : c))}
+                      placeholder="Casus titel"
+                      className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm font-medium outline-none focus:border-orange-500/50"
+                    />
+                    <button 
+                      onClick={() => setEditCasussen(prev => prev.filter((_, j) => j !== i).map((c, j) => ({ ...c, volgorde: j + 1 })))}
+                      className="text-red-400/60 hover:text-red-400 transition-colors">
+                      <Trash size={14} />
+                    </button>
+                  </div>
+                  <textarea 
+                    value={casus.tekst}
+                    onChange={e => setEditCasussen(prev => prev.map((c, j) => j === i ? { ...c, tekst: e.target.value } : c))}
+                    placeholder="Casus tekst (200-400 woorden)..."
+                    rows={6}
+                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-2 text-white text-sm resize-none outline-none focus:border-orange-500/50"
+                  />
+                  <p className="text-white/30 text-xs">
+                    {casus.tekst.split(/\s+/).filter(w => w.length > 0).length} woorden
+                  </p>
+                </div>
+              ))}
+              <button 
+                onClick={() => setEditCasussen(prev => [...prev, leeggeCasus(prev.length + 1)])}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-white/5 border border-dashed border-white/20 hover:border-orange-400/40 rounded-lg text-white/50 hover:text-orange-400 text-sm transition-all">
+                <Plus size={14} /> Casus toevoegen
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {huidigeCasussen.length === 0 ? (
+                <p className="text-white/30 text-sm text-center py-4">Geen casussen toegevoegd</p>
+              ) : huidigeCasussen.map((casus, i) => (
+                <div key={casus.id} className="bg-white/5 border border-orange-500/10 rounded-lg p-4">
+                  <h4 className="text-orange-400 text-sm font-semibold mb-2">📖 {casus.titel}</h4>
+                  <p className="text-white/70 text-sm whitespace-pre-wrap">{casus.tekst}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+                {/* VRAGEN SECTIE */}
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-white/60 text-sm">{huidigeVragen.length} vragen · {autoMaxPunten}pt totaal</span>
@@ -833,16 +965,31 @@ export default function Opdrachten() {
                                 <div className="flex items-center gap-2">
                                   <span className="text-white/40 text-xs shrink-0">#{v.nummer}</span>
                                   
-                                  {/* Type dropdown */}
+                                  {/* Type dropdown - 🆕 FIXED STYLING */}
                                   <select 
                                     value={v.type} 
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, type: e.target.value as any } : q))}
-                                    className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs outline-none focus:border-blue-500/50">
-                                    <option value="open">Open vraag</option>
-                                    <option value="meerkeuze">Meerkeuze</option>
-                                    <option value="waar-onwaar">Waar/Onwaar</option>
-                                    <option value="casus">Casus</option>
+                                    className="bg-[#1a1f3d] border border-white/10 rounded px-2 py-1 text-white text-xs outline-none focus:border-blue-500/50">
+                                    <option value="open" className="bg-[#1a1f3d] text-white">Open vraag</option>
+                                    <option value="meerkeuze" className="bg-[#1a1f3d] text-white">Meerkeuze</option>
+                                    <option value="waar-onwaar" className="bg-[#1a1f3d] text-white">Waar/Onwaar</option>
+                                    <option value="casus" className="bg-[#1a1f3d] text-white">Casus</option>
                                   </select>
+
+                                  {/* 🆕 CASUS KOPPELING DROPDOWN */}
+                                  {v.type === 'casus' && huidigeCasussen.length > 0 && (
+                                    <select 
+                                      value={v.casus_id || ''} 
+                                      onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, casus_id: e.target.value || undefined } : q))}
+                                      className="bg-[#1a1f3d] border border-orange-500/30 rounded px-2 py-1 text-orange-400 text-xs outline-none focus:border-orange-500/50">
+                                      <option value="" className="bg-[#1a1f3d] text-white/50">— Geen casus —</option>
+                                      {huidigeCasussen.map(casus => (
+                                        <option key={casus.id} value={casus.id} className="bg-[#1a1f3d] text-orange-400">
+                                          📖 {casus.titel}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
 
                                   <input type="number" min={0} value={v.punten}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
@@ -854,13 +1001,22 @@ export default function Opdrachten() {
                                   </button>
                                 </div>
 
+                                {/* 🆕 CASUS INFO DISPLAY */}
+                                {v.type === 'casus' && v.casus_id && (
+                                  <div className="bg-orange-500/5 border border-orange-500/20 rounded-lg px-3 py-2">
+                                    <p className="text-orange-400/80 text-xs">
+                                      📖 Gekoppeld aan: <strong>{huidigeCasussen.find(c => c.id === v.casus_id)?.titel || 'Onbekende casus'}</strong>
+                                    </p>
+                                  </div>
+                                )}
+
                                 {/* Vraag tekst */}
                                 <textarea 
                                   value={v.vraag}
                                   onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
-                                  placeholder={v.type === 'casus' ? 'Casus: [verhaal]\n\nVraag 1: [vraag]' : 'Typ hier de vraag...'}
+                                  placeholder={v.type === 'casus' ? 'De vraag (casus tekst wordt automatisch getoond aan student)' : 'Typ hier de vraag...'}
                                   className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[60px]" 
-                                  rows={v.type === 'casus' ? 4 : 2} 
+                                  rows={v.type === 'casus' ? 2 : 2} 
                                 />
 
                                 {/* Dynamische velden per type */}
@@ -979,53 +1135,73 @@ export default function Opdrachten() {
                 )}
               </Droppable>
             </DragDropContext>
-          ) : (
+                      ) : (
             <div className="space-y-3">
-              {huidigeVragen.map((v, i) => (
-                <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs px-2 py-0.5 rounded border ${
-                        v.type === 'meerkeuze' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
-                        v.type === 'waar-onwaar' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
-                        v.type === 'casus' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
-                        'bg-blue-500/10 border-blue-500/20 text-blue-400'
-                      }`}>
-                        {v.type}
-                      </span>
-                    </div>
-                    <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
-                  </div>
-                  <p className="text-white/80 text-sm font-medium mb-2">{v.nummer}. {v.vraag}</p>
-                  {v.afbeelding && (
-                    <div className="mt-2 space-y-1">
-                      <AfbeeldingPreview src={v.afbeelding} className="w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5" />
-                      {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
-                        <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs text-blue-400/50 hover:text-blue-400 truncate max-w-xs">
-                          <ExternalLink size={10} /><span className="truncate">{v.afbeelding}</span>
-                        </a>
-                      )}
-                    </div>
-                  )}
-                  {v.type === 'meerkeuze' && v.opties && v.opties.length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {v.opties.map((opt, j) => (
-                        <div key={j} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
-                          opt === v.antwoord ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'text-white/50'
+              {huidigeVragen.map((v, i) => {
+                // 🆕 Vind gekoppelde casus
+                const gekoppeldeCasus = v.casus_id ? huidigeCasussen.find(c => c.id === v.casus_id) : null
+                
+                return (
+                  <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded border ${
+                          v.type === 'meerkeuze' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                          v.type === 'waar-onwaar' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                          v.type === 'casus' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                          'bg-blue-500/10 border-blue-500/20 text-blue-400'
                         }`}>
-                          {opt === v.antwoord && <Check size={12} className="text-green-400" />}
-                          <span>{String.fromCharCode(65 + j)}. {opt}</span>
-                        </div>
-                      ))}
+                          {v.type}
+                        </span>
+                        {/* 🆕 Toon casus badge */}
+                        {gekoppeldeCasus && (
+                          <span className="text-xs px-2 py-0.5 rounded border bg-orange-500/5 border-orange-500/20 text-orange-400">
+                            📖 {gekoppeldeCasus.titel}
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                     </div>
-                  )}
-                  {v.type !== 'meerkeuze' && (
-                    <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
-                  )}
-                  {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
-                </div>
-              ))}
+                    
+                    {/* 🆕 Toon casus tekst als gekoppeld */}
+                    {gekoppeldeCasus && (
+                      <div className="mb-3 bg-orange-500/5 border border-orange-500/10 rounded-lg p-3">
+                        <p className="text-orange-400/70 text-xs font-semibold mb-1">Casus:</p>
+                        <p className="text-white/70 text-sm whitespace-pre-wrap">{gekoppeldeCasus.tekst}</p>
+                      </div>
+                    )}
+                    
+                    <p className="text-white/80 text-sm font-medium mb-2">{v.nummer}. {v.vraag}</p>
+                    {v.afbeelding && (
+                      <div className="mt-2 space-y-1">
+                        <AfbeeldingPreview src={v.afbeelding} className="w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5" />
+                        {(v.afbeelding.startsWith('http://') || v.afbeelding.startsWith('https://')) && (
+                          <a href={v.afbeelding} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-xs text-blue-400/50 hover:text-blue-400 truncate max-w-xs">
+                            <ExternalLink size={10} /><span className="truncate">{v.afbeelding}</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    {v.type === 'meerkeuze' && v.opties && v.opties.length > 0 && (
+                      <div className="mt-2 space-y-1">
+                        {v.opties.map((opt, j) => (
+                          <div key={j} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
+                            opt === v.antwoord ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'text-white/50'
+                          }`}>
+                            {opt === v.antwoord && <Check size={12} className="text-green-400" />}
+                            <span>{String.fromCharCode(65 + j)}. {opt}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {v.type !== 'meerkeuze' && (
+                      <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
+                    )}
+                    {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
+                  </div>
+                )
+              })}
             </div>
           )}
 
@@ -1045,6 +1221,7 @@ export default function Opdrachten() {
       </div>
     )
   }
+  
   // ═══════════════════════════════
   // OVERZICHT
   // ═══════════════════════════════
