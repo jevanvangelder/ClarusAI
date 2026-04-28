@@ -222,7 +222,7 @@ async def upload_afbeelding(file: UploadFile = File(...)):
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar","punten":2,"opties":[],"antwoord":"...","toelichting":"...","afbeelding":"https://..."}]}'
+        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar|casus","punten":2,"opties":[],"antwoord":"...","toelichting":"...","afbeelding":"https://..."}]}'
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
@@ -240,6 +240,16 @@ async def spar_chat(body: SparChatMessage):
             "- Tel het aantal vragen in de context en zorg dat de output EXACT dat aantal + eventuele nieuwe vragen bevat\n"
             "- Als je een afbeelding toevoegt aan vraag X, kopieer dan alle andere vragen 1-op-1 zonder wijzigingen\n"
             "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n\n"
+            "🔥 SPECIALE REGELS VOOR TYPE 'CASUS':\n"
+            "- Als het type 'casus' is, MOET de 'beschrijving' een UITGEBREID en REALISTISCH scenario/verhaal bevatten (250-600 woorden)\n"
+            "- De casus beschrijving moet:\n"
+            "  * Een concrete situatie schetsen met personages, bedrijf, of gebeurtenis\n"
+            "  * Relevante context, cijfers, dilemma's en uitdagingen bevatten\n"
+            "  * Genoeg informatie geven zodat studenten de vragen kunnen beantwoorden\n"
+            "  * Professioneel en educatief zijn, passend bij het onderwerp en niveau\n"
+            "- De vragen bij een casus moeten type 'casus' hebben (niet 'open')\n"
+            "- Voorbeeld casus beschrijving:\n"
+            "  'Marie en Tom willen een duurzaam kledingbedrijf starten. Ze hebben €50.000 startkapitaal en moeten beslissen over: productielocatie (Nederland €80/stuk vs Bangladesh €20/stuk), materialen (biologisch katoen €15/m² vs gerecycled polyester €8/m²), en verkoopstrategie (online shop of fysieke winkel). Hun doelgroep is 18-35 jaar, milieubewust, budget €50-150 per kledingstuk. De markt voor duurzame kleding groeit met 15% per jaar, maar de concurrentie is hevig...'\n\n"
             "AFBEELDINGEN:\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...] in de tekst), gebruik dan die URL direct in het 'afbeelding' veld van de betreffende vraag\n"
             "- Als een vraag een afbeelding nodig heeft maar er geen URL is meegegeven, voeg dan 'afbeelding_zoekterm' toe met een Engelse zoekterm\n"
@@ -341,6 +351,14 @@ async def spar_upload(
             "- Geen inleidende zin zoals 'Uiteraard, hier is de opdracht:'\n"
             "- Geen uitleg na de JSON\n"
             "- ALLEEN de prefix OPDRACHT_UPDATE: gevolgd door de JSON, niets anders\n\n"
+            "🔥 SPECIALE REGELS VOOR TYPE 'CASUS':\n"
+            "- Als het type 'casus' is, MOET de 'beschrijving' een UITGEBREID en REALISTISCH scenario/verhaal bevatten (250-600 woorden)\n"
+            "- De casus beschrijving moet:\n"
+            "  * Een concrete situatie schetsen met personages, bedrijf, of gebeurtenis\n"
+            "  * Relevante context, cijfers, dilemma's en uitdagingen bevatten\n"
+            "  * Genoeg informatie geven zodat studenten de vragen kunnen beantwoorden\n"
+            "  * Professioneel en educatief zijn, passend bij het onderwerp en niveau\n"
+            "- De vragen bij een casus moeten type 'casus' hebben (niet 'open')\n\n"
             "KRITIEKE REGELS:\n"
             "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn\n"
             "- Als de docent zegt 'voeg deze afbeelding toe aan vraag X', gebruik dan de [AFBEELDING_URL:...] uit de tekst als 'afbeelding' waarde voor die vraag\n"
