@@ -222,7 +222,33 @@ async def upload_afbeelding(file: UploadFile = File(...)):
 @router.post("/spar/chat")
 async def spar_chat(body: SparChatMessage):
     try:
-        json_voorbeeld = '{"titel":"...","beschrijving":"...","type":"huiswerk|casus|oefentoets|opdracht","max_punten":10,"vragen":[{"nummer":1,"vraag":"...","type":"open|meerkeuze|waar-onwaar|casus","punten":2,"opties":[],"antwoord":"...","toelichting":"...","afbeelding":"https://..."}]}'
+        json_voorbeeld = '''{
+  "titel": "...",
+  "beschrijving": "...",
+  "type": "huiswerk|casus|oefentoets|opdracht",
+  "max_punten": 10,
+  "casussen": [
+    {
+      "id": "casus-1",
+      "titel": "TechStart Startup",
+      "tekst": "[200-400 woorden volledig uitgeschreven casus verhaal]",
+      "volgorde": 1
+    }
+  ],
+  "vragen": [
+    {
+      "nummer": 1,
+      "vraag": "Welke strategieën kan TechStart overwegen?",
+      "type": "open|meerkeuze|waar-onwaar|casus",
+      "punten": 2,
+      "opties": [],
+      "antwoord": "...",
+      "toelichting": "...",
+      "afbeelding": "https://...",
+      "casus_id": "casus-1"
+    }
+  ]
+}'''
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
@@ -239,24 +265,82 @@ async def spar_chat(body: SparChatMessage):
             "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn, tenzij de docent expliciet vraagt een vraag te verwijderen\n"
             "- Tel het aantal vragen in de context en zorg dat de output EXACT dat aantal + eventuele nieuwe vragen bevat\n"
             "- Als je een afbeelding toevoegt aan vraag X, kopieer dan alle andere vragen 1-op-1 zonder wijzigingen\n"
-            "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n\n"
-            "🔥 SPECIALE REGELS VOOR TYPE 'CASUS':\n"
-            "- PURE CASUS OPDRACHTEN (type='casus', alleen casus vragen):\n"
-            "  * Zet de casus tekst (250-600 woorden) in de 'beschrijving' van de opdracht\n"
-            "  * De vragen moeten type 'casus' hebben\n\n"
-            "- MIXED OPDRACHTEN (meerkeuze + open + casus vragen):\n"
-            "  * Structuur voor de EERSTE vraag van elke casus:\n"
-            "    'Casus: [hier het volledige casus verhaal van 200-400 woorden zonder placeholders]\n\nVraag 1: [hier de concrete vraag]'\n"
-            "  * BELANGRIJK: Gebruik DUBBELE newline (twee enters) tussen het casus verhaal en 'Vraag 1:'\n"
-            "  * Gebruik NOOIT placeholder tekst zoals '[volledig verhaal]' - schrijf het volledige verhaal uit\n"
-            "  * Voorbeeld correcte structuur:\n"
-            "    'Casus: Kapperszaak HairCo is een populaire salon in het centrum. Ze bieden diensten aan zoals knippen en kleuren. De concurrentie neemt toe met nieuwe salons die lagere prijzen bieden. HairCo overweegt hun strategie te herzien.\n\nVraag 1: Welke strategieën kan HairCo overwegen om hun marktpositie te behouden?'\n"
-            "  * De LATERE casus vragen (2, 3, 4, etc) bevatten ALLEEN de vraag, geen casus tekst herhaling\n\n"
-            "- De casus beschrijving moet ALTIJD:\n"
-            "  * Een concrete situatie schetsen met personages, bedrijf, of gebeurtenis\n"
-            "  * Relevante context, cijfers, dilemma's en uitdagingen bevatten\n"
-            "  * Genoeg informatie geven zodat studenten de vragen kunnen beantwoorden\n"
-            "  * Professioneel en educatief zijn, passend bij het onderwerp en niveau\n\n"
+            "- Voeg nooit vragen toe die er niet waren, tenzij de docent dat vraagt\n"
+            "- Behoud ALTIJD alle bestaande casussen en hun koppelingen\n\n"
+            "🔥 NIEUW CASUS SYSTEEM (VERPLICHT TE GEBRUIKEN):\n\n"
+            "STRUCTUUR:\n"
+            "- 'casussen': aparte array met casus objecten\n"
+            "- 'vragen': aparte array, casus vragen hebben 'casus_id' om te koppelen\n\n"
+            "CASUS OBJECT:\n"
+            "{\n"
+            '  "id": "casus-1" (uniek, gebruik casus-1, casus-2, etc),\n'
+            '  "titel": "Korte titel" (max 50 tekens, bijv. "TechStart Startup"),\n'
+            '  "tekst": "[200-400 woorden volledig verhaal]" (GEEN placeholders!),\n'
+            '  "volgorde": 1\n'
+            "}\n\n"
+            "CASUS VRAAG:\n"
+            "{\n"
+            '  "nummer": 1,\n'
+            '  "vraag": "De vraag zelf" (GEEN casus tekst hier!),\n'
+            '  "type": "casus",\n'
+            '  "punten": 2,\n'
+            '  "antwoord": "Modelantwoord",\n'
+            '  "toelichting": "Feedback voor student",\n'
+            '  "casus_id": "casus-1" (verwijzing naar de casus)\n'
+            "}\n\n"
+            "BELANGRIJK:\n"
+            "- Casus tekst staat ALLEEN in de 'casussen' array, NOOIT in de vraag zelf\n"
+            "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
+            "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven, geen placeholders\n"
+            "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n"
+            "- Je kunt meerdere casussen hebben in één opdracht\n\n"
+            "VOORBEELD MIXED OPDRACHT:\n"
+            "{\n"
+            '  "titel": "Verkoopstrategie in Bedrijfskunde",\n'
+            '  "type": "opdracht",\n'
+            '  "casussen": [\n'
+            "    {\n"
+            '      "id": "casus-1",\n'
+            '      "titel": "TechStart Startup",\n'
+            '      "tekst": "TechStart is een startup die innovatieve softwareoplossingen ontwikkelt voor de gezondheidszorgsector. Ze hebben recent een nieuwe applicatie gelanceerd die patiëntgegevens efficiënter beheert. De concurrentie neemt toe met grote spelers die vergelijkbare producten aanbieden. TechStart overweegt hun marketingstrategie aan te passen om hun marktaandeel te vergroten. Ze hebben beperkt budget maar een sterk ontwikkelteam.",\n'
+            '      "volgorde": 1\n'
+            "    },\n"
+            "    {\n"
+            '      "id": "casus-2",\n'
+            '      "titel": "Brewster\'s Coffee",\n'
+            '      "tekst": "Brewster\'s Coffee is een lokaal koffiebedrijf dat ziet dat de verkoop daalt vanwege nieuwe concurrenten. Ze hebben besloten hun verkoopstrategie te herzien. Ze overwegen om hun doelgroep uit te breiden naar jongeren en studenten, en willen ook hun online aanwezigheid versterken.",\n'
+            '      "volgorde": 2\n'
+            "    }\n"
+            "  ],\n"
+            '  "vragen": [\n'
+            "    {\n"
+            '      "nummer": 1,\n'
+            '      "vraag": "Wat is een verkoopstrategie?",\n'
+            '      "type": "open",\n'
+            '      "punten": 2,\n'
+            '      "antwoord": "Een plan om producten/diensten te verkopen",\n'
+            '      "toelichting": "Focus op doelgroep en aanpak"\n'
+            "    },\n"
+            "    {\n"
+            '      "nummer": 2,\n'
+            '      "vraag": "Welke strategieën kan TechStart overwegen om hun marktpositie te verbeteren?",\n'
+            '      "type": "casus",\n'
+            '      "punten": 3,\n'
+            '      "antwoord": "Partnerschappen met ziekenhuizen, gerichte marketing naar zorgprofessionals, focus op USPs",\n'
+            '      "toelichting": "Denk aan differentiatie en partnerships",\n'
+            '      "casus_id": "casus-1"\n'
+            "    },\n"
+            "    {\n"
+            '      "nummer": 3,\n'
+            '      "vraag": "Welke stappen zou Brewster\'s Coffee kunnen nemen om hun nieuwe doelgroep effectief te bereiken?",\n'
+            '      "type": "casus",\n'
+            '      "punten": 2,\n'
+            '      "antwoord": "Social media campagnes, influencer marketing, studentenkorting",\n'
+            '      "toelichting": "Focus op kanalen die jongeren gebruiken",\n'
+            '      "casus_id": "casus-2"\n'
+            "    }\n"
+            "  ]\n"
+            "}\n\n"
             "AFBEELDINGEN:\n"
             "- Voeg ALLEEN een afbeelding toe als de docent er expliciet om vraagt of als het absoluut noodzakelijk is voor de vraag\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...]), gebruik dan die URL direct in het 'afbeelding' veld\n"
@@ -270,7 +354,7 @@ async def spar_chat(body: SparChatMessage):
         if body.context:
             system_prompt += (
                 f"\n\nDe docent werkt aan deze BESTAANDE opdracht. "
-                f"Dit is de VOLLEDIGE en MEEST RECENTE versie. Neem ALLE vragen over en pas ALLEEN aan wat gevraagd wordt:\n{body.context}"
+                f"Dit is de VOLLEDIGE en MEEST RECENTE versie. Neem ALLE vragen en casussen over en pas ALLEEN aan wat gevraagd wordt:\n{body.context}"
             )
 
         conversation = list(body.messages) if body.messages else []
@@ -288,7 +372,7 @@ async def spar_chat(body: SparChatMessage):
                 idx = response.index(PREFIX)
                 parsed = json.loads(response[idx + len(PREFIX):].strip())
                 vragen = parsed.get("vragen", [])
-                print(f"📝 AI genereerde {len(vragen)} vragen")
+                print(f"📝 AI genereerde {len(vragen)} vragen en {len(parsed.get('casussen', []))} casussen")
                 for vraag in vragen:
                     zoekterm = vraag.pop("afbeelding_zoekterm", None)
                     if zoekterm and not vraag.get("afbeelding"):
@@ -359,38 +443,30 @@ async def spar_upload(
             "- Geen inleidende zin zoals 'Uiteraard, hier is de opdracht:'\n"
             "- Geen uitleg na de JSON\n"
             "- ALLEEN de prefix OPDRACHT_UPDATE: gevolgd door de JSON, niets anders\n\n"
-            "🔥 SPECIALE REGELS VOOR TYPE 'CASUS':\n"
-            "- PURE CASUS OPDRACHTEN (type='casus', alleen casus vragen):\n"
-            "  * Zet de casus tekst (250-600 woorden) in de 'beschrijving' van de opdracht\n"
-            "  * De vragen moeten type 'casus' hebben\n\n"
-            "- MIXED OPDRACHTEN (meerkeuze + open + casus vragen):\n"
-            "  * Structuur voor de EERSTE vraag van elke casus:\n"
-            "    'Casus: [hier het volledige casus verhaal van 200-400 woorden zonder placeholders]\n\nVraag 1: [hier de concrete vraag]'\n"
-            "  * BELANGRIJK: Gebruik DUBBELE newline (twee enters) tussen het casus verhaal en 'Vraag 1:'\n"
-            "  * Gebruik NOOIT placeholder tekst zoals '[volledig verhaal]' - schrijf het volledige verhaal uit\n"
-            "  * Voorbeeld correcte structuur:\n"
-            "    'Casus: Kapperszaak HairCo is een populaire salon in het centrum. Ze bieden diensten aan zoals knippen en kleuren. De concurrentie neemt toe met nieuwe salons die lagere prijzen bieden. HairCo overweegt hun strategie te herzien.\n\nVraag 1: Welke strategieën kan HairCo overwegen om hun marktpositie te behouden?'\n"
-            "  * De LATERE casus vragen (2, 3, 4, etc) bevatten ALLEEN de vraag, geen casus tekst herhaling\n\n"
-            "- De casus beschrijving moet ALTIJD:\n"
-            "  * Een concrete situatie schetsen met personages, bedrijf, of gebeurtenis\n"
-            "  * Relevante context, cijfers, dilemma's en uitdagingen bevatten\n"
-            "  * Genoeg informatie geven zodat studenten de vragen kunnen beantwoorden\n"
-            "  * Professioneel en educatief zijn, passend bij het onderwerp en niveau\n\n"
+            "🔥 NIEUW CASUS SYSTEEM (VERPLICHT TE GEBRUIKEN):\n\n"
+            "STRUCTUUR:\n"
+            "- 'casussen': aparte array met casus objecten [{id, titel, tekst, volgorde}]\n"
+            "- 'vragen': aparte array, casus vragen hebben 'casus_id' om te koppelen\n\n"
+            "BELANGRIJK:\n"
+            "- Casus tekst staat ALLEEN in de 'casussen' array, NOOIT in de vraag zelf\n"
+            "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
+            "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven\n"
+            "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n\n"
             "AFBEELDINGEN:\n"
             "- Voeg ALLEEN een afbeelding toe als de docent er expliciet om vraagt\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...]), gebruik dan die URL\n"
             "- Voor casus opdrachten zijn afbeeldingen meestal NIET nodig\n"
             "- Voeg NOOIT automatisch afbeeldingen toe zonder expliciete vraag\n\n"
             "KRITIEKE REGELS:\n"
-            "- Behoud ALTIJD alle bestaande vragen exact zoals ze zijn\n"
+            "- Behoud ALTIJD alle bestaande vragen en casussen exact zoals ze zijn\n"
             "- Als de docent zegt 'voeg deze afbeelding toe aan vraag X', gebruik dan de [AFBEELDING_URL:...] uit de tekst als 'afbeelding' waarde voor die vraag\n"
-            "- Kopieer alle andere vragen 1-op-1 zonder wijzigingen\n"
+            "- Kopieer alle andere vragen en casussen 1-op-1 zonder wijzigingen\n"
         )
 
         if context:
             system_prompt += (
                 f"\n\nDe docent werkt aan deze BESTAANDE opdracht. "
-                f"Neem ALLE vragen over en pas ALLEEN aan wat gevraagd wordt:\n{context}"
+                f"Neem ALLE vragen en casussen over en pas ALLEEN aan wat gevraagd wordt:\n{context}"
             )
 
         conversation = []
