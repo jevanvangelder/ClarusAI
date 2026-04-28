@@ -677,7 +677,7 @@ export default function StudentOpdrachtDetail() {
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
-                  {/* ═══════════════════════════════════════════════════════════════
+                          {/* ═══════════════════════════════════════════════════════════════
               CASUS LAYOUT: Links = antwoord invoer, Rechts = vraag + casus + AI tutor
              ═══════════════════════════════════════════════════════════════ */}
           {huidigeVraag?.type === 'casus' ? (
@@ -781,11 +781,18 @@ export default function StudentOpdrachtDetail() {
                         let casusTekst = opdracht.beschrijving || 'Geen casus tekst beschikbaar';
                         
                         if (relevanteCasus?.vraag?.startsWith('Casus:')) {
-                          // Haal "Casus:" prefix weg en split op "Vraag" patronen
+                          // Haal "Casus:" prefix weg
                           const volledigeTekst = relevanteCasus.vraag.replace(/^Casus:\s*/i, '');
-                          // Split op patronen zoals "Vraag 1:", "Vraag:", nummer met punt, etc
-                          const gesplitst = volledigeTekst.split(/\n\s*Vraag\s+\d*:?/i);
-                          casusTekst = gesplitst[0].trim(); // Neem alleen het eerste deel (de casus)
+                          
+                          // Split op dubbele newline (als AI netjes werkt)
+                          if (volledigeTekst.includes('\n\n')) {
+                            const delen = volledigeTekst.split(/\n\n+/);
+                            casusTekst = delen[0].trim();
+                          } else {
+                            // Split op "Vraag" patronen (fallback)
+                            const gesplitst = volledigeTekst.split(/\n\s*Vraag\s+\d*:?/i);
+                            casusTekst = gesplitst[0].trim();
+                          }
                         }
                         
                         return (
@@ -818,16 +825,30 @@ export default function StudentOpdrachtDetail() {
                         // Als de vraag begint met "Casus:", haal die tekst weg en toon alleen de echte vraag
                         if (huidigeVraag.vraag?.startsWith('Casus:')) {
                           const volledigeTekst = huidigeVraag.vraag.replace(/^Casus:\s*/i, '');
-                          // Zoek naar "Vraag 1:" of vergelijkbaar patroon
-                          const match = volledigeTekst.match(/Vraag\s+\d*:?\s*(.+)/is);
-                          if (match && match[1]) {
-                            return match[1].trim();
+                          
+                          // Als er dubbele newline is, neem alles NA de laatste dubbele newline
+                          if (volledigeTekst.includes('\n\n')) {
+                            const delen = volledigeTekst.split(/\n\n+/);
+                            const vraagTekst = delen[delen.length - 1].trim();
+                            // Verwijder "Vraag X:" prefix als die er is
+                            return vraagTekst.replace(/^Vraag\s+\d+:\s*/i, '').trim();
                           }
-                          // Als geen match, toon alles na de eerste newline sectie
-                          const delen = volledigeTekst.split(/\n\s*\n/);
-                          if (delen.length > 1) {
-                            return delen[delen.length - 1].trim();
+                          
+                          // Zoek naar "Vraag 1:" patroon en pak alles daarna
+                          const vraagMatch = volledigeTekst.match(/Vraag\s+\d+:\s*(.+?)$/is);
+                          if (vraagMatch && vraagMatch[1]) {
+                            return vraagMatch[1].trim();
                           }
+                          
+                          // Laatste poging: zoek laatste zin die eindigt met vraagteken
+                          const zinnen = volledigeTekst.split(/(?<=[.!?])\s+/);
+                          for (let i = zinnen.length - 1; i >= 0; i--) {
+                            if (zinnen[i].includes('?')) {
+                              return zinnen[i].trim();
+                            }
+                          }
+                          
+                          // Fallback: toon alles
                           return volledigeTekst.trim();
                         }
                         return huidigeVraag.vraag;
