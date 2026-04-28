@@ -677,7 +677,7 @@ export default function StudentOpdrachtDetail() {
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
-          {/* ═══════════════════════════════════════════════════════════════
+                  {/* ═══════════════════════════════════════════════════════════════
               CASUS LAYOUT: Links = antwoord invoer, Rechts = vraag + casus + AI tutor
              ═══════════════════════════════════════════════════════════════ */}
           {huidigeVraag?.type === 'casus' ? (
@@ -759,12 +759,34 @@ export default function StudentOpdrachtDetail() {
                     </div>
                     <div className="prose prose-invert prose-sm max-w-none">
                       {(() => {
-                        // Vind de eerste casus vraag
-                        const eersteCasusVraag = opdracht.vragen.find(v => v.type === 'casus');
-                        // Als er een casus vraag is en deze heeft een vraag tekst die begint met "Casus:", gebruik die
-                        const casusTekst = eersteCasusVraag?.vraag?.startsWith('Casus:') 
-                          ? eersteCasusVraag.vraag.replace(/^Casus:\s*/i, '') 
-                          : (opdracht.beschrijving || eersteCasusVraag?.vraag || 'Geen casus tekst beschikbaar');
+                        // Zoek alle casus vragen
+                        const casusVragen = opdracht.vragen.filter(v => v.type === 'casus' && v.vraag?.startsWith('Casus:'));
+                        
+                        // Vind de casus die bij de huidige vraag hoort
+                        // Logica: zoek de LAATSTE casus vraag VOOR of GELIJK AAN de huidige vraag
+                        let relevanteCasus = null;
+                        for (let i = casusVragen.length - 1; i >= 0; i--) {
+                          if (casusVragen[i].nummer <= huidigeVraag.nummer) {
+                            relevanteCasus = casusVragen[i];
+                            break;
+                          }
+                        }
+                        
+                        // Fallback: eerste casus vraag of opdracht beschrijving
+                        if (!relevanteCasus && casusVragen.length > 0) {
+                          relevanteCasus = casusVragen[0];
+                        }
+                        
+                        // Haal de casus tekst uit het vraag veld
+                        let casusTekst = opdracht.beschrijving || 'Geen casus tekst beschikbaar';
+                        
+                        if (relevanteCasus?.vraag?.startsWith('Casus:')) {
+                          // Haal "Casus:" prefix weg en split op "Vraag" patronen
+                          const volledigeTekst = relevanteCasus.vraag.replace(/^Casus:\s*/i, '');
+                          // Split op patronen zoals "Vraag 1:", "Vraag:", nummer met punt, etc
+                          const gesplitst = volledigeTekst.split(/\n\s*Vraag\s+\d*:?/i);
+                          casusTekst = gesplitst[0].trim(); // Neem alleen het eerste deel (de casus)
+                        }
                         
                         return (
                           <ReactMarkdown
@@ -791,7 +813,26 @@ export default function StudentOpdrachtDetail() {
                       <span className="text-orange-400/60 text-xs font-medium uppercase">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
                       <span className="text-orange-400/60 text-xs">{huidigeVraag.punten}pt</span>
                     </div>
-                    <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
+                    <p className="text-white font-medium text-sm leading-relaxed">
+                      {(() => {
+                        // Als de vraag begint met "Casus:", haal die tekst weg en toon alleen de echte vraag
+                        if (huidigeVraag.vraag?.startsWith('Casus:')) {
+                          const volledigeTekst = huidigeVraag.vraag.replace(/^Casus:\s*/i, '');
+                          // Zoek naar "Vraag 1:" of vergelijkbaar patroon
+                          const match = volledigeTekst.match(/Vraag\s+\d*:?\s*(.+)/is);
+                          if (match && match[1]) {
+                            return match[1].trim();
+                          }
+                          // Als geen match, toon alles na de eerste newline sectie
+                          const delen = volledigeTekst.split(/\n\s*\n/);
+                          if (delen.length > 1) {
+                            return delen[delen.length - 1].trim();
+                          }
+                          return volledigeTekst.trim();
+                        }
+                        return huidigeVraag.vraag;
+                      })()}
+                    </p>
                     {huidigeVraag.afbeelding && (
                       <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
                     )}
