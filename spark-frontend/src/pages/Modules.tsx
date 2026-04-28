@@ -171,20 +171,22 @@ export default function Modules() {
           </button>
           <span className="text-2xl">{selectedModule.icon}</span>
           <h2 className="text-2xl font-bold text-white">{selectedModule.title}</h2>
-          <div className="ml-auto flex gap-2">
-            <button
-              onClick={() => { setEditingModule(selectedModule); setIsModalOpen(true) }}
-              className="flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-sm rounded-lg transition-all"
-            >
-              <Pencil size={14} /> Bewerken
-            </button>
-            <button
-              onClick={() => handleDelete(selectedModule)}
-              className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all"
-            >
-              <Trash size={14} /> Verwijderen
-            </button>
-          </div>
+          {(role === 'teacher' || role === 'school_admin' || role === 'admin') && (
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => { setEditingModule(selectedModule); setIsModalOpen(true) }}
+                className="flex items-center gap-1 px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 text-white/70 hover:text-white text-sm rounded-lg transition-all"
+              >
+                <Pencil size={14} /> Bewerken
+              </button>
+              <button
+                onClick={() => handleDelete(selectedModule)}
+                className="flex items-center gap-1 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 text-sm rounded-lg transition-all"
+              >
+                <Trash size={14} /> Verwijderen
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 160px)' }}>

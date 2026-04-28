@@ -933,7 +933,6 @@ export default function Opdrachten() {
       </div>
     )
   }
-
   // ═══════════════════════════════
   // OVERZICHT
   // ═══════════════════════════════
@@ -941,10 +940,8 @@ export default function Opdrachten() {
   const inactieveOpdrachten = opdrachten.filter(o => !o.is_actief)
   const huidigeLijst = activeFilter === 'actief' ? actieveOpdrachten : inactieveOpdrachten
   const beschikbareTypes = OPDRACHT_TYPES.filter(t => huidigeLijst.some(o => o.type === t))
-  const totaalTeBeoordelenActief = actieveOpdrachten.reduce((sum, o) => sum + (o.te_beoordelen || 0), 0)
 
   const gefilterdeOpdrachten = huidigeLijst.filter(o => {
-    if (alleenTeBeoordelenFilter && (o.te_beoordelen || 0) === 0) return false
     const matchType = typeFilter === 'alles' || o.type === typeFilter
     const term = zoekterm.toLowerCase().trim()
     const matchZoek = !term || (
@@ -983,40 +980,12 @@ export default function Opdrachten() {
         )}
       </div>
 
-      {/* Te beoordelen banner */}
-      {totaalTeBeoordelenActief > 0 && (
-        <button
-          onClick={() => {
-            setActiveFilter('actief')
-            setTypeFilter('alles')
-            setZoekterm('')
-            setAlleenTeBeoordelenFilter(prev => !prev)
-          }}
-          className={`w-full text-left rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap transition-all border ${
-            alleenTeBeoordelenFilter
-              ? 'bg-amber-500/20 border-amber-500/40'
-              : 'bg-amber-500/10 border-amber-500/25 hover:bg-amber-500/15'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <Flag size={15} className="text-amber-400 shrink-0" />
-            <p className="text-amber-400 text-sm">
-              <span className="font-semibold">{totaalTeBeoordelenActief} inzending{totaalTeBeoordelenActief !== 1 ? 'en' : ''}</span> wacht{totaalTeBeoordelenActief === 1 ? '' : 'en'} op beoordeling
-              {alleenTeBeoordelenFilter && <span className="ml-2 text-amber-400/70">· filter actief</span>}
-            </p>
-          </div>
-          <span className="text-amber-400/70 text-xs shrink-0">
-            {alleenTeBeoordelenFilter ? '✕ Filter wissen' : 'Klik om te filteren →'}
-          </span>
-        </button>
-      )}
-
       {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* Actief / Archief tabs */}
         <div className="flex items-center bg-white/5 border border-white/10 rounded-lg p-0.5">
           <button
-            onClick={() => { setActiveFilter('actief'); setTypeFilter('alles'); setAlleenTeBeoordelenFilter(false) }}
+            onClick={() => { setActiveFilter('actief'); setTypeFilter('alles') }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeFilter === 'actief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
             }`}
@@ -1027,7 +996,7 @@ export default function Opdrachten() {
             </span>
           </button>
           <button
-            onClick={() => { setActiveFilter('inactief'); setTypeFilter('alles'); setAlleenTeBeoordelenFilter(false) }}
+            onClick={() => { setActiveFilter('inactief'); setTypeFilter('alles') }}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
               activeFilter === 'inactief' ? 'bg-white/10 text-white' : 'text-white/40 hover:text-white/60'
             }`}
@@ -1080,7 +1049,7 @@ export default function Opdrachten() {
         </div>
       </div>
 
-           {/* Lijst */}
+      {/* Lijst */}
       {opdrachten.length === 0 ? (
         <div className="bg-[#0f1029] border border-white/10 rounded-xl p-12 flex flex-col items-center justify-center text-center">
           <div className="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4">
@@ -1109,7 +1078,6 @@ export default function Opdrachten() {
           {gefilterdeOpdrachten.map(opdracht => {
             const deadline = eerstvolgendeDeadline(opdracht.klas_deadlines)
             const aantalKlassen = opdracht.klas_deadlines.length
-            const teBeoor = opdracht.te_beoordelen || 0
             const isMenuOpen = openMenuId === opdracht.id
             return (
               <div key={opdracht.id} className="relative min-h-[240px]">
@@ -1139,13 +1107,6 @@ export default function Opdrachten() {
                   <h3 className="text-white font-semibold mb-2">{opdracht.titel}</h3>
                   <p className="text-white/40 text-xs line-clamp-2 mb-2">{opdracht.beschrijving}</p>
                   <p className="text-white/20 text-xs mb-2">{parseVragen(opdracht.vragen).length} vragen</p>
-
-                  {teBeoor > 0 && (
-                    <div className="flex items-center gap-1.5 text-amber-400 text-xs mb-2">
-                      <Flag size={11} />
-                      <span>{teBeoor} te beoordelen</span>
-                    </div>
-                  )}
 
                   {aantalKlassen > 0 && (
                     <div className="flex flex-wrap gap-1 mb-2">
