@@ -677,7 +677,7 @@ export default function StudentOpdrachtDetail() {
 
                                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
-                          {/* ═══════════════════════════════════════════════════════════════
+                                  {/* ═══════════════════════════════════════════════════════════════
               CASUS LAYOUT: Links = antwoord invoer, Rechts = vraag + casus + AI tutor
              ═══════════════════════════════════════════════════════════════ */}
           {huidigeVraag?.type === 'casus' ? (
@@ -782,16 +782,22 @@ export default function StudentOpdrachtDetail() {
                         
                         if (relevanteCasus?.vraag?.startsWith('Casus:')) {
                           // Haal "Casus:" prefix weg
-                          const volledigeTekst = relevanteCasus.vraag.replace(/^Casus:\s*/i, '');
+                          let volledigeTekst = relevanteCasus.vraag.replace(/^Casus:\s*/i, '');
                           
-                          // Split op dubbele newline (als AI netjes werkt)
-                          if (volledigeTekst.includes('\n\n')) {
-                            const delen = volledigeTekst.split(/\n\n+/);
-                            casusTekst = delen[0].trim();
+                          // Split op "Vraag X:" patroon (met of zonder newline ervoor)
+                          const vraagSplit = volledigeTekst.split(/\s*Vraag\s+\d+:\s*/i);
+                          if (vraagSplit.length > 1) {
+                            // Neem alleen het eerste deel (voor "Vraag 1:")
+                            casusTekst = vraagSplit[0].trim();
                           } else {
-                            // Split op "Vraag" patronen (fallback)
-                            const gesplitst = volledigeTekst.split(/\n\s*Vraag\s+\d*:?/i);
-                            casusTekst = gesplitst[0].trim();
+                            // Geen "Vraag X:" gevonden, probeer dubbele newline
+                            if (volledigeTekst.includes('\n\n')) {
+                              const delen = volledigeTekst.split(/\n\n+/);
+                              casusTekst = delen[0].trim();
+                            } else {
+                              // Fallback: neem alles
+                              casusTekst = volledigeTekst.trim();
+                            }
                           }
                         }
                         
