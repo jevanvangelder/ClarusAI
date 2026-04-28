@@ -294,6 +294,17 @@ async def spar_chat(body: SparChatMessage):
             "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven, geen placeholders\n"
             "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n"
             "- Je kunt meerdere casussen hebben in één opdracht\n\n"
+            "AANTAL VRAGEN REGEL:\n"
+            "- Als de docent zegt '2 casussen met beide 3 vragen', maak dan:\n"
+            "  * 2 casus objecten in de 'casussen' array\n"
+            "  * 6 totale vragen (3 voor casus-1, 3 voor casus-2)\n"
+            "- Tel altijd na: aantal casus vragen met casus_id moet kloppen met wat gevraagd is\n"
+            "- Als de docent '3 open, 2 meerkeuze, 2 casussen met 3 vragen' zegt:\n"
+            "  * 3 open vragen (type='open')\n"
+            "  * 2 meerkeuze vragen (type='meerkeuze')\n"
+            "  * 2 casussen in 'casussen' array\n"
+            "  * 6 casus vragen (type='casus', 3 met casus_id='casus-1', 3 met casus_id='casus-2')\n"
+            "  * Totaal: 11 vragen\n\n"
             "VOORBEELD MIXED OPDRACHT:\n"
             "{\n"
             '  "titel": "Verkoopstrategie in Bedrijfskunde",\n'
@@ -372,7 +383,8 @@ async def spar_chat(body: SparChatMessage):
                 idx = response.index(PREFIX)
                 parsed = json.loads(response[idx + len(PREFIX):].strip())
                 vragen = parsed.get("vragen", [])
-                print(f"📝 AI genereerde {len(vragen)} vragen en {len(parsed.get('casussen', []))} casussen")
+                casussen = parsed.get("casussen", [])
+                print(f"📝 AI genereerde {len(vragen)} vragen en {len(casussen)} casussen")
                 for vraag in vragen:
                     zoekterm = vraag.pop("afbeelding_zoekterm", None)
                     if zoekterm and not vraag.get("afbeelding"):
@@ -452,6 +464,9 @@ async def spar_upload(
             "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
             "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven\n"
             "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n\n"
+            "AANTAL VRAGEN REGEL:\n"
+            "- Als de docent zegt '2 casussen met beide 3 vragen', maak dan 6 totale casus vragen (3 voor casus-1, 3 voor casus-2)\n"
+            "- Tel altijd na: aantal casus vragen met casus_id moet kloppen\n\n"
             "AFBEELDINGEN:\n"
             "- Voeg ALLEEN een afbeelding toe als de docent er expliciet om vraagt\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...]), gebruik dan die URL\n"
