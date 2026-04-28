@@ -757,10 +757,34 @@ export default function Opdrachten() {
               className="flex items-center gap-1 px-3 py-1.5 bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20 text-purple-400 text-sm rounded-lg transition-all">
               <MessageSquarePlus size={14} /> Spar verder met AI
             </button>
-            <button onClick={handleSaveChanges} disabled={saving}
-              className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
-              <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
-            </button>
+            
+            {/* 🆕 GROENE/RODE KNOPPEN ALS BEZIG MET BEWERKEN */}
+            {(editingVragen || editingCasussen) ? (
+              <>
+                <button 
+                  onClick={() => { 
+                    setEditingVragen(false); 
+                    setEditingCasussen(false); 
+                    setEditVragen(parseVragen(selectedOpdracht.vragen)); 
+                    setEditCasussen(parseCasussen(selectedOpdracht.casussen) || []); 
+                  }}
+                  className="flex items-center gap-1 px-4 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-sm rounded-lg transition-all">
+                  <X size={14} /> Annuleren
+                </button>
+                <button 
+                  onClick={handleSaveChanges} 
+                  disabled={saving}
+                  className="flex items-center gap-1 px-4 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-all">
+                  <Check size={14} /> {saving ? 'Opslaan...' : 'Bewerkingen opslaan'}
+                </button>
+              </>
+            ) : (
+              <button onClick={handleSaveChanges} disabled={saving}
+                className="flex items-center gap-1 px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm rounded-lg">
+                <Check size={14} /> {saving ? 'Opslaan...' : 'Opslaan'}
+              </button>
+            )}
+
             {/* Three-dots menu */}
             <div className="relative">
               <button
