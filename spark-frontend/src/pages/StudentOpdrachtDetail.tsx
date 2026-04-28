@@ -675,177 +675,385 @@ export default function StudentOpdrachtDetail() {
         </div>
         <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
-          {/* Links: vragen */}
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
-              <FileText size={14} className="text-white/40" />
-              <span className="text-white/50 text-xs uppercase tracking-wider">Vragen</span>
-            </div>
-            <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
-              {opdracht.vragen.map(v => {
-                const beantwoord = !!antwoorden[v.nummer]?.trim()
-                return (
-                  <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
-                    className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
-                      activeVraag === v.nummer ? 'bg-blue-600 text-white'
-                      : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
-                      : 'bg-white/5 text-white/40 hover:bg-white/10'
-                    }`}>
-                    {v.nummer}
-                  </button>
-                )
-              })}
-            </div>
-            {huidigeVraag && (
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-white/30 text-xs">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
-                    <span className="text-white/30 text-xs">{huidigeVraag.punten}pt</span>
-                  </div>
-                  <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
-                  {huidigeVraag.afbeelding && (
-                    <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
-                  )}
+          {/* ═══════════════════════════════════════════════════════════════
+              CASUS LAYOUT: Linker kolom = casus tekst, Rechter kolom = tabs
+             ═══════════════════════════════════════════════════════════════ */}
+          {opdracht.type === 'casus' && opdracht.beschrijving ? (
+            <>
+              {/* Links: Casus tekst (persistent) */}
+              <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
+                  <FileText size={14} className="text-orange-400" />
+                  <span className="text-white/50 text-xs uppercase tracking-wider">📄 Casus</span>
                 </div>
-                {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
-                  <div className="space-y-2">
-                    {huidigeVraag.opties.map((opt, i) => (
-                      <button key={i}
-                        onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
-                        className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
-                          antwoorden[huidigeVraag.nummer] === opt
-                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                        }`}>
-                        {opt}
-                      </button>
-                    ))}
-                  </div>
-                ) : huidigeVraag.type === 'waar-onwaar' ? (
-                  <div className="flex gap-3">
-                    {['Waar', 'Onwaar'].map(opt => (
-                      <button key={opt}
-                        onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
-                        className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
-                          antwoorden[huidigeVraag.nummer] === opt
-                            ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
-                            : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
-                        }`}>
-                        {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <textarea
-                    value={antwoorden[huidigeVraag.nummer] || ''}
-                    onChange={e => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: e.target.value }))}
-                    placeholder="Schrijf hier je antwoord..."
-                    rows={5}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
-                  />
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  {activeVraag > 1 && (
-                    <button onClick={() => setActiveVraag(prev => prev - 1)}
-                      className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-sm rounded-lg transition-all">
-                      ← Vorige
-                    </button>
-                  )}
-                  {!isLaatsteVraag ? (
-                    <button onClick={() => setActiveVraag(prev => prev + 1)}
-                      className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg flex items-center justify-center gap-1 transition-all">
-                      Volgende <ChevronRight size={14} />
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleInleverKlik}
-                      disabled={inleveren}
-                      className="flex-1 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all"
+                <div className="flex-1 overflow-y-auto p-5">
+                  <div className="prose prose-invert prose-sm max-w-none">
+                    <ReactMarkdown
+                      components={{
+                        p: ({ children }) => <p className="text-white/70 text-sm leading-relaxed mb-3">{children}</p>,
+                        strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
+                        h1: ({ children }) => <h1 className="text-white text-lg font-bold mb-3 mt-4">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-white text-base font-semibold mb-2 mt-3">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-white/90 text-sm font-medium mb-2 mt-2">{children}</h3>,
+                        ul: ({ children }) => <ul className="list-disc list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ul>,
+                        ol: ({ children }) => <ol className="list-decimal list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ol>,
+                      }}
                     >
-                      {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-                      {inleveren ? 'Inleveren...' : 'Inleveren'}
-                    </button>
-                  )}
+                      {opdracht.beschrijving}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
 
-          {/* Rechts: AI tutor */}
-          <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
-            <div className="px-4 py-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <MessageCircle size={14} className="text-purple-400" />
-                <span className="text-white/50 text-xs uppercase tracking-wider">AI Tutor</span>
-              </div>
-              <p className="text-white/25 text-xs mt-0.5">Stel vragen over de stof — ik help je begrijpen, niet afschrijven 😊</p>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {tutorMessages.length === 0 && (
-                <div className="text-center mt-8 space-y-3">
-                  <p className="text-white/20 text-sm">Heb je een vraag over de stof?</p>
-                  <div className="space-y-2">
-                    {[
-                      'Kun je uitleggen wat schaarste betekent?',
-                      'Hoe werkt vraag en aanbod?',
-                      'Ik snap vraag 3 niet goed',
-                    ].map((s, i) => (
-                      <button key={i} onClick={() => { setTutorInput(s); tutorInputRef.current?.focus() }}
-                        className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
-                        "{s}"
+              {/* Rechts: Tabs (Vraag / AI Tutor) */}
+              <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+                {/* Tab headers */}
+                <div className="flex border-b border-white/10">
+                  <button
+                    onClick={() => setActiveVraag(activeVraag)}
+                    className="flex-1 px-4 py-3 text-sm font-medium transition-all border-b-2 border-blue-500 text-blue-400"
+                  >
+                    📝 Vraag {activeVraag}/{opdracht.vragen.length}
+                  </button>
+                  <button
+                    onClick={() => {/* AI Tutor blijft altijd zichtbaar in rechter kolom */}}
+                    className="flex-1 px-4 py-3 text-sm font-medium transition-all border-b-2 border-transparent text-white/40"
+                    disabled
+                  >
+                    🤖 AI Tutor (zie onder)
+                  </button>
+                </div>
+
+                {/* Vraag navigatie knoppen */}
+                <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
+                  {opdracht.vragen.map(v => {
+                    const beantwoord = !!antwoorden[v.nummer]?.trim()
+                    return (
+                      <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
+                        className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+                          activeVraag === v.nummer ? 'bg-blue-600 text-white'
+                          : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
+                          : 'bg-white/5 text-white/40 hover:bg-white/10'
+                        }`}>
+                        {v.nummer}
                       </button>
-                    ))}
-                  </div>
+                    )
+                  })}
                 </div>
-              )}
-              {tutorMessages.map((msg, i) => (
-                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
-                    msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
-                  }`}>
-                    {msg.role === 'assistant' ? (
-                      <ReactMarkdown components={{
-                        p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
-                        strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
-                      }}>
-                        {msg.content}
-                      </ReactMarkdown>
-                    ) : <span>{msg.content}</span>}
+
+                {/* Vraag content */}
+                {huidigeVraag && (
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white/30 text-xs">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
+                        <span className="text-white/30 text-xs">{huidigeVraag.punten}pt</span>
+                      </div>
+                      <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
+                      {huidigeVraag.afbeelding && (
+                        <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
+                      )}
+                    </div>
+
+                    {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
+                      <div className="space-y-2">
+                        {huidigeVraag.opties.map((opt, i) => (
+                          <button key={i}
+                            onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                            className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
+                              antwoorden[huidigeVraag.nummer] === opt
+                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                            }`}>
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    ) : huidigeVraag.type === 'waar-onwaar' ? (
+                      <div className="flex gap-3">
+                        {['Waar', 'Onwaar'].map(opt => (
+                          <button key={opt}
+                            onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                            className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
+                              antwoorden[huidigeVraag.nummer] === opt
+                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                            }`}>
+                            {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        value={antwoorden[huidigeVraag.nummer] || ''}
+                        onChange={e => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: e.target.value }))}
+                        placeholder="Schrijf hier je antwoord..."
+                        rows={8}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
+                      />
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      {activeVraag > 1 && (
+                        <button onClick={() => setActiveVraag(prev => prev - 1)}
+                          className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-sm rounded-lg transition-all">
+                          ← Vorige
+                        </button>
+                      )}
+                      {!isLaatsteVraag ? (
+                        <button onClick={() => setActiveVraag(prev => prev + 1)}
+                          className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg flex items-center justify-center gap-1 transition-all">
+                          Volgende <ChevronRight size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleInleverKlik}
+                          disabled={inleveren}
+                          className="flex-1 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                          {inleveren ? 'Inleveren...' : 'Inleveren'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* AI Tutor inline (onder de vraag) */}
+                    <div className="mt-6 pt-4 border-t border-white/10">
+                      <div className="flex items-center gap-2 mb-3">
+                        <MessageCircle size={14} className="text-purple-400" />
+                        <span className="text-white/50 text-xs uppercase tracking-wider">AI Tutor</span>
+                      </div>
+                      <div className="bg-white/[0.02] border border-white/5 rounded-xl p-3 max-h-64 overflow-y-auto space-y-2 mb-3">
+                        {tutorMessages.length === 0 ? (
+                          <p className="text-white/20 text-xs text-center py-4">Stel een vraag over de stof...</p>
+                        ) : (
+                          tutorMessages.map((msg, i) => (
+                            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[85%] px-2.5 py-1.5 rounded-lg text-xs ${
+                                msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
+                              }`}>
+                                {msg.role === 'assistant' ? (
+                                  <ReactMarkdown components={{
+                                    p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                                    strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
+                                  }}>
+                                    {msg.content}
+                                  </ReactMarkdown>
+                                ) : <span>{msg.content}</span>}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                        {tutorLoading && (
+                          <div className="flex justify-start">
+                            <div className="bg-white/5 border border-white/10 px-2.5 py-1.5 rounded-lg text-white/40 text-xs">
+                              Aan het denken...
+                            </div>
+                          </div>
+                        )}
+                        <div ref={chatEndRef} />
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          ref={tutorInputRef}
+                          type="text"
+                          value={tutorInput}
+                          onChange={e => setTutorInput(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTutorSend()}
+                          placeholder="Stel een vraag..."
+                          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-xs placeholder-white/25 outline-none focus:border-purple-500/50"
+                        />
+                        <button
+                          onClick={handleTutorSend}
+                          disabled={tutorLoading || !tutorInput.trim()}
+                          className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg transition-all"
+                        >
+                          <Send size={14} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
+                )}
+              </div>
+            </>
+          ) : (
+            /* ═══════════════════════════════════════════════════════════════
+               NORMALE LAYOUT: Vragen links, AI Tutor rechts (zoals het was)
+               ═══════════════════════════════════════════════════════════════ */
+            <>
+              {/* Links: vragen */}
+              <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
+                  <FileText size={14} className="text-white/40" />
+                  <span className="text-white/50 text-xs uppercase tracking-wider">Vragen</span>
                 </div>
-              ))}
-              {tutorLoading && (
-                <div className="flex justify-start">
-                  <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
-                    Aan het denken...
+                <div className="flex gap-1 p-2 border-b border-white/10 overflow-x-auto">
+                  {opdracht.vragen.map(v => {
+                    const beantwoord = !!antwoorden[v.nummer]?.trim()
+                    return (
+                      <button key={v.nummer} onClick={() => setActiveVraag(v.nummer)}
+                        className={`shrink-0 w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+                          activeVraag === v.nummer ? 'bg-blue-600 text-white'
+                          : beantwoord ? 'bg-green-500/20 text-green-400 border border-green-500/20'
+                          : 'bg-white/5 text-white/40 hover:bg-white/10'
+                        }`}>
+                        {v.nummer}
+                      </button>
+                    )
+                  })}
+                </div>
+                {huidigeVraag && (
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-white/30 text-xs">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
+                        <span className="text-white/30 text-xs">{huidigeVraag.punten}pt</span>
+                      </div>
+                      <p className="text-white font-medium text-sm leading-relaxed">{huidigeVraag.vraag}</p>
+                      {huidigeVraag.afbeelding && (
+                        <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
+                      )}
+                    </div>
+                    {huidigeVraag.type === 'meerkeuze' && huidigeVraag.opties && huidigeVraag.opties.length > 0 ? (
+                      <div className="space-y-2">
+                        {huidigeVraag.opties.map((opt, i) => (
+                          <button key={i}
+                            onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                            className={`w-full text-left px-4 py-3 rounded-xl border text-sm transition-all ${
+                              antwoorden[huidigeVraag.nummer] === opt
+                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                            }`}>
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    ) : huidigeVraag.type === 'waar-onwaar' ? (
+                      <div className="flex gap-3">
+                        {['Waar', 'Onwaar'].map(opt => (
+                          <button key={opt}
+                            onClick={() => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: opt }))}
+                            className={`flex-1 py-3 rounded-xl border text-sm font-medium transition-all ${
+                              antwoorden[huidigeVraag.nummer] === opt
+                                ? 'bg-blue-600/20 border-blue-500/50 text-blue-300'
+                                : 'bg-white/5 border-white/10 text-white/70 hover:border-white/20'
+                            }`}>
+                            {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <textarea
+                        value={antwoorden[huidigeVraag.nummer] || ''}
+                        onChange={e => setAntwoorden(prev => ({ ...prev, [huidigeVraag.nummer]: e.target.value }))}
+                        placeholder="Schrijf hier je antwoord..."
+                        rows={5}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white text-sm placeholder-white/20 outline-none focus:border-blue-500/50 resize-none"
+                      />
+                    )}
+
+                    <div className="flex gap-2 pt-2">
+                      {activeVraag > 1 && (
+                        <button onClick={() => setActiveVraag(prev => prev - 1)}
+                          className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 text-sm rounded-lg transition-all">
+                          ← Vorige
+                        </button>
+                      )}
+                      {!isLaatsteVraag ? (
+                        <button onClick={() => setActiveVraag(prev => prev + 1)}
+                          className="flex-1 py-2 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/30 text-blue-400 text-sm rounded-lg flex items-center justify-center gap-1 transition-all">
+                          Volgende <ChevronRight size={14} />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleInleverKlik}
+                          disabled={inleveren}
+                          className="flex-1 py-2 bg-green-600 hover:bg-green-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg flex items-center justify-center gap-1.5 transition-all"
+                        >
+                          {inleveren ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
+                          {inleveren ? 'Inleveren...' : 'Inleveren'}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                )}
+              </div>
+
+              {/* Rechts: AI tutor */}
+              <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
+                <div className="px-4 py-3 border-b border-white/10">
+                  <div className="flex items-center gap-2">
+                    <MessageCircle size={14} className="text-purple-400" />
+                    <span className="text-white/50 text-xs uppercase tracking-wider">AI Tutor</span>
+                  </div>
+                  <p className="text-white/25 text-xs mt-0.5">Stel vragen over de stof — ik help je begrijpen, niet afschrijven 😊</p>
                 </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <div className="p-3 border-t border-white/10 flex gap-2">
-              <input
-                ref={tutorInputRef}
-                type="text"
-                value={tutorInput}
-                onChange={e => setTutorInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTutorSend()}
-                placeholder="Stel een vraag over de stof..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/25 outline-none focus:border-purple-500/50"
-              />
-              <button
-                onClick={handleTutorSend}
-                disabled={tutorLoading || !tutorInput.trim()}
-                className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg transition-all"
-              >
-                <Send size={16} />
-              </button>
-            </div>
-          </div>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {tutorMessages.length === 0 && (
+                    <div className="text-center mt-8 space-y-3">
+                      <p className="text-white/20 text-sm">Heb je een vraag over de stof?</p>
+                      <div className="space-y-2">
+                        {[
+                          'Kun je uitleggen wat schaarste betekent?',
+                          'Hoe werkt vraag en aanbod?',
+                          'Ik snap vraag 3 niet goed',
+                        ].map((s, i) => (
+                          <button key={i} onClick={() => { setTutorInput(s); tutorInputRef.current?.focus() }}
+                            className="block w-full text-left px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/40 hover:text-white/60 text-xs transition-all">
+                            "{s}"
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {tutorMessages.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
+                        msg.role === 'user' ? 'bg-blue-600 text-white' : 'bg-white/5 border border-white/10 text-white/80'
+                      }`}>
+                        {msg.role === 'assistant' ? (
+                          <ReactMarkdown components={{
+                            p: ({children}) => <p className="mb-1 last:mb-0">{children}</p>,
+                            strong: ({children}) => <strong className="font-semibold text-white">{children}</strong>,
+                          }}>
+                            {msg.content}
+                          </ReactMarkdown>
+                        ) : <span>{msg.content}</span>}
+                      </div>
+                    </div>
+                  ))}
+                  {tutorLoading && (
+                    <div className="flex justify-start">
+                      <div className="bg-white/5 border border-white/10 px-3 py-2 rounded-xl text-white/40 text-sm">
+                        Aan het denken...
+                      </div>
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="p-3 border-t border-white/10 flex gap-2">
+                  <input
+                    ref={tutorInputRef}
+                    type="text"
+                    value={tutorInput}
+                    onChange={e => setTutorInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleTutorSend()}
+                    placeholder="Stel een vraag over de stof..."
+                    className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm placeholder-white/25 outline-none focus:border-purple-500/50"
+                  />
+                  <button
+                    onClick={handleTutorSend}
+                    disabled={tutorLoading || !tutorInput.trim()}
+                    className="p-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white rounded-lg transition-all"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </>
