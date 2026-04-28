@@ -28,7 +28,7 @@ const getTypeColor = (type: string) => TYPE_COLORS[type] || 'text-blue-400 bg-bl
 interface Vraag {
   nummer: number
   vraag: string
-  type: 'open' | 'meerkeuze' | 'waar-onwaar'
+  type: 'open' | 'meerkeuze' | 'waar-onwaar' | 'casus'
   punten: number
   opties?: string[]
   antwoord: string
@@ -722,14 +722,14 @@ export default function Opdrachten() {
             </div>
           </div>
 
-          <div>
+                    <div>
             <label className="text-white/40 text-xs uppercase tracking-wider block mb-2">Klassen toewijzen</label>
             <div className="relative">
               {klasDropdownOpen && <div className="fixed inset-0 z-40" onClick={() => setKlasDropdownOpen(false)} />}
               <button onClick={() => setKlasDropdownOpen(prev => !prev)}
                 className="relative z-50 flex items-center gap-2 px-3 py-2 bg-white/5 border border-white/10 hover:border-white/20 rounded-lg text-sm text-white/70 min-w-[240px] transition-all">
                 <span className="flex-1 text-left">
-                  {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen —'
+                  {geselecteerdeKlasIds.length === 0 ? '— Selecteer klassen ��'
                     : `${geselecteerdeKlasIds.length} klas${geselecteerdeKlasIds.length > 1 ? 'sen' : ''} geselecteerd`}
                 </span>
                 <ChevronDown size={14} className={`transition-transform ${klasDropdownOpen ? 'rotate-180' : ''}`} />
@@ -829,26 +829,114 @@ export default function Opdrachten() {
                                 <GripVertical size={16} />
                               </div>
                               <div className="flex-1 space-y-2">
+                                {/* Hoofdregel: nummer, type dropdown, punten, delete */}
                                 <div className="flex items-center gap-2">
                                   <span className="text-white/40 text-xs shrink-0">#{v.nummer}</span>
-                                  <textarea value={v.vraag}
-                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[36px]" rows={1} />
+                                  
+                                  {/* Type dropdown */}
+                                  <select 
+                                    value={v.type} 
+                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, type: e.target.value as any } : q))}
+                                    className="bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs outline-none focus:border-blue-500/50">
+                                    <option value="open">Open vraag</option>
+                                    <option value="meerkeuze">Meerkeuze</option>
+                                    <option value="waar-onwaar">Waar/Onwaar</option>
+                                    <option value="casus">Casus</option>
+                                  </select>
+
                                   <input type="number" min={0} value={v.punten}
                                     onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, punten: Number(e.target.value) } : q))}
                                     className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none text-center" />
                                   <span className="text-white/40 text-xs">pt</span>
                                   <button onClick={() => setEditVragen(prev => prev.filter((_, j) => j !== i).map((q, j) => ({ ...q, nummer: j + 1 })))}
-                                    className="text-red-400/60 hover:text-red-400 transition-colors">
+                                    className="text-red-400/60 hover:text-red-400 transition-colors ml-auto">
                                     <Trash size={14} />
                                   </button>
                                 </div>
-                                <div className="flex gap-2 items-center">
-                                  <span className="text-white/30 text-xs shrink-0">Antwoord:</span>
-                                  <input value={v.antwoord}
-                                    onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
-                                    className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-green-500/50" />
-                                </div>
+
+                                {/* Vraag tekst */}
+                                <textarea 
+                                  value={v.vraag}
+                                  onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, vraag: e.target.value } : q))}
+                                  placeholder={v.type === 'casus' ? 'Casus: [verhaal]\n\nVraag 1: [vraag]' : 'Typ hier de vraag...'}
+                                  className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm resize-none outline-none focus:border-blue-500/50 min-h-[60px]" 
+                                  rows={v.type === 'casus' ? 4 : 2} 
+                                />
+
+                                {/* Dynamische velden per type */}
+                                {v.type === 'meerkeuze' && (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-white/30 text-xs">Opties (klik op ✓ voor juiste antwoord):</span>
+                                      <button 
+                                        onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, opties: [...(q.opties || []), ''] } : q))}
+                                        className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 border border-blue-500/20 rounded text-blue-400 text-xs hover:bg-blue-500/20 transition-all">
+                                        <Plus size={10} /> Optie toevoegen
+                                      </button>
+                                    </div>
+                                    {(v.opties || []).map((opt, optIdx) => (
+                                      <div key={optIdx} className="flex items-center gap-2">
+                                        <button
+                                          onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: opt } : q))}
+                                          className={`w-5 h-5 rounded border flex items-center justify-center shrink-0 transition-all ${
+                                            v.antwoord === opt ? 'bg-green-600 border-green-600' : 'border-white/20 hover:border-green-500/50'
+                                          }`}>
+                                          {v.antwoord === opt && <Check size={12} className="text-white" />}
+                                        </button>
+                                        <input 
+                                          value={opt}
+                                          onChange={e => setEditVragen(prev => prev.map((q, j) => {
+                                            if (j !== i) return q
+                                            const newOpties = [...(q.opties || [])]
+                                            newOpties[optIdx] = e.target.value
+                                            return { ...q, opties: newOpties }
+                                          }))}
+                                          placeholder={`Optie ${String.fromCharCode(65 + optIdx)}`}
+                                          className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-blue-500/50"
+                                        />
+                                        <button 
+                                          onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, opties: (q.opties || []).filter((_, idx) => idx !== optIdx) } : q))}
+                                          className="text-red-400/60 hover:text-red-400 transition-colors">
+                                          <X size={14} />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {v.type === 'waar-onwaar' && (
+                                  <div className="space-y-1">
+                                    <span className="text-white/30 text-xs">Juiste antwoord:</span>
+                                    <div className="flex gap-2">
+                                      {['Waar', 'Onwaar'].map(opt => (
+                                        <button 
+                                          key={opt}
+                                          onClick={() => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: opt } : q))}
+                                          className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-all ${
+                                            v.antwoord === opt 
+                                              ? 'bg-green-600/20 border-green-500/50 text-green-300'
+                                              : 'bg-white/5 border-white/10 text-white/50 hover:border-white/30'
+                                          }`}>
+                                          {opt === 'Waar' ? '✓ Waar' : '✗ Onwaar'}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {(v.type === 'open' || v.type === 'casus') && (
+                                  <div className="flex gap-2 items-center">
+                                    <span className="text-white/30 text-xs shrink-0">Modelantwoord:</span>
+                                    <input 
+                                      value={v.antwoord}
+                                      onChange={e => setEditVragen(prev => prev.map((q, j) => j === i ? { ...q, antwoord: e.target.value } : q))}
+                                      placeholder="Verwacht antwoord (voor nakijken)"
+                                      className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-sm outline-none focus:border-green-500/50" 
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Afbeelding sectie */}
                                 <div className="space-y-1.5">
                                   {v.afbeelding ? (
                                     <div className="space-y-1.5">
@@ -895,10 +983,20 @@ export default function Opdrachten() {
             <div className="space-y-3">
               {huidigeVragen.map((v, i) => (
                 <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-0.5 rounded border ${
+                        v.type === 'meerkeuze' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                        v.type === 'waar-onwaar' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                        v.type === 'casus' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                        'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                      }`}>
+                        {v.type}
+                      </span>
+                    </div>
                     <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
                   </div>
+                  <p className="text-white/80 text-sm font-medium mb-2">{v.nummer}. {v.vraag}</p>
                   {v.afbeelding && (
                     <div className="mt-2 space-y-1">
                       <AfbeeldingPreview src={v.afbeelding} className="w-full max-h-48 object-contain rounded-lg border border-white/10 bg-white/5" />
@@ -910,10 +1008,21 @@ export default function Opdrachten() {
                       )}
                     </div>
                   )}
-                  {v.opties && v.opties.length > 0 && (
-                    <ul className="mt-2 space-y-1">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
+                  {v.type === 'meerkeuze' && v.opties && v.opties.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {v.opties.map((opt, j) => (
+                        <div key={j} className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${
+                          opt === v.antwoord ? 'bg-green-500/10 border border-green-500/20 text-green-400' : 'text-white/50'
+                        }`}>
+                          {opt === v.antwoord && <Check size={12} className="text-green-400" />}
+                          <span>{String.fromCharCode(65 + j)}. {opt}</span>
+                        </div>
+                      ))}
+                    </div>
                   )}
-                  <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
+                  {v.type !== 'meerkeuze' && (
+                    <p className="text-green-400/70 text-xs mt-2">✓ Antwoord: {v.antwoord}</p>
+                  )}
                   {v.toelichting && <p className="text-white/30 text-xs mt-1">💡 {v.toelichting}</p>}
                 </div>
               ))}
@@ -922,10 +1031,13 @@ export default function Opdrachten() {
 
           {editingVragen && (
             <div className="flex items-center justify-between">
-              <button onClick={() => setEditVragen(prev => [...prev, leegVraag(prev.length + 1)])}
-                className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-dashed border-white/20 hover:border-white/40 rounded-lg text-white/50 hover:text-white text-sm transition-all">
-                <Plus size={14} /> Vraag toevoegen
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={() => setEditVragen(prev => [...prev, leegVraag(prev.length + 1)])}
+                  className="flex items-center gap-2 px-3 py-2 bg-white/5 border border-dashed border-white/20 hover:border-white/40 rounded-lg text-white/50 hover:text-white text-sm transition-all">
+                  <Plus size={14} /> Vraag toevoegen
+                </button>
+              </div>
               <span className="text-white/40 text-sm">Totaal: <span className="text-white font-semibold">{autoMaxPunten}pt</span></span>
             </div>
           )}
