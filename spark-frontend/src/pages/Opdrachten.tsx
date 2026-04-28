@@ -671,20 +671,54 @@ export default function Opdrachten() {
                   <p className="text-white/60 text-sm mt-2">{gegenereerdeOpdracht.beschrijving}</p>
                   <p className="text-white/40 text-xs mt-1">Max punten: {berekenMaxPunten(parseVragen(gegenereerdeOpdracht.vragen))}pt</p>
                 </div>
-                <div className="space-y-2">
-                  {parseVragen(gegenereerdeOpdracht.vragen).map((v: Vraag, i: number) => (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
-                        <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
+
+                {/* 🆕 CASUSSEN WEERGAVE */}
+                {parseCasussen(gegenereerdeOpdracht.casussen).length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-orange-400 text-sm font-semibold flex items-center gap-2">
+                      <BookOpen size={14} />
+                      Casussen ({parseCasussen(gegenereerdeOpdracht.casussen).length})
+                    </h4>
+                    {parseCasussen(gegenereerdeOpdracht.casussen).map((casus: any) => (
+                      <div key={casus.id} className="bg-orange-500/5 border border-orange-500/20 rounded-lg p-3">
+                        <p className="text-orange-400 text-xs font-semibold mb-1">📖 {casus.titel}</p>
+                        <p className="text-white/70 text-xs whitespace-pre-wrap line-clamp-4">{casus.tekst}</p>
                       </div>
-                      {v.afbeelding && <AfbeeldingPreview src={v.afbeelding} />}
-                      {v.opties && v.opties.length > 0 && (
-                        <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
-                      )}
-                      <p className="text-green-400/70 text-xs mt-1">✓ {v.antwoord}</p>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <h4 className="text-white/60 text-sm font-semibold">Vragen ({parseVragen(gegenereerdeOpdracht.vragen).length})</h4>
+                  {parseVragen(gegenereerdeOpdracht.vragen).map((v: Vraag, i: number) => {
+                    const gekoppeldeCasus = v.casus_id ? parseCasussen(gegenereerdeOpdracht.casussen).find((c: any) => c.id === v.casus_id) : null
+                    return (
+                      <div key={i} className="bg-white/5 border border-white/10 rounded-lg p-3">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-xs px-1.5 py-0.5 rounded border ${
+                              v.type === 'meerkeuze' ? 'bg-purple-500/10 border-purple-500/20 text-purple-400' :
+                              v.type === 'waar-onwaar' ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' :
+                              v.type === 'casus' ? 'bg-orange-500/10 border-orange-500/20 text-orange-400' :
+                              'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                            }`}>
+                              {v.type}
+                            </span>
+                            {gekoppeldeCasus && (
+                              <span className="text-xs text-orange-400/80">→ {gekoppeldeCasus.titel}</span>
+                            )}
+                          </div>
+                          <span className="text-xs text-white/40 shrink-0">{v.punten}pt</span>
+                        </div>
+                        <p className="text-white/80 text-sm font-medium">{v.nummer}. {v.vraag}</p>
+                        {v.afbeelding && <AfbeeldingPreview src={v.afbeelding} />}
+                        {v.opties && v.opties.length > 0 && (
+                          <ul className="mt-1 space-y-0.5">{v.opties.map((opt, j) => <li key={j} className="text-white/50 text-xs pl-2">• {opt}</li>)}</ul>
+                        )}
+                        <p className="text-green-400/70 text-xs mt-1">✓ {v.antwoord}</p>
+                      </div>
+                    )
+                  })}
                 </div>
               </div>
             )}

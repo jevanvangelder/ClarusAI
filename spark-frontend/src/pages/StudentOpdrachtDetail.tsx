@@ -11,6 +11,14 @@ import { toast } from 'sonner'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
+// 🆕 Interface voor casus
+interface CasusInfo {
+  id: string
+  titel: string
+  tekst: string
+  volgorde: number
+}
+
 interface Vraag {
   nummer: number
   vraag: string
@@ -18,6 +26,7 @@ interface Vraag {
   punten: number
   opties?: string[]
   afbeelding?: string
+  casus_id?: string  // 🆕 Koppeling naar casus
 }
 
 interface Opdracht {
@@ -27,6 +36,7 @@ interface Opdracht {
   type: string
   max_punten: number
   vragen: Vraag[]
+  casussen: CasusInfo[]  // 🆕 Array van casussen
   deadline: string | null
 }
 
@@ -104,7 +114,7 @@ function VraagAfbeelding({ src, nummer }: { src: string; nummer: number }) {
 }
 
 // ═══════════════════════════════
-// BEVESTIGING MODAL ��� alle vragen ingevuld
+// BEVESTIGING MODAL — alle vragen ingevuld
 // ═══════════════════════════════
 function InleverModal({ onBevestig, onAnnuleer }: { onBevestig: () => void; onAnnuleer: () => void }) {
   return (
@@ -167,6 +177,16 @@ function OpenVragenModal({ aantalOpen, onBevestig, onAnnuleer }: { aantalOpen: n
   )
 }
 
+// 🆕 Helper functie om casussen te parsen
+const parseCasussen = (casussen: any): CasusInfo[] => {
+  if (!casussen) return []
+  if (typeof casussen === 'string') {
+    try { return JSON.parse(casussen) } catch { return [] }
+  }
+  if (Array.isArray(casussen)) return casussen
+  return []
+}
+
 export default function StudentOpdrachtDetail() {
   const { id: classId, assignmentId } = useParams<{ id: string; assignmentId: string }>()
   const navigate = useNavigate()
@@ -207,7 +227,7 @@ export default function StudentOpdrachtDetail() {
 
       const { data: a, error } = await supabase
         .from('assignments')
-        .select('id, title, beschrijving, type, max_punten, vragen')
+        .select('id, title, beschrijving, type, max_punten, vragen, casussen')  // 🆕 Fetch casussen
         .eq('id', assignmentId)
         .single()
 
@@ -228,9 +248,12 @@ export default function StudentOpdrachtDetail() {
           punten: v.punten,
           opties: v.opties,
           afbeelding: v.afbeelding,
+          casus_id: v.casus_id,  // 🆕 Parse casus_id
         }))
 
-      setOpdracht({ ...a, vragen, deadline: ac?.deadline || null })
+      const casussen = parseCasussen(a.casussen)  // 🆕 Parse casussen array
+
+      setOpdracht({ ...a, vragen, casussen, deadline: ac?.deadline || null })
 
       const { data: subData } = await supabase
         .from('assignment_submissions')
@@ -483,6 +506,11 @@ export default function StudentOpdrachtDetail() {
   const voortgang = Math.round((aantalBeantwoord / opdracht.vragen.length) * 100)
   const isLaatsteVraag = activeVraag === opdracht.vragen.length
 
+  // 🆕 Vind gekoppelde casus voor huidige vraag
+  const gekoppeldeCasus = huidigeVraag?.casus_id 
+    ? opdracht.casussen.find(c => c.id === huidigeVraag.casus_id)
+    : null
+
   const TYPE_COLORS: Record<string, string> = {
     huiswerk:   'text-blue-400 bg-blue-500/10 border-blue-500/20',
     oefentoets: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
@@ -601,7 +629,7 @@ export default function StudentOpdrachtDetail() {
 
   // ═══════════════════════════════
   // INGELEVERD VIEW
-  // ═══════════════════════════════
+  // ═════════════════════════════���═
   if (status === 'ingeleverd') {
     return (
       <div className="flex flex-col items-center justify-center h-64 space-y-4">
@@ -675,9 +703,9 @@ export default function StudentOpdrachtDetail() {
         </div>
         <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
 
-                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
-                                  {/* ═══════════════════════════════════════════════════════════════
+          {/* ═══════════════════════════════════════════════════════════════
               CASUS LAYOUT: Links = antwoord invoer, Rechts = vraag + casus + AI tutor
              ═══════════════════════════════════════════════════════════════ */}
           {huidigeVraag?.type === 'casus' ? (
@@ -751,114 +779,41 @@ export default function StudentOpdrachtDetail() {
 
                 {/* Scrollbare content: Casus + Vraag + AI Tutor */}
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                  {/* Casus tekst */}
-                  <div className="bg-white/[0.02] border border-white/5 rounded-xl p-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <FileText size={14} className="text-orange-400" />
-                      <span className="text-white/50 text-xs uppercase tracking-wider">📄 Casus</span>
+                  {/* 🆕 CASUS TEKST - Gebruik nieuwe systeem */}
+                  {gekoppeldeCasus && (
+                    <div className="bg-orange-500/5 border border-orange-500/20 rounded-xl p-4">
+                      <div className="flex items-center gap-2 mb-3">
+                        <FileText size={14} className="text-orange-400" />
+                        <span className="text-orange-400 text-xs font-semibold uppercase tracking-wider">
+                          📖 {gekoppeldeCasus.titel}
+                        </span>
+                      </div>
+                      <div className="prose prose-invert prose-sm max-w-none">
+                        <ReactMarkdown
+                          components={{
+                            p: ({ children }) => <p className="text-white/70 text-sm leading-relaxed mb-3">{children}</p>,
+                            strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
+                            h1: ({ children }) => <h1 className="text-white text-lg font-bold mb-3 mt-4">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-white text-base font-semibold mb-2 mt-3">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-white/90 text-sm font-medium mb-2 mt-2">{children}</h3>,
+                            ul: ({ children }) => <ul className="list-disc list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ol>,
+                          }}
+                        >
+                          {gekoppeldeCasus.tekst}
+                        </ReactMarkdown>
+                      </div>
                     </div>
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      {(() => {
-                        // Zoek alle casus vragen
-                        const casusVragen = opdracht.vragen.filter(v => v.type === 'casus' && v.vraag?.startsWith('Casus:'));
-                        
-                        // Vind de casus die bij de huidige vraag hoort
-                        // Logica: zoek de LAATSTE casus vraag VOOR of GELIJK AAN de huidige vraag
-                        let relevanteCasus = null;
-                        for (let i = casusVragen.length - 1; i >= 0; i--) {
-                          if (casusVragen[i].nummer <= huidigeVraag.nummer) {
-                            relevanteCasus = casusVragen[i];
-                            break;
-                          }
-                        }
-                        
-                        // Fallback: eerste casus vraag of opdracht beschrijving
-                        if (!relevanteCasus && casusVragen.length > 0) {
-                          relevanteCasus = casusVragen[0];
-                        }
-                        
-                        // Haal de casus tekst uit het vraag veld
-                        let casusTekst = opdracht.beschrijving || 'Geen casus tekst beschikbaar';
-                        
-                        if (relevanteCasus?.vraag?.startsWith('Casus:')) {
-                          // Haal "Casus:" prefix weg
-                          let volledigeTekst = relevanteCasus.vraag.replace(/^Casus:\s*/i, '');
-                          
-                          // Split op "Vraag X:" patroon (met of zonder newline ervoor)
-                          const vraagSplit = volledigeTekst.split(/\s*Vraag\s+\d+:\s*/i);
-                          if (vraagSplit.length > 1) {
-                            // Neem alleen het eerste deel (voor "Vraag 1:")
-                            casusTekst = vraagSplit[0].trim();
-                          } else {
-                            // Geen "Vraag X:" gevonden, probeer dubbele newline
-                            if (volledigeTekst.includes('\n\n')) {
-                              const delen = volledigeTekst.split(/\n\n+/);
-                              casusTekst = delen[0].trim();
-                            } else {
-                              // Fallback: neem alles
-                              casusTekst = volledigeTekst.trim();
-                            }
-                          }
-                        }
-                        
-                        return (
-                          <ReactMarkdown
-                            components={{
-                              p: ({ children }) => <p className="text-white/70 text-sm leading-relaxed mb-3">{children}</p>,
-                              strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
-                              h1: ({ children }) => <h1 className="text-white text-lg font-bold mb-3 mt-4">{children}</h1>,
-                              h2: ({ children }) => <h2 className="text-white text-base font-semibold mb-2 mt-3">{children}</h2>,
-                              h3: ({ children }) => <h3 className="text-white/90 text-sm font-medium mb-2 mt-2">{children}</h3>,
-                              ul: ({ children }) => <ul className="list-disc list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ol>,
-                            }}
-                          >
-                            {casusTekst}
-                          </ReactMarkdown>
-                        );
-                      })()}
-                    </div>
-                  </div>
-
+                  )}
                   {/* Huidige vraag */}
                   <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl p-4">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-orange-400/60 text-xs font-medium uppercase">Vraag {huidigeVraag.nummer} van {opdracht.vragen.length}</span>
                       <span className="text-orange-400/60 text-xs">{huidigeVraag.punten}pt</span>
                     </div>
+                    {/* 🆕 SIMPELE VRAAG WEERGAVE - Casus staat al apart hierboven */}
                     <p className="text-white font-medium text-sm leading-relaxed">
-                      {(() => {
-                        // Als de vraag begint met "Casus:", haal die tekst weg en toon alleen de echte vraag
-                        if (huidigeVraag.vraag?.startsWith('Casus:')) {
-                          const volledigeTekst = huidigeVraag.vraag.replace(/^Casus:\s*/i, '');
-                          
-                          // Als er dubbele newline is, neem alles NA de laatste dubbele newline
-                          if (volledigeTekst.includes('\n\n')) {
-                            const delen = volledigeTekst.split(/\n\n+/);
-                            const vraagTekst = delen[delen.length - 1].trim();
-                            // Verwijder "Vraag X:" prefix als die er is
-                            return vraagTekst.replace(/^Vraag\s+\d+:\s*/i, '').trim();
-                          }
-                          
-                          // Zoek naar "Vraag 1:" patroon en pak alles daarna
-                          const vraagMatch = volledigeTekst.match(/Vraag\s+\d+:\s*(.+?)$/is);
-                          if (vraagMatch && vraagMatch[1]) {
-                            return vraagMatch[1].trim();
-                          }
-                          
-                          // Laatste poging: zoek laatste zin die eindigt met vraagteken
-                          const zinnen = volledigeTekst.split(/(?<=[.!?])\s+/);
-                          for (let i = zinnen.length - 1; i >= 0; i--) {
-                            if (zinnen[i].includes('?')) {
-                              return zinnen[i].trim();
-                            }
-                          }
-                          
-                          // Fallback: toon alles
-                          return volledigeTekst.trim();
-                        }
-                        return huidigeVraag.vraag;
-                      })()}
+                      {huidigeVraag.vraag}
                     </p>
                     {huidigeVraag.afbeelding && (
                       <VraagAfbeelding src={huidigeVraag.afbeelding} nummer={huidigeVraag.nummer} />
