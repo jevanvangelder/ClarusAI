@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import {
@@ -14,6 +14,8 @@ import {
   FileText,
   Shield,
   GraduationCap,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 interface DashboardLayoutProps {
@@ -25,6 +27,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  
+  // Inklapbare staat (persistent via localStorage)
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed')
+    return saved === 'true'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', String(isCollapsed))
+  }, [isCollapsed])
 
   const handleSignOut = async () => {
     await signOut()
@@ -108,27 +120,40 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         />
       )}
 
-      {/* Sidebar — altijd fixed, ook op desktop */}
+      {/* Sidebar */}
       <aside
         className={`
           fixed inset-y-0 left-0 z-50
-          w-64 bg-[#0f1029] border-r border-white/10
+          bg-[#0f1029] border-r border-white/10
           flex flex-col
-          transform transition-transform duration-200 ease-in-out
+          transition-all duration-300 ease-in-out
           ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          ${isCollapsed ? 'lg:w-16' : 'lg:w-64'}
+          w-64
         `}
       >
         {/* Logo */}
-        <div className="h-16 flex items-center gap-3 px-6 border-b border-white/10 shrink-0">
-          <img
-            src="/logo.png"
-            alt="ClarusAI"
-            className="h-8 w-8"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-          />
-          <span className="text-xl font-bold text-white">
-            CLARUS<span className="text-blue-400">AI</span>
-          </span>
+        <div className="h-16 flex items-center gap-3 px-4 border-b border-white/10 shrink-0 relative">
+          {!isCollapsed && (
+            <>
+              <img
+                src="/logo.png"
+                alt="ClarusAI"
+                className="h-8 w-8"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+              />
+              <span className="text-xl font-bold text-white">
+                CLARUS<span className="text-blue-400">AI</span>
+              </span>
+            </>
+          )}
+          <button
+            className="ml-auto hidden lg:block text-white/60 hover:text-white p-1 hover:bg-white/5 rounded transition-colors"
+            onClick={() => setIsCollapsed(prev => !prev)}
+            title={isCollapsed ? 'Uitklappen' : 'Inklappen'}
+          >
+            {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+          </button>
           <button
             className="ml-auto lg:hidden text-white/60 hover:text-white"
             onClick={() => setSidebarOpen(false)}
@@ -150,56 +175,92 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 }}
                 className={`
                   w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium
-                  transition-all duration-150
+                  transition-all duration-150 group relative
                   ${isActive
                     ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
                     : 'text-white/60 hover:text-white hover:bg-white/5'
                   }
+                  ${isCollapsed ? 'justify-center' : ''}
                 `}
+                title={isCollapsed ? item.label : ''}
               >
-                <item.icon size={20} />
-                {item.label}
+                <item.icon size={20} className="shrink-0" />
+                {!isCollapsed && <span>{item.label}</span>}
+                
+                {/* Tooltip bij ingeklapte staat (desktop only) */}
+                {isCollapsed && (
+                  <div className="hidden lg:block absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                    {item.label}
+                  </div>
+                )}
               </button>
             )
           })}
         </nav>
 
         {/* User section */}
-        <div className="border-t border-white/10 p-4 shrink-0">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center">
-              <span className="text-blue-400 text-sm font-semibold">
-                {profile?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
-              </span>
+        <div className="border-t border-white/10 p-3 shrink-0">
+          {!isCollapsed ? (
+            <>
+              <div className="flex items-center gap-3 mb-3 px-1">
+                <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/30 flex items-center justify-center shrink-0">
+                  <span className="text-blue-400 text-sm font-semibold">
+                    {profile?.full_name?.[0] || user?.email?.[0]?.toUpperCase() || '?'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">
+                    {profile?.full_name || user?.email}
+                  </p>
+                  <p className="text-xs text-white/40">{getRoleName()}</p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => navigate('/instellingen')}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  <Settings size={14} />
+                  Instellingen
+                </button>
+                <button
+                  onClick={handleSignOut}
+                  className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                >
+                  <LogOut size={14} />
+                  Uitloggen
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <button
+                onClick={() => navigate('/instellingen')}
+                className="w-full flex items-center justify-center p-2 rounded-lg text-white/50 hover:text-white hover:bg-white/5 transition-all group relative"
+                title="Instellingen"
+              >
+                <Settings size={20} />
+                <div className="hidden lg:block absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  Instellingen
+                </div>
+              </button>
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center justify-center p-2 rounded-lg text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all group relative"
+                title="Uitloggen"
+              >
+                <LogOut size={20} />
+                <div className="hidden lg:block absolute left-full ml-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity">
+                  Uitloggen
+                </div>
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">
-                {profile?.full_name || user?.email}
-              </p>
-              <p className="text-xs text-white/40">{getRoleName()}</p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate('/instellingen')}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-white/50 hover:text-white hover:bg-white/5 transition-all"
-            >
-              <Settings size={14} />
-              Instellingen
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-red-400/70 hover:text-red-400 hover:bg-red-500/10 transition-all"
-            >
-              <LogOut size={14} />
-              Uitloggen
-            </button>
-          </div>
+          )}
         </div>
       </aside>
 
-      {/* Main content — verschuift 256px naar rechts zodat het naast de vaste sidebar valt */}
-      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
+      {/* Main content */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isCollapsed ? 'lg:ml-16' : 'lg:ml-64'}`}>
         <header className="h-16 bg-[#0f1029]/80 backdrop-blur-sm border-b border-white/10 flex items-center px-4 lg:px-6 sticky top-0 z-30">
           <button
             className="lg:hidden text-white/60 hover:text-white mr-4"
