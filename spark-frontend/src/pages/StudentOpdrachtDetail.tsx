@@ -675,12 +675,12 @@ export default function StudentOpdrachtDetail() {
         </div>
         <p className="text-white/30 text-xs text-right -mt-1">{aantalBeantwoord}/{opdracht.vragen.length} beantwoord</p>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" style={{ height: 'calc(100vh - 220px)' }}>
 
           {/* ═══════════════════════════════════════════════════════════════
               CASUS LAYOUT: Links = antwoord invoer, Rechts = vraag + casus + AI tutor
              ═══════════════════════════════════════════════════════════════ */}
-          {huidigeVraag?.type === 'casus' && opdracht.beschrijving ? (
+          {huidigeVraag?.type === 'casus' ? (
             <>
               {/* Links: Antwoord invoerveld (Word-achtig) */}
               <div className="bg-[#0f1029] border border-white/10 rounded-xl flex flex-col overflow-hidden">
@@ -758,19 +758,30 @@ export default function StudentOpdrachtDetail() {
                       <span className="text-white/50 text-xs uppercase tracking-wider">📄 Casus</span>
                     </div>
                     <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown
-                        components={{
-                          p: ({ children }) => <p className="text-white/70 text-sm leading-relaxed mb-3">{children}</p>,
-                          strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
-                          h1: ({ children }) => <h1 className="text-white text-lg font-bold mb-3 mt-4">{children}</h1>,
-                          h2: ({ children }) => <h2 className="text-white text-base font-semibold mb-2 mt-3">{children}</h2>,
-                          h3: ({ children }) => <h3 className="text-white/90 text-sm font-medium mb-2 mt-2">{children}</h3>,
-                          ul: ({ children }) => <ul className="list-disc list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ul>,
-                          ol: ({ children }) => <ol className="list-decimal list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ol>,
-                        }}
-                      >
-                        {opdracht.beschrijving}
-                      </ReactMarkdown>
+                      {(() => {
+                        // Vind de eerste casus vraag
+                        const eersteCasusVraag = opdracht.vragen.find(v => v.type === 'casus');
+                        // Als er een casus vraag is en deze heeft een vraag tekst die begint met "Casus:", gebruik die
+                        const casusTekst = eersteCasusVraag?.vraag?.startsWith('Casus:') 
+                          ? eersteCasusVraag.vraag.replace(/^Casus:\s*/i, '') 
+                          : (opdracht.beschrijving || eersteCasusVraag?.vraag || 'Geen casus tekst beschikbaar');
+                        
+                        return (
+                          <ReactMarkdown
+                            components={{
+                              p: ({ children }) => <p className="text-white/70 text-sm leading-relaxed mb-3">{children}</p>,
+                              strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
+                              h1: ({ children }) => <h1 className="text-white text-lg font-bold mb-3 mt-4">{children}</h1>,
+                              h2: ({ children }) => <h2 className="text-white text-base font-semibold mb-2 mt-3">{children}</h2>,
+                              h3: ({ children }) => <h3 className="text-white/90 text-sm font-medium mb-2 mt-2">{children}</h3>,
+                              ul: ({ children }) => <ul className="list-disc list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal list-inside text-white/70 text-sm space-y-1 mb-3">{children}</ol>,
+                            }}
+                          >
+                            {casusTekst}
+                          </ReactMarkdown>
+                        );
+                      })()}
                     </div>
                   </div>
 
