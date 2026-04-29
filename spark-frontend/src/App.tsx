@@ -19,6 +19,8 @@ import Opdrachten from './pages/Opdrachten'
 import Analyse from './pages/Analyse'
 import Admin from './pages/Admin'
 import Modules from './pages/Modules'
+import Portfolio from './pages/Portfolio'
+import Bronnen from './pages/Bronnen'
 import ChatApp from './ChatApp'
 import { useAuth } from './contexts/AuthContext'
 import { Toaster } from 'sonner'
@@ -87,6 +89,10 @@ function AppRoutes() {
                 <Route path="/opdrachten" element={<OpdrachtenRoute />} />
                 <Route path="/analyse" element={<Analyse />} />
                 <Route path="/admin" element={<Admin />} />
+                
+                {/* 🆕 ELO ROUTES */}
+                <Route path="/portfolio" element={<Portfolio />} />
+                <Route path="/bronnen" element={<Bronnen />} />
               </Routes>
             </DashboardLayout>
           </ProtectedRoute>
