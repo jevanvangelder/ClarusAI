@@ -110,7 +110,7 @@ export default function Bronnen() {
         const { data: classes } = await supabase
           .from('classes')
           .select('id, name, vak, eigen_titel')
-          .eq('teacher_id', user.id)
+          .eq('created_by', user.id)
           .eq('is_active', true)
 
         setKlassen(classes || [])
