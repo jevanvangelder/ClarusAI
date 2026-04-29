@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { User, Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 
-export type UserRole = 'admin' | 'school_admin' | 'teacher' | 'student'
+export type UserRole = 'admin' | 'school_admin' | 'teacher' | 'student' | 'school_staff'
 
 interface Profile {
   id: string

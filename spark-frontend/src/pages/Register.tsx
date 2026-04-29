@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom'
 import { useAuth, UserRole } from '@/contexts/AuthContext'
 import { toast } from 'sonner'
 import logoImg from '@/assets/logo.png'
-import { GraduationCap, BookOpen, School, Mail, Loader2, Eye, EyeOff } from 'lucide-react'
+import { GraduationCap, BookOpen, School, Mail, Loader2, Eye, EyeOff, Users } from 'lucide-react'
 
 const ROL_OPTIES: { value: UserRole; label: string; omschrijving: string; icon: any }[] = [
   { value: 'student', label: 'Student', omschrijving: 'Ik leer en maak opdrachten', icon: GraduationCap },
   { value: 'teacher', label: 'Docent', omschrijving: 'Ik geef les en maak opdrachten', icon: BookOpen },
+  { value: 'school_staff', label: 'Schoolmedewerker', omschrijving: 'Ik beheer lesmateriaal', icon: Users },
   { value: 'school_admin', label: 'Schoolleiding', omschrijving: 'Ik beheer de school', icon: School },
 ]
 
@@ -133,10 +134,10 @@ export default function Register() {
             </div>
           </div>
 
-          {/* Rol kiezen */}
+          {/* Rol kiezen - 🆕 NU 4 OPTIES IN 2x2 GRID */}
           <div className="space-y-2">
             <p className="text-sm font-medium text-white/60">Ik ben een...</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {ROL_OPTIES.map(({ value, label, omschrijving, icon: Icon }) => (
                 <button
                   key={value}
@@ -168,7 +169,7 @@ export default function Register() {
                 required
                 disabled={loading}
                 placeholder="jouw@email.nl"
-                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -183,7 +184,7 @@ export default function Register() {
                   required
                   disabled={loading}
                   placeholder="Minimaal 6 tekens"
-                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 pr-11 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+                  className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 pr-11 text-white placeholder-white/30 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 />
                 <button
                   type="button"
@@ -205,7 +206,7 @@ export default function Register() {
                 required
                 disabled={loading}
                 placeholder="Herhaal je wachtwoord"
-                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-colors disabled:opacity-50"
+                className="w-full bg-white/5 border border-white/10 focus:border-blue-500/50 focus:ring-0 focus:outline-none rounded-lg px-4 py-3 text-white placeholder-white/30 text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
 
@@ -213,7 +214,7 @@ export default function Register() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all text-sm mt-2"
+              className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 disabled:cursor-not-allowed text-white font-semibold rounded-lg transition-all shadow-lg shadow-blue-600/20"
             >
               {loading ? (
                 <>
