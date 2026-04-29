@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { X, Search, GraduationCap, Check } from 'lucide-react'
 
 interface Klas {
@@ -24,6 +24,14 @@ export default function ClassSelectorModal({
 }: ClassSelectorModalProps) {
   const [search, setSearch] = useState('')
   const [tempSelected, setTempSelected] = useState<string[]>(selectedKlassen)
+
+  // Sync tempSelected when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setTempSelected(selectedKlassen)
+      setSearch('') // Reset search ook
+    }
+  }, [isOpen, selectedKlassen])
 
   if (!isOpen) return null
 
@@ -82,6 +90,7 @@ export default function ClassSelectorModal({
 
   const handleClose = () => {
     setTempSelected(selectedKlassen) // Reset bij annuleren
+    setSearch('')
     onClose()
   }
 
