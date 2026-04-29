@@ -288,6 +288,15 @@ async def spar_chat(body: SparChatMessage):
             '  "toelichting": "Feedback voor student",\n'
             '  "casus_id": "casus-1" (verwijzing naar de casus)\n'
             "}\n\n"
+            "🎯 CHRONOLOGISCHE VOLGORDE (KRITIEK BELANGRIJK!):\n"
+            "- Groepeer alle vragen PER CASUS in volgorde!\n"
+            "- Als je 3 casussen hebt met elk 4 vragen, maak dan:\n"
+            "  Vraag 1-4:  casus_id = 'casus-1'\n"
+            "  Vraag 5-8:  casus_id = 'casus-2'\n"
+            "  Vraag 9-12: casus_id = 'casus-3'\n"
+            "- VERKEERDE volgorde (NOOIT DOEN): 1→5→9→2→6→10→3→7→11→4→8→12\n"
+            "- JUISTE volgorde (ALTIJD DOEN):   1→2→3→4→5→6→7→8→9→10→11→12\n"
+            "- Studenten moeten eerst casus A volledig afmaken, dan B, dan C\n\n"
             "BELANGRIJK:\n"
             "- Casus tekst staat ALLEEN in de 'casussen' array, NOOIT in de vraag zelf\n"
             "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
@@ -343,11 +352,29 @@ async def spar_chat(body: SparChatMessage):
             "    },\n"
             "    {\n"
             '      "nummer": 3,\n'
+            '      "vraag": "Hoe kan TechStart omgaan met de toenemende concurrentie?",\n'
+            '      "type": "casus",\n'
+            '      "punten": 3,\n'
+            '      "antwoord": "Innovatie, klantenservice verbeteren, nichemarkt focussen",\n'
+            '      "toelichting": "Bedenk strategieën voor competitief voordeel",\n'
+            '      "casus_id": "casus-1"\n'
+            "    },\n"
+            "    {\n"
+            '      "nummer": 4,\n'
             '      "vraag": "Welke stappen zou Brewster\'s Coffee kunnen nemen om hun nieuwe doelgroep effectief te bereiken?",\n'
             '      "type": "casus",\n'
             '      "punten": 2,\n'
             '      "antwoord": "Social media campagnes, influencer marketing, studentenkorting",\n'
             '      "toelichting": "Focus op kanalen die jongeren gebruiken",\n'
+            '      "casus_id": "casus-2"\n'
+            "    },\n"
+            "    {\n"
+            '      "nummer": 5,\n'
+            '      "vraag": "Hoe kan Brewster\'s hun online aanwezigheid versterken?",\n'
+            '      "type": "casus",\n'
+            '      "punten": 2,\n'
+            '      "antwoord": "Website verbeteren, online bestelsysteem, social media content",\n'
+            '      "toelichting": "Denk aan digitale marketingstrategieën",\n'
             '      "casus_id": "casus-2"\n'
             "    }\n"
             "  ]\n"
@@ -459,6 +486,13 @@ async def spar_upload(
             "STRUCTUUR:\n"
             "- 'casussen': aparte array met casus objecten [{id, titel, tekst, volgorde}]\n"
             "- 'vragen': aparte array, casus vragen hebben 'casus_id' om te koppelen\n\n"
+            "🎯 CHRONOLOGISCHE VOLGORDE (KRITIEK BELANGRIJK!):\n"
+            "- Groepeer alle vragen PER CASUS in volgorde!\n"
+            "- Als je 3 casussen hebt met elk 4 vragen, maak dan:\n"
+            "  Vraag 1-4:  casus_id = 'casus-1'\n"
+            "  Vraag 5-8:  casus_id = 'casus-2'\n"
+            "  Vraag 9-12: casus_id = 'casus-3'\n"
+            "- Studenten moeten eerst casus A volledig afmaken, dan B, dan C\n\n"
             "BELANGRIJK:\n"
             "- Casus tekst staat ALLEEN in de 'casussen' array, NOOIT in de vraag zelf\n"
             "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
