@@ -16,6 +16,8 @@ import {
   GraduationCap,
   ChevronLeft,
   ChevronRight,
+  FolderOpen,
+  Briefcase,
 } from 'lucide-react'
 
 interface DashboardLayoutProps {
@@ -45,29 +47,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
   const getNavItems = () => {
     const items = [
+      // ===== HOOFDMENU =====
       {
         label: 'Dashboard',
         icon: LayoutDashboard,
         path: '/',
-        roles: ['admin', 'school_admin', 'teacher', 'student'],
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
       },
       {
         label: 'Chat',
         icon: MessageSquare,
         path: '/chat',
-        roles: ['admin', 'school_admin', 'teacher', 'student'],
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
       },
       {
         label: 'Modules',
         icon: BookOpen,
         path: '/modules',
-        roles: ['admin', 'school_admin', 'teacher', 'student'],
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
       },
       {
         label: 'Klassen',
         icon: Users,
         path: '/klassen',
-        roles: ['admin', 'school_admin', 'teacher'],
+        roles: ['admin', 'school_admin', 'teacher', 'school_staff'],
       },
       {
         label: 'Mijn Vakken',
@@ -79,7 +82,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         label: 'Opdrachten',
         icon: FileText,
         path: '/opdrachten',
-        roles: ['admin', 'school_admin', 'teacher', 'student'],
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
       },
       {
         label: 'Analyse',
@@ -87,6 +90,30 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         path: '/analyse',
         roles: ['admin', 'school_admin', 'teacher'],
       },
+      
+      // ===== SCHEIDINGSLIJN =====
+      {
+        label: 'divider',
+        icon: null,
+        path: '',
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
+      },
+      
+      // ===== ELO SECTIE =====
+      {
+        label: 'Portfolio',
+        icon: Briefcase,
+        path: '/portfolio',
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
+      },
+      {
+        label: 'Bronnen',
+        icon: FolderOpen,
+        path: '/bronnen',
+        roles: ['admin', 'school_admin', 'teacher', 'student', 'school_staff'],
+      },
+      
+      // ===== ADMIN =====
       {
         label: 'Admin',
         icon: Shield,
@@ -106,6 +133,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       case 'school_admin': return 'Schoolleiding'
       case 'teacher': return 'Docent'
       case 'student': return 'Student'
+      case 'school_staff': return 'Schoolmedewerker'
       default: return ''
     }
   }
@@ -164,7 +192,21 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {navItems.map((item, index) => {
+            // 🆕 Render horizontale lijn
+            if (item.label === 'divider') {
+              return (
+                <div key={`divider-${index}`} className="py-2">
+                  <div className="border-t border-white/10"></div>
+                  {!isCollapsed && (
+                    <p className="text-white/30 text-[10px] font-semibold uppercase tracking-wider mt-3 mb-1 px-2">
+                      ELO
+                    </p>
+                  )}
+                </div>
+              )
+            }
+
             const isActive = location.pathname === item.path
             return (
               <button
@@ -184,7 +226,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                 `}
                 title={isCollapsed ? item.label : ''}
               >
-                <item.icon size={20} className="shrink-0" />
+                {item.icon && <item.icon size={20} className="shrink-0" />}
                 {!isCollapsed && <span>{item.label}</span>}
                 
                 {/* Tooltip bij ingeklapte staat (desktop only) */}
