@@ -48,6 +48,30 @@ async def get_folders(class_id: str, parent_id: Optional[str] = None):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/folders/{folder_id}/count")
+async def count_folder_contents(folder_id: str):
+    """Tel hoeveel bestanden er in een folder zitten (recursief)"""
+    try:
+        def count_files_recursive(fid: str) -> int:
+            # Bestanden direct in deze folder
+            files = supabase_admin.table("bronnen_files").select("id", count="exact").eq("folder_id", fid).execute()
+            count = files.count if files.count else 0
+            
+            # Bestanden in subfolders
+            subfolders = supabase_admin.table("bronnen_folders").select("id").eq("parent_id", fid).execute()
+            if subfolders.data:
+                for subfolder in subfolders.data:
+                    count += count_files_recursive(subfolder["id"])
+            
+            return count
+        
+        total_files = count_files_recursive(folder_id)
+        return {"folder_id": folder_id, "file_count": total_files}
+    except Exception as e:
+        print(f"❌ Error tellen bestanden: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/folders")
 async def create_folder(folder: FolderCreate, teacher_id: str):
     """Maak een nieuwe folder aan (docent/staff)"""
@@ -129,10 +153,42 @@ async def upload_file(
 
 @router.delete("/folders/{folder_id}")
 async def delete_folder(folder_id: str):
-    """Verwijder een folder (en alle sub-folders/bestanden)"""
+    """Verwijder een folder (en alle sub-folders/bestanden) - recursief"""
     try:
-        supabase.table("bronnen_folders").delete().eq("id", folder_id).execute()
-        return {"message": "Folder verwijderd"}
+        # Tel hoeveel bestanden er in zitten (recursief)
+        def count_files_recursive(fid: str) -> int:
+            # Bestanden direct in deze folder
+            files = supabase_admin.table("bronnen_files").select("id", count="exact").eq("folder_id", fid).execute()
+            count = files.count if files.count else 0
+            
+            # Bestanden in subfolders
+            subfolders = supabase_admin.table("bronnen_folders").select("id").eq("parent_id", fid).execute()
+            if subfolders.data:
+                for subfolder in subfolders.data:
+                    count += count_files_recursive(subfolder["id"])
+            
+            return count
+        
+        file_count = count_files_recursive(folder_id)
+        
+        # Verwijder alle bestanden in deze folder (recursief)
+        def delete_files_recursive(fid: str):
+            # Verwijder bestanden in deze folder
+            supabase_admin.table("bronnen_files").delete().eq("folder_id", fid).execute()
+            
+            # Verwijder bestanden in subfolders
+            subfolders = supabase_admin.table("bronnen_folders").select("id").eq("parent_id", fid).execute()
+            if subfolders.data:
+                for subfolder in subfolders.data:
+                    delete_files_recursive(subfolder["id"])
+                    supabase_admin.table("bronnen_folders").delete().eq("id", subfolder["id"]).execute()
+        
+        delete_files_recursive(folder_id)
+        
+        # Verwijder de hoofdfolder
+        supabase_admin.table("bronnen_folders").delete().eq("id", folder_id).execute()
+        
+        return {"message": "Folder verwijderd", "files_deleted": file_count}
     except Exception as e:
         print(f"❌ Error verwijderen folder: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -143,16 +199,16 @@ async def delete_file(file_id: str):
     """Verwijder een bestand"""
     try:
         # Haal file info op
-        file_info = supabase.table("bronnen_files").select("file_url").eq("id", file_id).execute()
+        file_info = supabase_admin.table("bronnen_files").select("file_url").eq("id", file_id).execute()
         
         if file_info.data:
-            # Verwijder uit Storage (optioneel)
-            # storage_path = file_info.data[0]["file_url"].split("/")[-1]
+            # Verwijder uit Storage (optioneel - later implementeren)
+            # storage_path = extract_storage_path(file_info.data[0]["file_url"])
             # supabase_admin.storage.from_(BRONNEN_BUCKET).remove([storage_path])
             pass
         
         # Verwijder uit database
-        supabase.table("bronnen_files").delete().eq("id", file_id).execute()
+        supabase_admin.table("bronnen_files").delete().eq("id", file_id).execute()
         return {"message": "Bestand verwijderd"}
     except Exception as e:
         print(f"❌ Error verwijderen bestand: {e}")

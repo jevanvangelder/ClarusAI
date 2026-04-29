@@ -15,8 +15,11 @@ import {
   Presentation,
   X,
   Plus,
+  Filter,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import ConfirmModal from '@/components/ConfirmModal'
+import ClassSelectorModal from '@/components/ClassSelectorModal'
 
 interface Folder {
   id: string
@@ -48,9 +51,9 @@ export default function Bronnen() {
   const isStudent = role === 'student'
 
   const [klassen, setKlassen] = useState<Klas[]>([])
-  const [selectedKlas, setSelectedKlas] = useState<string | null>(null)
+  const [selectedKlassen, setSelectedKlassen] = useState<string[]>([])
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null)
-  const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | null; name: string }[]>([])
+  const [breadcrumbs, setBreadcrumbs] = useState<{ id: string | null; name: string; classId: string }[]>([])
 
   const [folders, setFolders] = useState<Folder[]>([])
   const [files, setFiles] = useState<BronFile[]>([])
@@ -66,17 +69,40 @@ export default function Bronnen() {
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
 
+  const [showClassSelector, setShowClassSelector] = useState(false)
+
+  // Delete modals
+  const [deleteFileModal, setDeleteFileModal] = useState<{ isOpen: boolean; fileId: string | null; fileName: string }>({
+    isOpen: false,
+    fileId: null,
+    fileName: ''
+  })
+  const [deleteFolderModal, setDeleteFolderModal] = useState<{ 
+    isOpen: boolean; 
+    folderId: string | null; 
+    folderName: string;
+    fileCount: number;
+    loading: boolean;
+  }>({
+    isOpen: false,
+    folderId: null,
+    folderName: '',
+    fileCount: 0,
+    loading: false
+  })
+  const [deleting, setDeleting] = useState(false)
+
   // Laad klassen
   useEffect(() => {
     loadKlassen()
   }, [user])
 
-  // Laad bronnen wanneer klas/folder verandert
+  // Laad bronnen wanneer geselecteerde klassen veranderen
   useEffect(() => {
-    if (selectedKlas) {
+    if (selectedKlassen.length > 0) {
       loadBronnen()
     }
-  }, [selectedKlas, currentFolderId])
+  }, [selectedKlassen, currentFolderId])
 
   const loadKlassen = async () => {
     if (!user) return
@@ -102,7 +128,7 @@ export default function Bronnen() {
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
-          setSelectedKlas(classes[0].id)
+          setSelectedKlassen([classes[0].id])
         }
       } else {
         // Docent/staff: eigen klassen
@@ -114,7 +140,7 @@ export default function Bronnen() {
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
-          setSelectedKlas(classes[0].id)
+          setSelectedKlassen([classes[0].id])
         }
       }
     } catch (err) {
@@ -124,14 +150,14 @@ export default function Bronnen() {
   }
 
   const loadBronnen = async () => {
-    if (!selectedKlas) return
+    if (selectedKlassen.length === 0) return
     setLoading(true)
     try {
-      // Laad folders
+      // Laad folders voor geselecteerde klassen
       let folderQuery = supabase
         .from('bronnen_folders')
         .select('*')
-        .eq('class_id', selectedKlas)
+        .in('class_id', selectedKlassen)
 
       if (currentFolderId) {
         folderQuery = folderQuery.eq('parent_id', currentFolderId)
@@ -142,11 +168,11 @@ export default function Bronnen() {
       const { data: foldersData } = await folderQuery.order('name')
       setFolders(foldersData || [])
 
-      // Laad files
+      // Laad files voor geselecteerde klassen
       let fileQuery = supabase
         .from('bronnen_files')
         .select('*')
-        .eq('class_id', selectedKlas)
+        .in('class_id', selectedKlassen)
 
       if (currentFolderId) {
         fileQuery = fileQuery.eq('folder_id', currentFolderId)
@@ -166,7 +192,7 @@ export default function Bronnen() {
 
   const openFolder = async (folder: Folder) => {
     setCurrentFolderId(folder.id)
-    setBreadcrumbs([...breadcrumbs, { id: folder.id, name: folder.name }])
+    setBreadcrumbs([...breadcrumbs, { id: folder.id, name: folder.name, classId: folder.class_id }])
   }
 
   const navigateToRoot = () => {
@@ -181,15 +207,20 @@ export default function Bronnen() {
   }
 
   const createFolder = async () => {
-    if (!newFolderName.trim() || !selectedKlas) return
+    if (!newFolderName.trim() || selectedKlassen.length === 0) return
     setCreatingFolder(true)
     try {
+      // Maak folder voor eerste geselecteerde klas (of huidige klas als in folder)
+      const targetClassId = currentFolderId 
+        ? breadcrumbs[breadcrumbs.length - 1]?.classId || selectedKlassen[0]
+        : selectedKlassen[0]
+
       const { data, error } = await supabase
         .from('bronnen_folders')
         .insert({
           name: newFolderName.trim(),
           parent_id: currentFolderId,
-          class_id: selectedKlas,
+          class_id: targetClassId,
           created_by: user!.id,
         })
         .select()
@@ -209,18 +240,23 @@ export default function Bronnen() {
   }
 
   const uploadFiles = async () => {
-    if (selectedFiles.length === 0 || !selectedKlas) return
+    if (selectedFiles.length === 0 || selectedKlassen.length === 0) return
     setUploading(true)
     setUploadProgress(0)
     
     try {
+      // Upload naar eerste geselecteerde klas (of huidige klas als in folder)
+      const targetClassId = currentFolderId 
+        ? breadcrumbs[breadcrumbs.length - 1]?.classId || selectedKlassen[0]
+        : selectedKlassen[0]
+
       let successCount = 0
       
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i]
         const formData = new FormData()
         formData.append('file', file)
-        formData.append('class_id', selectedKlas)
+        formData.append('class_id', targetClassId)
         formData.append('teacher_id', user!.id)
         if (currentFolderId) {
           formData.append('folder_id', currentFolderId)
@@ -260,39 +296,75 @@ export default function Bronnen() {
     }
   }
 
-  const deleteFolder = async (folderId: string) => {
-    if (!confirm('Weet je zeker dat je deze map wilt verwijderen? Alle submappen en bestanden worden ook verwijderd.')) return
+  const openDeleteFolderModal = async (folderId: string, folderName: string) => {
+    setDeleteFolderModal({
+      isOpen: true,
+      folderId,
+      folderName,
+      fileCount: 0,
+      loading: true
+    })
+
+    // Haal file count op
+    try {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/folders/${folderId}/count`)
+      const data = await response.json()
+      setDeleteFolderModal(prev => ({
+        ...prev,
+        fileCount: data.file_count,
+        loading: false
+      }))
+    } catch (err) {
+      console.error('Error fetching file count:', err)
+      setDeleteFolderModal(prev => ({
+        ...prev,
+        loading: false
+      }))
+    }
+  }
+
+  const deleteFolder = async () => {
+    if (!deleteFolderModal.folderId) return
+    setDeleting(true)
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/folders/${folderId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/folders/${deleteFolderModal.folderId}`, {
         method: 'DELETE',
       })
 
       if (!response.ok) throw new Error('Delete mislukt')
 
-      toast.success('Map verwijderd')
+      const result = await response.json()
+      toast.success(`Map verwijderd${result.files_deleted > 0 ? ` (${result.files_deleted} bestand${result.files_deleted > 1 ? 'en' : ''})` : ''}`)
+      setDeleteFolderModal({ isOpen: false, folderId: null, folderName: '', fileCount: 0, loading: false })
       loadBronnen()
     } catch (err: any) {
       console.error('Error deleting folder:', err)
       toast.error(err.message || 'Kon map niet verwijderen')
+    } finally {
+      setDeleting(false)
     }
   }
 
-  const deleteFile = async (fileId: string) => {
-    if (!confirm('Weet je zeker dat je dit bestand wilt verwijderen?')) return
+  const deleteFile = async () => {
+    if (!deleteFileModal.fileId) return
+    setDeleting(true)
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/files/${fileId}`, {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/files/${deleteFileModal.fileId}`, {
         method: 'DELETE',
       })
 
       if (!response.ok) throw new Error('Delete mislukt')
 
       toast.success('Bestand verwijderd')
+      setDeleteFileModal({ isOpen: false, fileId: null, fileName: '' })
       loadBronnen()
     } catch (err: any) {
       console.error('Error deleting file:', err)
       toast.error(err.message || 'Kon bestand niet verwijderen')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -314,9 +386,11 @@ export default function Bronnen() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
-  const getCurrentKlasName = () => {
-    const klas = klassen.find(k => k.id === selectedKlas)
-    return klas ? `${klas.name} - ${klas.vak}` : ''
+  const getSelectedKlassenNames = () => {
+    const selected = klassen.filter(k => selectedKlassen.includes(k.id))
+    if (selected.length === 0) return 'Geen klassen geselecteerd'
+    if (selected.length === 1) return `${selected[0].name} - ${selected[0].vak}`
+    return `${selected.length} klassen geselecteerd`
   }
 
   if (klassen.length === 0) {
@@ -371,25 +445,16 @@ export default function Bronnen() {
         )}
       </div>
 
-      {/* Vak selector tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2">
-        {klassen.map(k => (
-          <button
-            key={k.id}
-            onClick={() => {
-              setSelectedKlas(k.id)
-              setCurrentFolderId(null)
-              setBreadcrumbs([])
-            }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
-              selectedKlas === k.id
-                ? 'bg-blue-600 text-white'
-                : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
-            }`}
-          >
-            {k.name} - {k.vak}
-          </button>
-        ))}
+      {/* Class selector button */}
+      <div>
+        <button
+          onClick={() => setShowClassSelector(true)}
+          className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white transition-all"
+        >
+          <Filter size={18} />
+          <span className="font-medium">{getSelectedKlassenNames()}</span>
+          <ChevronRight size={16} className="text-white/50" />
+        </button>
       </div>
 
       {/* Breadcrumbs (alleen als je in een folder zit) */}
@@ -399,7 +464,7 @@ export default function Bronnen() {
             onClick={navigateToRoot}
             className="px-2 py-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
           >
-            {getCurrentKlasName()}
+            Root
           </button>
           {breadcrumbs.map((crumb, index) => (
             <div key={crumb.id} className="flex items-center gap-1">
@@ -447,7 +512,7 @@ export default function Bronnen() {
 
                 {!isStudent && (
                   <button
-                    onClick={() => deleteFolder(folder.id)}
+                    onClick={() => openDeleteFolderModal(folder.id, folder.name)}
                     className="p-2 rounded hover:bg-red-500/10 text-red-400/70 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
                   >
                     <Trash2 size={16} />
@@ -480,7 +545,7 @@ export default function Bronnen() {
 
                   {!isStudent && (
                     <button
-                      onClick={() => deleteFile(file.id)}
+                      onClick={() => setDeleteFileModal({ isOpen: true, fileId: file.id, fileName: file.name })}
                       className="p-2 rounded hover:bg-red-500/10 text-red-400/70 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
                     >
                       <Trash2 size={16} />
@@ -492,6 +557,19 @@ export default function Bronnen() {
           </div>
         )}
       </div>
+
+      {/* Class Selector Modal */}
+      <ClassSelectorModal
+        isOpen={showClassSelector}
+        onClose={() => setShowClassSelector(false)}
+        klassen={klassen}
+        selectedKlassen={selectedKlassen}
+        onSelect={(klasIds) => {
+          setSelectedKlassen(klasIds)
+          setCurrentFolderId(null)
+          setBreadcrumbs([])
+        }}
+      />
 
       {/* New Folder Modal */}
       {showNewFolder && (
@@ -634,6 +712,40 @@ export default function Bronnen() {
           </div>
         </div>
       )}
+
+      {/* Delete File Confirm Modal */}
+      <ConfirmModal
+        isOpen={deleteFileModal.isOpen}
+        onClose={() => setDeleteFileModal({ isOpen: false, fileId: null, fileName: '' })}
+        onConfirm={deleteFile}
+        title="Bestand verwijderen"
+        message={`Weet je zeker dat je "${deleteFileModal.fileName}" wilt verwijderen? Deze actie kan niet ongedaan worden gemaakt.`}
+        confirmText="Verwijderen"
+        cancelText="Annuleren"
+        isLoading={deleting}
+        type="danger"
+      />
+
+      {/* Delete Folder Confirm Modal */}
+      <ConfirmModal
+        isOpen={deleteFolderModal.isOpen}
+        onClose={() => setDeleteFolderModal({ isOpen: false, folderId: null, folderName: '', fileCount: 0, loading: false })}
+        onConfirm={deleteFolder}
+        title="Map verwijderen"
+        message={
+          deleteFolderModal.loading
+            ? `Bezig met tellen van bestanden in "${deleteFolderModal.folderName}"...`
+            : `Weet je zeker dat je de map "${deleteFolderModal.folderName}" wilt verwijderen?\n\n${
+                deleteFolderModal.fileCount > 0
+                  ? `Deze map bevat ${deleteFolderModal.fileCount} bestand${deleteFolderModal.fileCount > 1 ? 'en' : ''}. Alle submappen en bestanden worden ook verwijderd.`
+                  : 'Deze map is leeg. Alle submappen worden ook verwijderd.'
+              }\n\nDeze actie kan niet ongedaan worden gemaakt.`
+        }
+        confirmText="Verwijderen"
+        cancelText="Annuleren"
+        isLoading={deleting || deleteFolderModal.loading}
+        type="danger"
+      />
     </div>
   )
 }
