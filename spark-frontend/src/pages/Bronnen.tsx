@@ -9,7 +9,6 @@ import {
   FolderPlus,
   Trash2,
   ChevronRight,
-  Home,
   Loader2,
   FileText,
   FileSpreadsheet,
@@ -169,16 +168,15 @@ export default function Bronnen() {
     setBreadcrumbs([...breadcrumbs, { id: folder.id, name: folder.name }])
   }
 
+  const navigateToRoot = () => {
+    setCurrentFolderId(null)
+    setBreadcrumbs([])
+  }
+
   const navigateToBreadcrumb = (index: number) => {
-    if (index === -1) {
-      // Home (root)
-      setCurrentFolderId(null)
-      setBreadcrumbs([])
-    } else {
-      const crumb = breadcrumbs[index]
-      setCurrentFolderId(crumb.id)
-      setBreadcrumbs(breadcrumbs.slice(0, index + 1))
-    }
+    const crumb = breadcrumbs[index]
+    setCurrentFolderId(crumb.id)
+    setBreadcrumbs(breadcrumbs.slice(0, index + 1))
   }
 
   const createFolder = async () => {
@@ -297,6 +295,11 @@ export default function Bronnen() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
   }
 
+  const getCurrentKlasName = () => {
+    const klas = klassen.find(k => k.id === selectedKlas)
+    return klas ? `${klas.name} - ${klas.vak}` : ''
+  }
+
   if (klassen.length === 0) {
     return (
       <div className="space-y-6">
@@ -349,47 +352,49 @@ export default function Bronnen() {
         )}
       </div>
 
-      {/* Klas selector */}
-      <div className="flex items-center gap-2">
-        <span className="text-white/50 text-sm">Vak:</span>
-        <select
-          value={selectedKlas || ''}
-          onChange={(e) => {
-            setSelectedKlas(e.target.value)
-            setCurrentFolderId(null)
-            setBreadcrumbs([])
-          }}
-          className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500/50"
-        >
-          {klassen.map(k => (
-            <option key={k.id} value={k.id} className="bg-[#0f1029]">
-              {k.name} - {k.vak}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {/* Breadcrumbs */}
-      <div className="flex items-center gap-1 text-sm">
-        <button
-          onClick={() => navigateToBreadcrumb(-1)}
-          className="flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
-        >
-          <Home size={16} />
-          <span>Home</span>
-        </button>
-        {breadcrumbs.map((crumb, index) => (
-          <div key={crumb.id} className="flex items-center gap-1">
-            <ChevronRight size={16} className="text-white/30" />
-            <button
-              onClick={() => navigateToBreadcrumb(index)}
-              className="px-2 py-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
-            >
-              {crumb.name}
-            </button>
-          </div>
+      {/* Vak selector tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        {klassen.map(k => (
+          <button
+            key={k.id}
+            onClick={() => {
+              setSelectedKlas(k.id)
+              setCurrentFolderId(null)
+              setBreadcrumbs([])
+            }}
+            className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+              selectedKlas === k.id
+                ? 'bg-blue-600 text-white'
+                : 'bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+            }`}
+          >
+            {k.name} - {k.vak}
+          </button>
         ))}
       </div>
+
+      {/* Breadcrumbs (alleen als je in een folder zit) */}
+      {breadcrumbs.length > 0 && (
+        <div className="flex items-center gap-1 text-sm">
+          <button
+            onClick={navigateToRoot}
+            className="px-2 py-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
+          >
+            {getCurrentKlasName()}
+          </button>
+          {breadcrumbs.map((crumb, index) => (
+            <div key={crumb.id} className="flex items-center gap-1">
+              <ChevronRight size={16} className="text-white/30" />
+              <button
+                onClick={() => navigateToBreadcrumb(index)}
+                className="px-2 py-1 rounded hover:bg-white/5 text-white/60 hover:text-white transition-colors"
+              >
+                {crumb.name}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* File browser */}
       <div className="bg-[#0f1029] border border-white/10 rounded-xl overflow-hidden">
