@@ -44,6 +44,45 @@ const TYPE_FILTER_COLORS: Record<string, string> = {
   opdracht:   'bg-green-500/15 border-green-500/30 text-green-400',
 }
 
+// 🆕 Helper functie voor deadline styling op basis van urgentie
+function getDeadlineStyle(deadline: string, ingeleverd: boolean): { style: string; text: string } {
+  const deadlineDate = new Date(deadline)
+  const now = new Date()
+  const diff = deadlineDate.getTime() - now.getTime()
+  const hoursLeft = diff / (1000 * 60 * 60)
+  const daysLeft = hoursLeft / 24
+
+  const dag = deadlineDate.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
+  const tijd = deadlineDate.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })
+
+  if (hoursLeft < 0) {
+    return {
+      style: 'bg-red-500/20 border border-red-500/40 text-red-400',
+      text: `Verlopen op ${dag}`
+    }
+  } else if (hoursLeft < 24 && !ingeleverd) {
+    return {
+      style: 'bg-red-500/20 border border-red-500/40 text-red-400 animate-pulse',
+      text: `⚠️ ${dag} om ${tijd} (nog ${Math.floor(hoursLeft)}u)`
+    }
+  } else if (daysLeft < 3 && !ingeleverd) {
+    return {
+      style: 'bg-orange-500/20 border border-orange-500/40 text-orange-400',
+      text: `${dag} om ${tijd}`
+    }
+  } else if (daysLeft < 7 && !ingeleverd) {
+    return {
+      style: 'bg-yellow-500/20 border border-yellow-500/40 text-yellow-400',
+      text: `${dag} om ${tijd}`
+    }
+  } else {
+    return {
+      style: 'bg-blue-500/10 border border-blue-500/20 text-blue-300',
+      text: `${dag} om ${tijd}`
+    }
+  }
+}
+
 export default function StudentOpdrachtenOverzicht() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -342,8 +381,7 @@ export default function StudentOpdrachtenOverzicht() {
           {gefilterdeOpdrachten.map(o => {
             const status = getStatusBadge(o)
             const typeColor = TYPE_COLORS[o.type || ''] || TYPE_COLORS.huiswerk
-            const verlopen = o.deadline ? isVerlopen(o.deadline) : false
-            const nabij = o.deadline ? isNabij(o.deadline) : false
+            const deadlineInfo = o.deadline ? getDeadlineStyle(o.deadline, o.ingeleverd) : null
 
             return (
               <button
@@ -380,17 +418,12 @@ export default function StudentOpdrachtenOverzicht() {
                       <p className="text-white/35 text-xs mt-0.5 line-clamp-1">{o.beschrijving}</p>
                     )}
 
-                    {o.deadline && (
-                      <p className={`text-xs mt-1.5 flex items-center gap-1 ${
-                        verlopen ? 'text-red-400/70' : nabij ? 'text-amber-400' : 'text-white/30'
-                      }`}>
-                        <Calendar size={10} />
-                        {verlopen
-                          ? `Verlopen op ${new Date(o.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
-                          : `Deadline: ${new Date(o.deadline).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })} om ${new Date(o.deadline).toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' })}`
-                        }
-                        {nabij && ' ⚠️'}
-                      </p>
+                    {/* 🆕 PROMINENTE DEADLINE BADGE */}
+                    {deadlineInfo && (
+                      <div className={`inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-md text-xs font-medium ${deadlineInfo.style}`}>
+                        <Clock size={12} />
+                        <span>{deadlineInfo.text}</span>
+                      </div>
                     )}
                   </div>
 
