@@ -33,8 +33,7 @@ export default function ClassSelectorModal({
     }
   }, [isOpen, selectedKlassen])
 
-  if (!isOpen) return null
-
+  // ALLE HOOKS MOETEN VOOR DE RETURN NULL KOMEN
   const filteredKlassen = useMemo(() => {
     if (!search.trim()) return klassen
     const searchLower = search.toLowerCase()
@@ -55,6 +54,9 @@ export default function ClassSelectorModal({
     })
     return grouped
   }, [filteredKlassen])
+
+  // NU PAS DE EARLY RETURN - NA ALLE HOOKS
+  if (!isOpen) return null
 
   const toggleKlas = (klasId: string) => {
     if (tempSelected.includes(klasId)) {
