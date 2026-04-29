@@ -62,8 +62,9 @@ export default function Bronnen() {
   const [creatingFolder, setCreatingFolder] = useState(false)
 
   const [showUploadFile, setShowUploadFile] = useState(false)
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   // Laad klassen
   useEffect(() => {
@@ -207,37 +208,55 @@ export default function Bronnen() {
     }
   }
 
-  const uploadFile = async () => {
-    if (!selectedFile || !selectedKlas) return
+  const uploadFiles = async () => {
+    if (selectedFiles.length === 0 || !selectedKlas) return
     setUploading(true)
+    setUploadProgress(0)
+    
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('class_id', selectedKlas)
-      formData.append('teacher_id', user!.id)
-      if (currentFolderId) {
-        formData.append('folder_id', currentFolderId)
+      let successCount = 0
+      
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i]
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('class_id', selectedKlas)
+        formData.append('teacher_id', user!.id)
+        if (currentFolderId) {
+          formData.append('folder_id', currentFolderId)
+        }
+
+        try {
+          const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/files`, {
+            method: 'POST',
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const error = await response.json()
+            throw new Error(error.detail || 'Upload mislukt')
+          }
+          
+          successCount++
+          setUploadProgress(i + 1)
+        } catch (err: any) {
+          console.error(`Error uploading ${file.name}:`, err)
+          toast.error(`Fout bij ${file.name}: ${err.message}`)
+        }
       }
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/api/bronnen/files`, {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.detail || 'Upload mislukt')
+      if (successCount > 0) {
+        toast.success(`${successCount} van ${selectedFiles.length} bestand${selectedFiles.length > 1 ? 'en' : ''} geüpload`)
+        setShowUploadFile(false)
+        setSelectedFiles([])
+        loadBronnen()
       }
-
-      toast.success('Bestand geüpload')
-      setShowUploadFile(false)
-      setSelectedFile(null)
-      loadBronnen()
     } catch (err: any) {
-      console.error('Error uploading file:', err)
-      toast.error(err.message || 'Kon bestand niet uploaden')
+      console.error('Error uploading files:', err)
+      toast.error('Kon bestanden niet uploaden')
     } finally {
       setUploading(false)
+      setUploadProgress(0)
     }
   }
 
@@ -346,7 +365,7 @@ export default function Bronnen() {
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-all"
             >
               <Upload size={18} />
-              Bestand uploaden
+              Bestanden uploaden
             </button>
           </div>
         )}
@@ -520,53 +539,96 @@ export default function Bronnen() {
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-[#0f1029] border border-white/10 rounded-xl p-6 max-w-md w-full space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-white">Bestand uploaden</h3>
-              <button onClick={() => setShowUploadFile(false)} className="text-white/50 hover:text-white">
+              <h3 className="text-lg font-semibold text-white">Bestanden uploaden</h3>
+              <button onClick={() => {
+                setShowUploadFile(false)
+                setSelectedFiles([])
+              }} className="text-white/50 hover:text-white">
                 <X size={20} />
               </button>
             </div>
 
             <div className="border-2 border-dashed border-white/10 rounded-lg p-8 text-center">
-              {selectedFile ? (
-                <div className="space-y-2">
-                  <File size={32} className="text-blue-400 mx-auto" />
-                  <p className="text-white text-sm font-medium">{selectedFile.name}</p>
-                  <p className="text-white/30 text-xs">{formatFileSize(selectedFile.size)}</p>
-                  <button
-                    onClick={() => setSelectedFile(null)}
-                    className="text-red-400 text-xs hover:underline"
-                  >
-                    Verwijderen
-                  </button>
+              {selectedFiles.length > 0 ? (
+                <div className="space-y-3 max-h-60 overflow-y-auto">
+                  {selectedFiles.map((file, index) => (
+                    <div key={index} className="flex items-center justify-between bg-white/5 rounded-lg p-3">
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        <File size={20} className="text-blue-400 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-white text-sm font-medium truncate">{file.name}</p>
+                          <p className="text-white/30 text-xs">{formatFileSize(file.size)}</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedFiles(selectedFiles.filter((_, i) => i !== index))
+                        }}
+                        className="text-red-400 hover:text-red-300 p-1"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="cursor-pointer block">
+                    <input
+                      type="file"
+                      multiple
+                      onChange={(e) => {
+                        if (e.target.files) {
+                          setSelectedFiles([...selectedFiles, ...Array.from(e.target.files)])
+                        }
+                      }}
+                      className="hidden"
+                    />
+                    <div className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/60 text-sm transition-colors">
+                      <Plus size={16} />
+                      <span>Meer bestanden toevoegen</span>
+                    </div>
+                  </label>
                 </div>
               ) : (
                 <label className="cursor-pointer">
                   <input
                     type="file"
-                    onChange={(e) => e.target.files && setSelectedFile(e.target.files[0])}
+                    multiple
+                    onChange={(e) => e.target.files && setSelectedFiles(Array.from(e.target.files))}
                     className="hidden"
                   />
                   <Upload size={32} className="text-white/30 mx-auto mb-2" />
-                  <p className="text-white/60 text-sm">Klik om bestand te kiezen</p>
+                  <p className="text-white/60 text-sm">Klik om bestanden te kiezen</p>
                   <p className="text-white/30 text-xs mt-1">PDF, PowerPoint, Word, Excel</p>
+                  <p className="text-white/40 text-xs mt-2">Je kunt meerdere bestanden selecteren</p>
                 </label>
               )}
             </div>
 
             <div className="flex gap-2">
               <button
-                onClick={() => setShowUploadFile(false)}
+                onClick={() => {
+                  setShowUploadFile(false)
+                  setSelectedFiles([])
+                }}
                 className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-all"
               >
                 Annuleren
               </button>
               <button
-                onClick={uploadFile}
-                disabled={!selectedFile || uploading}
+                onClick={uploadFiles}
+                disabled={selectedFiles.length === 0 || uploading}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 disabled:cursor-not-allowed text-white rounded-lg transition-all"
               >
-                {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                Uploaden
+                {uploading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>{uploadProgress}/{selectedFiles.length}</span>
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} />
+                    <span>Uploaden ({selectedFiles.length})</span>
+                  </>
+                )}
               </button>
             </div>
           </div>
