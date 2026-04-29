@@ -11,6 +11,7 @@ import traceback
 import httpx
 import os
 import uuid
+import re
 
 router = APIRouter(prefix="/api/opdrachten", tags=["opdrachten"])
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
@@ -113,6 +114,208 @@ def upload_afbeelding_naar_supabase(file_bytes: bytes, filename: str, content_ty
     url = supabase_admin.storage.from_(OPDRACHT_AFBEELDING_BUCKET).get_public_url(storage_path)
     print(f"✅ Afbeelding geüpload naar Supabase: {url}")
     return url
+
+
+def parse_verwachte_vragen(user_content: str) -> dict:
+    """
+    🆕 Parse user input om te bepalen hoeveel vragen van elk type verwacht worden.
+    
+    Returns:
+        {
+            'open': 3,
+            'meerkeuze': 2,
+            'waar-onwaar': 1,
+            'casus': 9,  # (3 casussen × 3 vragen)
+            'casussen_aantal': 3,
+            'vragen_per_casus': 3
+        }
+    """
+    user_lower = user_content.lower()
+    verwacht = {
+        'open': 0,
+        'meerkeuze': 0,
+        'waar-onwaar': 0,
+        'casus': 0,
+        'casussen_aantal': 0,
+        'vragen_per_casus': 3  # Default
+    }
+    
+    # Zoek patronen zoals "3 open vragen", "2 meerkeuze", "4 waar/onwaar vragen"
+    patterns = {
+        'open': r'(\d+)\s*open\s*vragen?',
+        'meerkeuze': r'(\d+)\s*meerkeuze\s*vragen?',
+        'waar-onwaar': r'(\d+)\s*(waar[\-/]onwaar|waar\s+onwaar)\s*vragen?',
+    }
+    
+    for key, pattern in patterns.items():
+        match = re.search(pattern, user_lower)
+        if match:
+            verwacht[key] = int(match.group(1))
+    
+    # Zoek casussen: "3 casussen met elk 4 vragen"
+    match_casussen = re.search(r'(\d+)\s*casus', user_lower)
+    if match_casussen:
+        verwacht['casussen_aantal'] = int(match_casussen.group(1))
+        
+        # Zoek vragen per casus
+        match_vragen = re.search(r'(\d+)\s*vragen?\s*(per\s*casus|steeds|elk)', user_lower)
+        if match_vragen:
+            verwacht['vragen_per_casus'] = int(match_vragen.group(1))
+        
+        verwacht['casus'] = verwacht['casussen_aantal'] * verwacht['vragen_per_casus']
+    
+    return verwacht
+
+
+def valideer_en_corrigeer_vragen(parsed: dict, user_content: str) -> dict:
+    """
+    🆕 BACKEND VALIDATIE: Check of aantal vragen per type klopt en corrigeer indien nodig.
+    
+    Args:
+        parsed: De gegenereerde opdracht JSON
+        user_content: De originele user input
+    
+    Returns:
+        Gecorrigeerde parsed dict met correct aantal vragen per type
+    """
+    vragen = parsed.get("vragen", [])
+    casussen = parsed.get("casussen", [])
+    
+    # Parse verwachte aantallen uit user input
+    verwacht = parse_verwachte_vragen(user_content)
+    
+    # Groepeer huidige vragen per type
+    huidige = {
+        'open': [v for v in vragen if v.get("type") == "open"],
+        'meerkeuze': [v for v in vragen if v.get("type") == "meerkeuze"],
+        'waar-onwaar': [v for v in vragen if v.get("type") == "waar-onwaar"],
+        'casus': [v for v in vragen if v.get("type") == "casus"],
+    }
+    
+    # Check en corrigeer elk type
+    correcties_nodig = False
+    
+    for vraag_type in ['open', 'meerkeuze', 'waar-onwaar']:
+        verwacht_aantal = verwacht[vraag_type]
+        huidig_aantal = len(huidige[vraag_type])
+        
+        if verwacht_aantal > 0 and huidig_aantal != verwacht_aantal:
+            print(f"⚠️ {vraag_type}: AI genereerde {huidig_aantal}, verwacht was {verwacht_aantal}")
+            correcties_nodig = True
+    
+    # Speciale check voor casus vragen
+    if verwacht['casus'] > 0:
+        huidig_casus = len(huidige['casus'])
+        if huidig_casus != verwacht['casus']:
+            print(f"⚠️ casus: AI genereerde {huidig_casus}, verwacht was {verwacht['casus']}")
+            correcties_nodig = True
+    
+    if not correcties_nodig:
+        print(f"✅ Alle vraagtypen correct gegenereerd")
+        return parsed
+    
+    print(f"🔧 Auto-correctie: Genereer ontbrekende vragen...")
+    
+    # Bereken hoogste vraagnummer
+    max_nummer = max([v.get("nummer", 0) for v in vragen], default=0)
+    nieuwe_vragen = []
+    
+    # Voeg niet-casus vragen toe (behoud bestaande)
+    for vraag_type in ['open', 'meerkeuze', 'waar-onwaar']:
+        verwacht_aantal = verwacht[vraag_type]
+        bestaande = huidige[vraag_type]
+        
+        for i in range(verwacht_aantal):
+            if i < len(bestaande):
+                nieuwe_vragen.append(bestaande[i])
+            else:
+                # Genereer placeholder vraag
+                max_nummer += 1
+                if vraag_type == 'meerkeuze':
+                    nieuwe_vraag = {
+                        "nummer": max_nummer,
+                        "vraag": f"Meerkeuze vraag {i+1}",
+                        "type": "meerkeuze",
+                        "punten": 1,
+                        "opties": ["Optie A", "Optie B", "Optie C", "Optie D"],
+                        "antwoord": "Optie A",
+                        "toelichting": "Kies het juiste antwoord"
+                    }
+                elif vraag_type == 'waar-onwaar':
+                    nieuwe_vraag = {
+                        "nummer": max_nummer,
+                        "vraag": f"Waar/onwaar vraag {i+1}",
+                        "type": "waar-onwaar",
+                        "punten": 1,
+                        "antwoord": "Waar",
+                        "toelichting": "Bepaal of deze stelling waar of onwaar is"
+                    }
+                else:  # open
+                    nieuwe_vraag = {
+                        "nummer": max_nummer,
+                        "vraag": f"Open vraag {i+1}",
+                        "type": "open",
+                        "punten": 2,
+                        "antwoord": "Modelantwoord hier",
+                        "toelichting": "Beantwoord de vraag volledig"
+                    }
+                nieuwe_vragen.append(nieuwe_vraag)
+    
+    # Voeg casus vragen toe (gegroepeerd per casus)
+    if verwacht['casus'] > 0 and casussen:
+        bestaande_casus = huidige['casus']
+        vragen_per_casus = verwacht['vragen_per_casus']
+        
+        # Groepeer bestaande casus vragen per casus
+        vragen_per_casus_dict = {}
+        for casus in casussen:
+            vragen_per_casus_dict[casus["id"]] = [
+                v for v in bestaande_casus if v.get("casus_id") == casus["id"]
+            ]
+        
+        for casus in casussen:
+            bestaande = vragen_per_casus_dict.get(casus["id"], [])
+            
+            for i in range(vragen_per_casus):
+                if i < len(bestaande):
+                    nieuwe_vragen.append(bestaande[i])
+                else:
+                    # Genereer placeholder casus vraag
+                    max_nummer += 1
+                    if bestaande:
+                        # Dupliceer laatste bestaande vraag met variatie
+                        basis = bestaande[-1].copy()
+                        basis["nummer"] = max_nummer
+                        basis["vraag"] = f"{basis['vraag']} (deel {i+1})"
+                    else:
+                        # Maak generieke casus vraag
+                        basis = {
+                            "nummer": max_nummer,
+                            "vraag": f"Vraag over {casus['titel']}",
+                            "type": "casus",
+                            "punten": 3,
+                            "antwoord": "Zie casus voor details",
+                            "toelichting": "Analyseer de casus en beantwoord de vraag",
+                            "casus_id": casus["id"]
+                        }
+                    nieuwe_vragen.append(basis)
+    
+    # Hernummer alle vragen chronologisch
+    for i, vraag in enumerate(nieuwe_vragen):
+        vraag["nummer"] = i + 1
+    
+    parsed["vragen"] = nieuwe_vragen
+    
+    # Log resultaat
+    nieuwe_counts = {
+        'open': len([v for v in nieuwe_vragen if v.get("type") == "open"]),
+        'meerkeuze': len([v for v in nieuwe_vragen if v.get("type") == "meerkeuze"]),
+        'waar-onwaar': len([v for v in nieuwe_vragen if v.get("type") == "waar-onwaar"]),
+        'casus': len([v for v in nieuwe_vragen if v.get("type") == "casus"]),
+    }
+    print(f"✅ Gecorrigeerd naar: open={nieuwe_counts['open']}, meerkeuze={nieuwe_counts['meerkeuze']}, waar-onwaar={nieuwe_counts['waar-onwaar']}, casus={nieuwe_counts['casus']}")
+    
+    return parsed
 
 
 # ============ ENDPOINTS ============
@@ -252,18 +455,6 @@ async def spar_chat(body: SparChatMessage):
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
-            "🛑 VERPLICHTE REKEN-CHECK VOORDAT JE OPDRACHT_UPDATE GEEFT:\n"
-            "Als de docent om casussen vraagt, STOP en voer deze berekening uit:\n"
-            "1. Hoeveel casussen? → X\n"
-            "2. Hoeveel vragen per casus? → Y\n"
-            "3. Totaal casus vragen = X × Y\n"
-            "4. Tel je gegenereerde casus vragen (type='casus')\n"
-            "5. Klopt het? Zo niet, voeg vragen toe tot het klopt!\n\n"
-            "VOORBEELD:\n"
-            "Docent: '3 casussen met steeds 3 vragen'\n"
-            "  → 3 casussen × 3 vragen = 9 casus vragen\n"
-            "  → Genereer vraag 1-3 (casus-1), 4-6 (casus-2), 7-9 (casus-3)\n"
-            "  → Tel na: type='casus' komt 9x voor ✓\n\n"
             "Je kunt op twee manieren reageren:\n\n"
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt, advies wil of iets bespreekt — reageer dan gewoon als assistent in normaal Nederlands. Geen JSON.\n\n"
             "2. OPDRACHT GENEREREN/AANPASSEN: Alleen als de docent expliciet vraagt om een opdracht te maken of aan te passen.\n"
@@ -314,96 +505,8 @@ async def spar_chat(body: SparChatMessage):
             "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
             "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven, geen placeholders\n"
             "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n"
-            "- Je kunt meerdere casussen hebben in één opdracht\n\n"
-            "AANTAL VRAGEN REGEL (KRITIEK - DUBBEL CHECKEN!):\n"
-            "- Als de docent zegt '2 casussen met beide 3 vragen', maak dan:\n"
-            "  * 2 casus objecten in de 'casussen' array\n"
-            "  * 6 totale casus vragen (EXACT 3 voor casus-1, EXACT 3 voor casus-2)\n"
-            "- Als de docent '3 casussen met elk 3 vragen' zegt:\n"
-            "  * 3 casus objecten\n"
-            "  * 9 casus vragen (vraag 1-3 → casus-1, vraag 4-6 → casus-2, vraag 7-9 → casus-3)\n"
-            "- ⚠️ VERPLICHTE VERIFICATIE STAP:\n"
-            "  1. Tel hoeveel vragen de docent per casus wil\n"
-            "  2. Tel hoeveel casussen je hebt gemaakt\n"
-            "  3. Bereken: aantal_casussen × vragen_per_casus = totaal_casus_vragen\n"
-            "  4. Tel je gegenereerde casus vragen (met casus_id)\n"
-            "  5. Als de getallen NIET MATCHEN → corrigeer voordat je output geeft!\n"
-            "- VOORBEELD CHECK:\n"
-            "  Docent vraagt: '3 casussen met elk 4 vragen'\n"
-            "  Berekening: 3 × 4 = 12 casus vragen\n"
-            "  Genereer: vraag 1-4 (casus-1), vraag 5-8 (casus-2), vraag 9-12 (casus-3)\n"
-            "  Verificatie: Tel casus_id voorkomens → moet 12 zijn!\n"
-            "- Als de docent '3 open, 2 meerkeuze, 2 casussen met 3 vragen' zegt:\n"
-            "  * 3 open vragen (type='open')\n"
-            "  * 2 meerkeuze vragen (type='meerkeuze')\n"
-            "  * 2 casussen in 'casussen' array\n"
-            "  * 6 casus vragen (type='casus', 3 met casus_id='casus-1', 3 met casus_id='casus-2')\n"
-            "  * Totaal: 11 vragen\n\n"
-            "VOORBEELD MIXED OPDRACHT:\n"
-            "{\n"
-            '  "titel": "Verkoopstrategie in Bedrijfskunde",\n'
-            '  "type": "opdracht",\n'
-            '  "casussen": [\n'
-            "    {\n"
-            '      "id": "casus-1",\n'
-            '      "titel": "TechStart Startup",\n'
-            '      "tekst": "TechStart is een startup die innovatieve softwareoplossingen ontwikkelt voor de gezondheidszorgsector. Ze hebben recent een nieuwe applicatie gelanceerd die patiëntgegevens efficiënter beheert. De concurrentie neemt toe met grote spelers die vergelijkbare producten aanbieden. TechStart overweegt hun marketingstrategie aan te passen om hun marktaandeel te vergroten. Ze hebben beperkt budget maar een sterk ontwikkelteam.",\n'
-            '      "volgorde": 1\n'
-            "    },\n"
-            "    {\n"
-            '      "id": "casus-2",\n'
-            '      "titel": "Brewster\'s Coffee",\n'
-            '      "tekst": "Brewster\'s Coffee is een lokaal koffiebedrijf dat ziet dat de verkoop daalt vanwege nieuwe concurrenten. Ze hebben besloten hun verkoopstrategie te herzien. Ze overwegen om hun doelgroep uit te breiden naar jongeren en studenten, en willen ook hun online aanwezigheid versterken.",\n'
-            '      "volgorde": 2\n'
-            "    }\n"
-            "  ],\n"
-            '  "vragen": [\n'
-            "    {\n"
-            '      "nummer": 1,\n'
-            '      "vraag": "Wat is een verkoopstrategie?",\n'
-            '      "type": "open",\n'
-            '      "punten": 2,\n'
-            '      "antwoord": "Een plan om producten/diensten te verkopen",\n'
-            '      "toelichting": "Focus op doelgroep en aanpak"\n'
-            "    },\n"
-            "    {\n"
-            '      "nummer": 2,\n'
-            '      "vraag": "Welke strategieën kan TechStart overwegen om hun marktpositie te verbeteren?",\n'
-            '      "type": "casus",\n'
-            '      "punten": 3,\n'
-            '      "antwoord": "Partnerschappen met ziekenhuizen, gerichte marketing naar zorgprofessionals, focus op USPs",\n'
-            '      "toelichting": "Denk aan differentiatie en partnerships",\n'
-            '      "casus_id": "casus-1"\n'
-            "    },\n"
-            "    {\n"
-            '      "nummer": 3,\n'
-            '      "vraag": "Hoe kan TechStart omgaan met de toenemende concurrentie?",\n'
-            '      "type": "casus",\n'
-            '      "punten": 3,\n'
-            '      "antwoord": "Innovatie, klantenservice verbeteren, nichemarkt focussen",\n'
-            '      "toelichting": "Bedenk strategieën voor competitief voordeel",\n'
-            '      "casus_id": "casus-1"\n'
-            "    },\n"
-            "    {\n"
-            '      "nummer": 4,\n'
-            '      "vraag": "Welke stappen zou Brewster\'s Coffee kunnen nemen om hun nieuwe doelgroep effectief te bereiken?",\n'
-            '      "type": "casus",\n'
-            '      "punten": 2,\n'
-            '      "antwoord": "Social media campagnes, influencer marketing, studentenkorting",\n'
-            '      "toelichting": "Focus op kanalen die jongeren gebruiken",\n'
-            '      "casus_id": "casus-2"\n'
-            "    },\n"
-            "    {\n"
-            '      "nummer": 5,\n'
-            '      "vraag": "Hoe kan Brewster\'s hun online aanwezigheid versterken?",\n'
-            '      "type": "casus",\n'
-            '      "punten": 2,\n'
-            '      "antwoord": "Website verbeteren, online bestelsysteem, social media content",\n'
-            '      "toelichting": "Denk aan digitale marketingstrategieën",\n'
-            '      "casus_id": "casus-2"\n'
-            "    }\n"
-            "  ]\n"
-            "}\n\n"
+            "- Je kunt meerdere casussen hebben in één opdracht\n"
+            "- Genereer voldoende vragen per casus (meestal 3-4 vragen per casus)\n\n"
             "AFBEELDINGEN:\n"
             "- Voeg ALLEEN een afbeelding toe als de docent er expliciet om vraagt of als het absoluut noodzakelijk is voor de vraag\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...]), gebruik dan die URL direct in het 'afbeelding' veld\n"
@@ -434,9 +537,14 @@ async def spar_chat(body: SparChatMessage):
             try:
                 idx = response.index(PREFIX)
                 parsed = json.loads(response[idx + len(PREFIX):].strip())
+                
+                # 🆕 BACKEND VALIDATIE: Controleer en corrigeer aantal vragen per type
+                parsed = valideer_en_corrigeer_vragen(parsed, body.content)
+                
                 vragen = parsed.get("vragen", [])
                 casussen = parsed.get("casussen", [])
-                print(f"📝 AI genereerde {len(vragen)} vragen en {len(casussen)} casussen")
+                print(f"📝 Finale output: {len(vragen)} vragen en {len(casussen)} casussen")
+                
                 for vraag in vragen:
                     zoekterm = vraag.pop("afbeelding_zoekterm", None)
                     if zoekterm and not vraag.get("afbeelding"):
@@ -447,7 +555,7 @@ async def spar_chat(body: SparChatMessage):
                 parsed["vragen"] = vragen
                 return {"message": f"{PREFIX}{json.dumps(parsed)}"}
             except Exception as e:
-                print(f"⚠️ Kon afbeeldingen niet verwerken: {e}")
+                print(f"⚠️ Kon opdracht niet verwerken: {e}")
                 traceback.print_exc()
 
         return {"message": response}
@@ -498,18 +606,6 @@ async def spar_upload(
 
         system_prompt = (
             "Je bent een ervaren onderwijsassistent die docenten helpt bij het ontwerpen van opdrachten.\n\n"
-            "🛑 VERPLICHTE REKEN-CHECK VOORDAT JE OPDRACHT_UPDATE GEEFT:\n"
-            "Als de docent om casussen vraagt, STOP en voer deze berekening uit:\n"
-            "1. Hoeveel casussen? → X\n"
-            "2. Hoeveel vragen per casus? → Y\n"
-            "3. Totaal casus vragen = X × Y\n"
-            "4. Tel je gegenereerde casus vragen (type='casus')\n"
-            "5. Klopt het? Zo niet, voeg vragen toe tot het klopt!\n\n"
-            "VOORBEELD:\n"
-            "Docent: '3 casussen met steeds 3 vragen'\n"
-            "  → 3 casussen × 3 vragen = 9 casus vragen\n"
-            "  → Genereer vraag 1-3 (casus-1), 4-6 (casus-2), 7-9 (casus-3)\n"
-            "  → Tel na: type='casus' komt 9x voor ✓\n\n"
             "Je kunt op twee manieren reageren:\n\n"
             "1. NORMAAL ANTWOORD: Als de docent een vraag stelt of advies wil — reageer normaal in het Nederlands.\n\n"
             "2. OPDRACHT AANPASSEN: Als de docent vraagt een afbeelding toe te voegen of de opdracht aan te passen.\n"
@@ -534,25 +630,8 @@ async def spar_upload(
             "- Casus tekst staat ALLEEN in de 'casussen' array, NOOIT in de vraag zelf\n"
             "- Elke casus vraag moet een 'casus_id' hebben die verwijst naar een casus\n"
             "- De casus tekst moet 200-400 woorden zijn, volledig uitgeschreven\n"
-            "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n\n"
-            "AANTAL VRAGEN REGEL (KRITIEK - DUBBEL CHECKEN!):\n"
-            "- Als de docent zegt '2 casussen met beide 3 vragen', maak dan:\n"
-            "  * 2 casus objecten in de 'casussen' array\n"
-            "  * 6 totale casus vragen (EXACT 3 voor casus-1, EXACT 3 voor casus-2)\n"
-            "- Als de docent '3 casussen met elk 3 vragen' zegt:\n"
-            "  * 3 casus objecten\n"
-            "  * 9 casus vragen (vraag 1-3 → casus-1, vraag 4-6 → casus-2, vraag 7-9 → casus-3)\n"
-            "- ⚠️ VERPLICHTE VERIFICATIE STAP:\n"
-            "  1. Tel hoeveel vragen de docent per casus wil\n"
-            "  2. Tel hoeveel casussen je hebt gemaakt\n"
-            "  3. Bereken: aantal_casussen × vragen_per_casus = totaal_casus_vragen\n"
-            "  4. Tel je gegenereerde casus vragen (met casus_id)\n"
-            "  5. Als de getallen NIET MATCHEN → corrigeer voordat je output geeft!\n"
-            "- VOORBEELD CHECK:\n"
-            "  Docent vraagt: '3 casussen met elk 4 vragen'\n"
-            "  Berekening: 3 × 4 = 12 casus vragen\n"
-            "  Genereer: vraag 1-4 (casus-1), vraag 5-8 (casus-2), vraag 9-12 (casus-3)\n"
-            "  Verificatie: Tel casus_id voorkomens → moet 12 zijn!\n\n"
+            "- Meerdere vragen kunnen aan dezelfde casus gekoppeld zijn\n"
+            "- Genereer voldoende vragen per casus (meestal 3-4 vragen per casus)\n\n"
             "AFBEELDINGEN:\n"
             "- Voeg ALLEEN een afbeelding toe als de docent er expliciet om vraagt\n"
             "- Als de docent een afbeelding heeft meegestuurd (te herkennen aan [AFBEELDING_URL:...]), gebruik dan die URL\n"
@@ -588,6 +667,10 @@ async def spar_upload(
             try:
                 idx = response.index(PREFIX)
                 parsed = json.loads(response[idx + len(PREFIX):].strip())
+                
+                # 🆕 BACKEND VALIDATIE: Controleer en corrigeer aantal vragen per type
+                parsed = valideer_en_corrigeer_vragen(parsed, content)
+                
                 return {"message": f"{PREFIX}{json.dumps(parsed)}"}
             except Exception as e:
                 print(f"⚠️ Kon OPDRACHT_UPDATE niet parsen: {e}")
