@@ -10,6 +10,7 @@ from app.api.submissions import router as submissions_router
 from app.api.analyse import router as analyse_router
 from app.api.portfolio import router as portfolio_router
 from app.api.bronnen import router as bronnen_router
+from app.api.vakken import router as vakken_router  # ADD THIS
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -39,6 +40,7 @@ app.include_router(submissions_router)
 app.include_router(analyse_router)
 app.include_router(portfolio_router)
 app.include_router(bronnen_router)
+app.include_router(vakken_router)  # ADD THIS
 
 @app.get("/")
 async def root():
