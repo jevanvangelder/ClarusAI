@@ -81,13 +81,22 @@ export default function Bronnen() {
 
   const loadKlassen = async () => {
     if (!user) return
+    
+    console.log('🔍 DEBUG - User ID:', user.id)
+    console.log('🔍 DEBUG - Role:', role)
+    console.log('🔍 DEBUG - isStudent:', isStudent)
+    
     try {
       if (isStudent) {
         // Student: klassen waar student lid van is
-        const { data: members } = await supabase
+        console.log('🔍 DEBUG - Loading klassen for STUDENT')
+        const { data: members, error: membersError } = await supabase
           .from('class_members')
           .select('class_id')
           .eq('student_id', user.id)
+
+        console.log('🔍 DEBUG - Class members:', members)
+        console.log('🔍 DEBUG - Members error:', membersError)
 
         if (!members || members.length === 0) {
           setKlassen([])
@@ -95,11 +104,14 @@ export default function Bronnen() {
         }
 
         const classIds = members.map(m => m.class_id)
-        const { data: classes } = await supabase
+        const { data: classes, error: classesError } = await supabase
           .from('classes')
           .select('id, name, vak, eigen_titel')
           .in('id', classIds)
           .eq('is_active', true)
+
+        console.log('🔍 DEBUG - Classes found:', classes)
+        console.log('🔍 DEBUG - Classes error:', classesError)
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
@@ -107,11 +119,16 @@ export default function Bronnen() {
         }
       } else {
         // Docent/staff: eigen klassen
-        const { data: classes } = await supabase
+        console.log('🔍 DEBUG - Loading klassen for TEACHER/STAFF')
+        const { data: classes, error: classesError } = await supabase
           .from('classes')
           .select('id, name, vak, eigen_titel')
           .eq('created_by', user.id)
           .eq('is_active', true)
+
+        console.log('🔍 DEBUG - Teacher classes found:', classes)
+        console.log('🔍 DEBUG - Teacher classes error:', classesError)
+        console.log('🔍 DEBUG - Query: created_by =', user.id)
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
@@ -119,7 +136,7 @@ export default function Bronnen() {
         }
       }
     } catch (err) {
-      console.error('Error loading klassen:', err)
+      console.error('❌ Error loading klassen:', err)
       toast.error('Kon klassen niet laden')
     }
   }
