@@ -42,7 +42,6 @@ interface Klas {
   id: string
   name: string
   vak: string
-  eigen_titel: string | null
 }
 
 export default function Bronnen() {
@@ -81,25 +80,13 @@ export default function Bronnen() {
 
   const loadKlassen = async () => {
     if (!user) return
-    
-    console.log('🔍 DEBUG - User ID:', user.id)
-    console.log('���� DEBUG - Role:', role)
-    console.log('🔍 DEBUG - isStudent:', isStudent)
-    
     try {
       if (isStudent) {
         // Student: klassen waar student lid van is
-        console.log('🔍 DEBUG - Loading klassen for STUDENT')
-        const { data: members, error: membersError } = await supabase
+        const { data: members } = await supabase
           .from('class_members')
           .select('class_id')
           .eq('student_id', user.id)
-
-        console.log('🔍 DEBUG - Class members:', members)
-        if (membersError) {
-          console.log('🔍 DEBUG - Members error message:', membersError.message)
-          console.log('🔍 DEBUG - Members error code:', membersError.code)
-        }
 
         if (!members || members.length === 0) {
           setKlassen([])
@@ -107,17 +94,11 @@ export default function Bronnen() {
         }
 
         const classIds = members.map(m => m.class_id)
-        const { data: classes, error: classesError } = await supabase
+        const { data: classes } = await supabase
           .from('classes')
-          .select('id, name, vak, eigen_titel')
+          .select('id, name, vak')
           .in('id', classIds)
           .eq('is_active', true)
-
-        console.log('🔍 DEBUG - Classes found:', classes)
-        if (classesError) {
-          console.log('🔍 DEBUG - Classes error message:', classesError.message)
-          console.log('🔍 DEBUG - Classes error code:', classesError.code)
-        }
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
@@ -125,21 +106,11 @@ export default function Bronnen() {
         }
       } else {
         // Docent/staff: eigen klassen
-        console.log('🔍 DEBUG - Loading klassen for TEACHER/STAFF')
-        const { data: classes, error: classesError } = await supabase
+        const { data: classes } = await supabase
           .from('classes')
-          .select('id, name, vak, eigen_titel')
+          .select('id, name, vak')
           .eq('created_by', user.id)
           .eq('is_active', true)
-
-        console.log('🔍 DEBUG - Teacher classes found:', classes)
-        if (classesError) {
-          console.log('🔍 DEBUG - Error code:', classesError.code)
-          console.log('🔍 DEBUG - Error message:', classesError.message)
-          console.log('🔍 DEBUG - Error details:', classesError.details)
-          console.log('🔍 DEBUG - Error hint:', classesError.hint)
-        }
-        console.log('🔍 DEBUG - Query: created_by =', user.id)
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
@@ -147,7 +118,7 @@ export default function Bronnen() {
         }
       }
     } catch (err) {
-      console.error('❌ Error loading klassen:', err)
+      console.error('Error loading klassen:', err)
       toast.error('Kon klassen niet laden')
     }
   }
@@ -392,7 +363,7 @@ export default function Bronnen() {
         >
           {klassen.map(k => (
             <option key={k.id} value={k.id} className="bg-[#0f1029]">
-              {k.eigen_titel || k.vak || k.name}
+              {k.name} - {k.vak}
             </option>
           ))}
         </select>
