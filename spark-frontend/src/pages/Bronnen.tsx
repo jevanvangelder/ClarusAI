@@ -83,7 +83,7 @@ export default function Bronnen() {
     if (!user) return
     
     console.log('🔍 DEBUG - User ID:', user.id)
-    console.log('🔍 DEBUG - Role:', role)
+    console.log('���� DEBUG - Role:', role)
     console.log('🔍 DEBUG - isStudent:', isStudent)
     
     try {
@@ -96,7 +96,10 @@ export default function Bronnen() {
           .eq('student_id', user.id)
 
         console.log('🔍 DEBUG - Class members:', members)
-        console.log('🔍 DEBUG - Members error:', membersError)
+        if (membersError) {
+          console.log('🔍 DEBUG - Members error message:', membersError.message)
+          console.log('🔍 DEBUG - Members error code:', membersError.code)
+        }
 
         if (!members || members.length === 0) {
           setKlassen([])
@@ -111,7 +114,10 @@ export default function Bronnen() {
           .eq('is_active', true)
 
         console.log('🔍 DEBUG - Classes found:', classes)
-        console.log('🔍 DEBUG - Classes error:', classesError)
+        if (classesError) {
+          console.log('🔍 DEBUG - Classes error message:', classesError.message)
+          console.log('🔍 DEBUG - Classes error code:', classesError.code)
+        }
 
         setKlassen(classes || [])
         if (classes && classes.length > 0) {
@@ -127,7 +133,12 @@ export default function Bronnen() {
           .eq('is_active', true)
 
         console.log('🔍 DEBUG - Teacher classes found:', classes)
-        console.log('🔍 DEBUG - Teacher classes error:', classesError)
+        if (classesError) {
+          console.log('🔍 DEBUG - Error code:', classesError.code)
+          console.log('🔍 DEBUG - Error message:', classesError.message)
+          console.log('🔍 DEBUG - Error details:', classesError.details)
+          console.log('🔍 DEBUG - Error hint:', classesError.hint)
+        }
         console.log('🔍 DEBUG - Query: created_by =', user.id)
 
         setKlassen(classes || [])
